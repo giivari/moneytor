@@ -7,6 +7,8 @@ import { sortNamed } from "@/lib/list-order";
 import { SectionHeading } from "./section-heading";
 import { FinancialAmount } from "./financial-amount";
 import { HomeAnalytics } from "./home-analytics";
+import { resolveProviderMark } from "@/lib/domain/provider-marks";
+import { ProviderBrandMark } from "./provider-brand-mark";
 
 type Snapshot = Awaited<ReturnType<typeof financeSnapshot>>;
 function HomeAmount({ value, level = "supporting", tone = "", inline = false }: {
@@ -59,11 +61,14 @@ export function HomeOverview({ snapshot, date, analytics = null }: { snapshot: S
         </section>
         <section className="surface home-accounts home-desktop-only"><SectionHeading title="Akun & aset" action={<Link href="/assets" className="text-link">Lihat semua <ArrowRight size={15} aria-hidden="true" /></Link>} />
           {!assets.length && <p className="finance-empty-inline">Belum ada akun atau aset tercatat.</p>}
-          <ul className="home-account-list">{assets.slice(0, 3).map(asset => <li key={asset.id} data-wide={formatMinor(asset.balanceMinor, asset.currency, asset.exponent).length > 18}>
-            <span className="finance-asset-mark" aria-hidden="true">{asset.displayName.slice(0, 1).toUpperCase()}</span>
-            <div className="home-account-copy"><strong>{asset.displayName}</strong><span>{asset.providerName ?? asset.assetTypeName}{asset.isActive ? "" : " · Diarsipkan"}</span></div>
-            <HomeAmount value={formatMinor(asset.balanceMinor, asset.currency, asset.exponent)} level="row" />
-          </li>)}</ul>
+          <ul className="home-account-list">{assets.slice(0, 3).map(asset => {
+            const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
+            return <li key={asset.id} data-wide={formatMinor(asset.balanceMinor, asset.currency, asset.exponent).length > 18}>
+              <ProviderBrandMark mark={mark} />
+              <div className="home-account-copy"><strong>{asset.displayName}</strong><span>{asset.providerName ?? asset.assetTypeName}{asset.isActive ? "" : " · Diarsipkan"}</span></div>
+              <HomeAmount value={formatMinor(asset.balanceMinor, asset.currency, asset.exponent)} level="row" />
+            </li>;
+          })}</ul>
         </section>
         <section className="surface home-recent"><SectionHeading title="Transaksi terkini" action={<Link href="/transactions" className="text-link">Lihat semua <ArrowRight size={15} aria-hidden="true" /></Link>} />
           {!recent.length ? <p className="finance-empty-inline">Belum ada transaksi tercatat.</p> : <ul className="home-recent-list">{recent.slice(0, 3).map(item => {

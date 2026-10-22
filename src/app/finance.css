@@ -295,6 +295,29 @@
   object-fit: cover;
 }
 
+.home-account-list > li {
+  grid-template-columns: auto minmax(0, 1fr) fit-content(48%);
+}
+
+.home-account-list > li[data-wide="true"] {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.home-account-list .finance-asset-mark.finance-asset-mark--brand {
+  width: 48px;
+  height: 32px;
+  min-width: 48px;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+.home-account-list .finance-asset-mark.finance-asset-mark--brand[data-fit="cover"] {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+}
+
 .catalog-preset-tray {
   display: grid;
   gap: 9px;
