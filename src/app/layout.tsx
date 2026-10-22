@@ -18,6 +18,7 @@ import "./density.css";
 import "./typography.css";
 import "./data-presentation.css";
 import "./home.css";
+import "./onboarding.css";
 
 const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
 export const metadata: Metadata = { title: "moneytor — Monitor Keuangan Pribadi", description: "Monitor keuangan pribadi yang privat" };

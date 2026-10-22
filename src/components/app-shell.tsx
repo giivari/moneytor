@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChartDonut, DotsThree, GearSix, House, List, SquaresFour, Target } from "@phosphor-icons/react";
 import { BrandIdentity } from "./brand-identity";
+import { FeatureOnboarding } from "./feature-onboarding";
 import { QuickAdd } from "@/components/quick-add";
 import { LoadingIndicator } from "./loading-indicator";
 import { useFinanceFeedback } from "./finance-feedback";
@@ -84,7 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="floating-nav" aria-label="Navigasi utama">
           {navigation.map(({ href, label, Icon }) => <Link key={href} href={href} data-area={href.slice(1) || "home"} className={`nav-link ${active(href) ? "active" : ""}`} aria-current={active(href) ? "page" : undefined}><NavigationIcon><Icon size={17} weight={active(href) ? "fill" : "regular"} /></NavigationIcon><span>{label}</span></Link>)}
         </nav>
-        <div className="header-actions"><QuickAdd /></div>
+        <div className="header-actions"><FeatureOnboarding /><QuickAdd /></div>
       </div>
     </header>
 
