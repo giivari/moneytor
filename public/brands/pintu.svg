@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 32" fill="none">
+  <defs>
+    <linearGradient id="pintuGrad" x1="4" y1="28" x2="26" y2="6" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0052FF"/>
+      <stop offset="1" stop-color="#22E1A0"/>
+    </linearGradient>
+  </defs>
+  <path d="M7 27V13.5a8.5 8.5 0 0 1 17 0V27" stroke="url(#pintuGrad)" stroke-width="4.8" stroke-linecap="round"/>
+  <text x="32" y="22.5" fill="#0F172A" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="16.5" letter-spacing="0.6">PINTU</text>
+</svg>

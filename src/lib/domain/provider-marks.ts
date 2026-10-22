@@ -123,12 +123,44 @@ export const CURATED_PROVIDERS: readonly CuratedProviderPreset[] = [
     patterns: [/\blink\s*aja\b/i],
   },
   {
+    key: "mandiri-emoney",
+    displayName: "Mandiri e-Money",
+    monogram: "MEM",
+    classification: "Dompet digital",
+    tone: "amber",
+    patterns: [/mandiri\s*e[\s-]*money/i, /e[\s-]*money\s*mandiri/i],
+  },
+  {
+    key: "flazz",
+    displayName: "BCA Flazz",
+    monogram: "FLZ",
+    classification: "Dompet digital",
+    tone: "blue",
+    patterns: [/\bflazz\b/i],
+  },
+  {
+    key: "tapcash",
+    displayName: "BNI TapCash",
+    monogram: "TPC",
+    classification: "Dompet digital",
+    tone: "teal",
+    patterns: [/\btap\s*cash\b/i],
+  },
+  {
+    key: "brizzi",
+    displayName: "BRI Brizzi",
+    monogram: "BRZ",
+    classification: "Dompet digital",
+    tone: "blue",
+    patterns: [/\bbrizzi\b/i],
+  },
+  {
     key: "emoney",
     displayName: "e-Money / Flazz",
     monogram: "EMN",
     classification: "Dompet digital",
     tone: "amber",
-    patterns: [/\be[\s-]*money\b/i, /\bflazz\b/i, /\bbrizzi\b/i, /\btapcash\b/i],
+    patterns: [/\be[\s-]*money\b/i, /\buang\s+elektronik\b/i, /\bkartu\s+prabayar\b/i],
   },
   {
     key: "bibit",
@@ -216,7 +248,51 @@ export function resolveProviderMark(
   assetDisplayName?: string | null,
   fallbackTone: ProviderTone = "blue",
 ): ResolvedProviderMark {
-  const candidates = [providerName ?? "", assetDisplayName ?? ""].filter(Boolean);
+  const rawProvider = (providerName ?? "").trim();
+  const rawAsset = (assetDisplayName ?? "").trim();
+  const combinedText = `${rawProvider} ${rawAsset}`.trim();
+
+  // Distinguish specific prepaid card brands on an asset even when its provider is a generic bank or "e-Money / Flazz".
+  const isGenericUmbrellaOnly =
+    /^e[\s-]*money\s*\/\s*flazz$/i.test(rawAsset || rawProvider) &&
+    (!rawAsset || /^e[\s-]*money\s*\/\s*flazz$/i.test(rawAsset));
+
+  if (!isGenericUmbrellaOnly) {
+    const specificCardKeys = ["mandiri-emoney", "flazz", "tapcash", "brizzi"] as const;
+    for (const cardKey of specificCardKeys) {
+      const preset = CURATED_PROVIDERS.find((p) => p.key === cardKey);
+      const targetText = cardKey === "flazz" && /^e[\s-]*money\s*\/\s*flazz$/i.test(rawProvider)
+        ? rawAsset
+        : combinedText;
+      if (preset && preset.patterns.some((re) => re.test(targetText))) {
+        return {
+          monogram: preset.monogram,
+          tone: preset.tone,
+          matchedKey: preset.key,
+          inferredProviderName: preset.displayName,
+        };
+      }
+    }
+    if (/\bmandiri\b/i.test(combinedText) && /\be[\s-]*money\b/i.test(combinedText)) {
+      const mandiriEmoney = CURATED_PROVIDERS.find((p) => p.key === "mandiri-emoney")!;
+      return {
+        monogram: mandiriEmoney.monogram,
+        tone: mandiriEmoney.tone,
+        matchedKey: mandiriEmoney.key,
+        inferredProviderName: mandiriEmoney.displayName,
+      };
+    }
+  } else {
+    const umbrella = CURATED_PROVIDERS.find((p) => p.key === "emoney")!;
+    return {
+      monogram: umbrella.monogram,
+      tone: umbrella.tone,
+      matchedKey: umbrella.key,
+      inferredProviderName: umbrella.displayName,
+    };
+  }
+
+  const candidates = [rawProvider, rawAsset].filter(Boolean);
   for (const text of candidates) {
     for (const preset of CURATED_PROVIDERS) {
       if (preset.patterns.some((re) => re.test(text))) {

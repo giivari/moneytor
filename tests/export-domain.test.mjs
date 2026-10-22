@@ -30,7 +30,27 @@ test("P8 provider marks: curated local providers and networks resolve monograms 
 
   const emoney = resolveProviderMark(null, "E money");
   assert.equal(emoney.monogram, "EMN");
+  assert.equal(emoney.matchedKey, "emoney");
   assert.equal(emoney.inferredProviderName, "e-Money / Flazz");
+
+  const umbrella = resolveProviderMark("e-Money / Flazz", "e-Money / Flazz");
+  assert.equal(umbrella.matchedKey, "emoney");
+
+  const flazz = resolveProviderMark("e-Money / Flazz", "Flazz BCA");
+  assert.equal(flazz.matchedKey, "flazz");
+  assert.equal(flazz.inferredProviderName, "BCA Flazz");
+
+  const tapcash = resolveProviderMark("Bank Negara Indonesia (BNI)", "Kartu TapCash");
+  assert.equal(tapcash.matchedKey, "tapcash");
+  assert.equal(tapcash.inferredProviderName, "BNI TapCash");
+
+  const brizzi = resolveProviderMark("e-Money / Flazz", "Brizzi Toll");
+  assert.equal(brizzi.matchedKey, "brizzi");
+  assert.equal(brizzi.inferredProviderName, "BRI Brizzi");
+
+  const mandiriEmoney = resolveProviderMark("Bank Mandiri", "Mandiri e-Money");
+  assert.equal(mandiriEmoney.matchedKey, "mandiri-emoney");
+  assert.equal(mandiriEmoney.inferredProviderName, "Mandiri e-Money");
 
   const cash = resolveProviderMark(null, "Cash Wallet");
   assert.equal(cash.monogram, "KAS");
