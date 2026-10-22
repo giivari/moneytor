@@ -311,16 +311,21 @@
   flex: 0 0 42px;
 }
 
-.credit-add-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .credit-settled-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.credit-bill-stack {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+.credit-next-bill-label {
+  font-size: 12px;
+  color: #4b5962;
 }
 
 .credit-pay-button {

@@ -5,12 +5,14 @@ import { useListSort } from "./use-list-sort";
 import { ListSortControl } from "./list-sort-control";
 
 import { useEffect, useRef, useState } from "react";
-import { Bank, CheckCircle, CreditCard, PencilSimple, Plus, X } from "@phosphor-icons/react";
+import { Bank, CheckCircle, PencilSimple, Plus, X } from "@phosphor-icons/react";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
 import {
-  creditBillMinor,
+  computeCreditBills,
   encodeCreditNote,
+  formatShortDueIso,
   isCreditAsset,
+  nextMonthlyDueDayIso,
   parseCreditMeta,
 } from "@/lib/domain/credit";
 import { ProviderBrandMark } from "./provider-brand-mark";
@@ -29,11 +31,9 @@ import { useMobileViewport } from "./use-mobile-viewport";
 
 function AssetForm({
   initial,
-  defaultCredit = false,
   onClose,
 }: {
   initial?: FinanceAsset;
-  defaultCredit?: boolean;
   onClose: () => void;
 }) {
   const { refresh, notify } = useFinanceFeedback();
@@ -45,24 +45,48 @@ function AssetForm({
   const [confirmArchive, setConfirmArchive] = useState(false);
 
   const initialMeta = parseCreditMeta(initial?.note);
+  const initialBills = initial ? computeCreditBills(initial) : null;
   const [isCredit, setIsCredit] = useState<boolean>(
-    initial ? isCreditAsset(initial) : defaultCredit,
+    initial ? isCreditAsset(initial) : false,
   );
   const [dueDay, setDueDay] = useState<string>(
-    initialMeta.dueDay ? String(initialMeta.dueDay) : "25",
+    initial ? String(initialMeta.dueDay) : "1",
   );
+  const [cutoffDay, setCutoffDay] = useState<string>(
+    initial ? String(initialMeta.cutoffDay) : "20",
+  );
+  const [creditLimit, setCreditLimit] = useState<string>(
+    initial && initialMeta.limitMinor > 0n
+      ? minorToInput(initialMeta.limitMinor.toString(), initial.exponent)
+      : "",
+  );
+  const [currentBillInput, setCurrentBillInput] = useState<string>(
+    initialBills && initialBills.currentBillMinor > 0n
+      ? minorToInput(initialBills.currentBillMinor.toString(), initial!.exponent)
+      : "",
+  );
+  const [nextBillInput, setNextBillInput] = useState<string>(
+    initialBills && initialBills.nextBillMinor > 0n
+      ? minorToInput(initialBills.nextBillMinor.toString(), initial!.exponent)
+      : "",
+  );
+
   const [name, setName] = useState(initial?.displayName ?? "");
   const [currency, setCurrency] = useState(initial?.currency ?? "IDR");
-  const [opening, setOpening] = useState("0");
+  const [opening, setOpening] = useState("");
   const [typeId, setTypeId] = useState(initial?.assetTypeId ?? "");
   const [groupId, setGroupId] = useState(initial?.assetGroupId ?? "");
   const [providerId, setProviderId] = useState(initial?.providerId ?? "");
   const [networkId, setNetworkId] = useState(initial?.paymentNetworkId ?? "");
-  const [liquid, setLiquid] = useState(initial?.normallyLiquid ?? !defaultCredit);
-  const [spendable, setSpendable] = useState(initial?.normallySpendable ?? !defaultCredit);
+  const [liquid, setLiquid] = useState(initial?.normallyLiquid ?? true);
+  const [spendable, setSpendable] = useState(initial?.normallySpendable ?? true);
   const [suffix, setSuffix] = useState(initial?.safeSuffix ?? "");
   const [note, setNote] = useState(initialMeta.cleanNote);
   const exponent = options?.currencies.find((item) => item.code === currency)?.exponent ?? 0;
+
+  const parsedDueNum = Number(dueDay) >= 1 && Number(dueDay) <= 31 ? Number(dueDay) : 1;
+  const previewCurrentDue = formatShortDueIso(nextMonthlyDueDayIso(parsedDueNum, 0));
+  const previewNextDue = formatShortDueIso(nextMonthlyDueDayIso(parsedDueNum, 1));
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,17 +94,43 @@ function AssetForm({
     setError("");
     setOperation("save");
     try {
-      const parsedDue = dueDay.trim() ? Number(dueDay.trim()) : null;
-      const encodedNote = encodeCreditNote(
-        note,
-        isCredit,
-        parsedDue && parsedDue >= 1 && parsedDue <= 31 ? parsedDue : null,
-      );
+      const parsedDue = dueDay.trim() ? Number(dueDay.trim()) : 1;
+      const parsedCutoff = cutoffDay.trim() ? Number(cutoffDay.trim()) : 20;
+      const limitMinor = creditLimit.trim()
+        ? BigInt(inputToMinor(creditLimit.trim(), exponent))
+        : 0n;
+      const desiredCurrentMinor = currentBillInput.trim()
+        ? BigInt(inputToMinor(currentBillInput.trim(), exponent))
+        : 0n;
+      const desiredNextMinor = nextBillInput.trim()
+        ? BigInt(inputToMinor(nextBillInput.trim(), exponent))
+        : 0n;
+      const existingBalance = initial ? BigInt(initial.balanceMinor) : 0n;
+
+      // Ensure computeCreditBills returns exact desiredCurrentMinor and desiredNextMinor
+      const carryCurrentMinor = desiredCurrentMinor + existingBalance;
+      const carryNextMinor = desiredNextMinor;
+
+      const encodedNote = encodeCreditNote(note, isCredit, {
+        dueDay: parsedDue,
+        cutoffDay: parsedCutoff,
+        limitMinor,
+        carryCurrentMinor,
+        carryNextMinor,
+        deferredMinor: 0n,
+      });
+
+      const openingMinorStr = initial
+        ? undefined
+        : isCredit
+          ? "0"
+          : inputToMinor(opening.trim() || "0", exponent);
+
       const body = {
         id: initial?.id,
         displayName: name,
         currency,
-        openingAmountMinor: initial ? undefined : isCredit ? "0" : inputToMinor(opening, exponent),
+        openingAmountMinor: openingMinorStr,
         openingEffectiveAt: new Date().toISOString(),
         assetTypeId: typeId || options?.catalogs.assetTypes[0]?.id,
         assetGroupId: groupId || undefined,
@@ -196,7 +246,7 @@ function AssetForm({
               />
             </label>
 
-            {!initial && !isCredit && (
+            {!isCredit && !initial && (
               <div className="field-grid">
                 <label className="field">
                   <span>Mata uang</span>
@@ -209,44 +259,94 @@ function AssetForm({
                   </select>
                 </label>
                 <label className="field">
-                  <span>Saldo awal</span>
+                  <span>Saldo awal (opsional)</span>
                   <input
-                    required
                     inputMode="decimal"
                     value={opening}
                     onChange={(event) => setOpening(event.target.value)}
+                    placeholder="0"
                   />
                 </label>
               </div>
             )}
 
             {isCredit && (
-              <div className="field-grid">
-                {!initial && (
+              <>
+                <div className="field-grid">
+                  {!initial && (
+                    <label className="field">
+                      <span>Mata uang</span>
+                      <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
+                        {options.currencies.map((item) => (
+                          <option key={item.code} value={item.code}>
+                            {item.code}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <label className="field">
-                    <span>Mata uang</span>
-                    <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
-                      {options.currencies.map((item) => (
-                        <option key={item.code} value={item.code}>
-                          {item.code}
-                        </option>
-                      ))}
-                    </select>
+                    <span>Limit Kredit / PayLater ({currency})</span>
+                    <input
+                      inputMode="decimal"
+                      value={creditLimit}
+                      onChange={(event) => setCreditLimit(event.target.value)}
+                      placeholder="0"
+                    />
+                    <small>Opsional. Untuk memantau sisa limit yang masih tersedia.</small>
                   </label>
-                )}
-                <label className="field">
-                  <span>Tanggal jatuh tempo bulanan (1–31)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={dueDay}
-                    onChange={(event) => setDueDay(event.target.value)}
-                    placeholder="25"
-                  />
-                  <small>Dipakai sebagai pengingat jatuh tempo tagihan & cicilan bulanan.</small>
-                </label>
-              </div>
+                </div>
+
+                <div className="field-grid">
+                  <label className="field">
+                    <span>Batas tgl transaksi / Cutoff (1–31)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={cutoffDay}
+                      onChange={(event) => setCutoffDay(event.target.value)}
+                      placeholder="20"
+                    />
+                    <small>Transaksi di atas tgl ini otomatis masuk ke tagihan bulan berikutnya.</small>
+                  </label>
+                  <label className="field">
+                    <span>Tanggal jatuh tempo bulanan (1–31)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={dueDay}
+                      onChange={(event) => setDueDay(event.target.value)}
+                      placeholder="1"
+                    />
+                    <small>Mis. tgl 1 awal bulan atau tgl 25 akhir bulan.</small>
+                  </label>
+                </div>
+
+                <div className="field-grid">
+                  <label className="field">
+                    <span>Tagihan jatuh tempo terdekat ({previewCurrentDue})</span>
+                    <input
+                      inputMode="decimal"
+                      value={currentBillInput}
+                      onChange={(event) => setCurrentBillInput(event.target.value)}
+                      placeholder="0"
+                    />
+                    <small>Isi jika sudah ada tagihan berjalan yang jatuh tempo pada {previewCurrentDue}.</small>
+                  </label>
+                  <label className="field">
+                    <span>Tagihan periode berikutnya ({previewNextDue})</span>
+                    <input
+                      inputMode="decimal"
+                      value={nextBillInput}
+                      onChange={(event) => setNextBillInput(event.target.value)}
+                      placeholder="0"
+                    />
+                    <small>Isi jika sudah ada tagihan untuk periode bulan depan ({previewNextDue}).</small>
+                  </label>
+                </div>
+              </>
             )}
 
             <div className="field-grid">
@@ -343,7 +443,7 @@ function AssetForm({
               </div>
             ) : (
               <p className="finance-hint">
-                Setiap belanja menggunakan akun ini akan menambah <strong>Tagihan berjalan</strong> dan otomatis mengurangi indikator <strong>Setelah kewajiban</strong> di Home. Saat akhir bulan, klik tombol <strong>Bayar tagihan</strong> untuk melunasi dari rekening bank tanpa terhitung dua kali.
+                Transaksi s.d. tanggal <strong>{cutoffDay || 20}</strong> masuk ke tagihan jatuh tempo terdekat (<strong>{previewCurrentDue}</strong>), sedangkan transaksi di atas tanggal <strong>{cutoffDay || 20}</strong> otomatis masuk ke tagihan periode berikutnya (<strong>{previewNextDue}</strong>).
               </p>
             )}
 
@@ -361,7 +461,7 @@ function AssetForm({
                 <span>Catatan</span>
                 <textarea
                   rows={2}
-                  maxLength={900}
+                  maxLength={850}
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                   placeholder="Opsional"
@@ -449,13 +549,17 @@ function PayCreditBillDialog({
   const eligibleSources = regularAssets.filter(
     (item) => item.isActive && item.currency === creditAsset.currency,
   );
-  const billMinor = creditBillMinor(creditAsset.balanceMinor);
+  const bills = computeCreditBills(creditAsset);
+  const defaultPayMinor =
+    bills.currentBillMinor > 0n ? bills.currentBillMinor : bills.totalUnpaidMinor;
   const [sourceId, setSourceId] = useState(eligibleSources[0]?.id ?? "");
   const [amount, setAmount] = useState(
-    billMinor > 0n ? minorToInput(billMinor.toString(), creditAsset.exponent) : "",
+    defaultPayMinor > 0n ? minorToInput(defaultPayMinor.toString(), creditAsset.exponent) : "",
   );
   const [fee, setFee] = useState("");
-  const [note, setNote] = useState(`Pelunasan tagihan ${creditAsset.displayName}`);
+  const [note, setNote] = useState(
+    `Pelunasan tagihan ${creditAsset.displayName} (${formatShortDueIso(bills.currentDueIso)})`,
+  );
   const [error, setError] = useState("");
 
   async function submit(event: React.FormEvent) {
@@ -513,7 +617,7 @@ function PayCreditBillDialog({
         </button>
       </div>
       <p className="finance-hint">
-        Pelunasan dicatat sebagai transfer dari rekening pembayar ke <strong>{creditAsset.displayName}</strong> agar saldo tagihan kembali Rp0 tanpa menghitung pengeluaran dua kali.
+        Pelunasan dicatat sebagai transfer dari rekening pembayar ke <strong>{creditAsset.displayName}</strong> agar saldo tagihan berkurang tanpa menghitung pengeluaran dua kali.
       </p>
       {!eligibleSources.length ? (
         <p className="finance-error" role="alert">
@@ -524,11 +628,19 @@ function PayCreditBillDialog({
           <fieldset className="finance-fieldset" disabled={pending}>
             <dl className="investment-preview">
               <div>
-                <dt>Tagihan berjalan saat ini</dt>
+                <dt>Jatuh tempo terdekat ({formatShortDueIso(bills.currentDueIso)})</dt>
                 <dd className="pnl-negative">
-                  {formatMinor(billMinor.toString(), creditAsset.currency, creditAsset.exponent)}
+                  {formatMinor(bills.currentBillMinor.toString(), creditAsset.currency, creditAsset.exponent)}
                 </dd>
               </div>
+              {bills.nextBillMinor > 0n && (
+                <div>
+                  <dt>Periode berikutnya ({formatShortDueIso(bills.nextDueIso)})</dt>
+                  <dd>
+                    {formatMinor(bills.nextBillMinor.toString(), creditAsset.currency, creditAsset.exponent)}
+                  </dd>
+                </div>
+              )}
             </dl>
             <label className="field">
               <span>Bayar dari rekening ({creditAsset.currency})</span>
@@ -552,10 +664,11 @@ function PayCreditBillDialog({
                   inputMode="decimal"
                   value={amount}
                   onChange={(event) => setAmount(event.target.value)}
+                  placeholder="0"
                 />
               </label>
               <label className="field">
-                <span>Biaya admin / bunga (opsional)</span>
+                <span>Biaya admin / bunga tambahan (opsional)</span>
                 <input
                   inputMode="decimal"
                   value={fee}
@@ -635,7 +748,7 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
     {loading ? <LoadingIndicator>Memuat saldo awal...</LoadingIndicator> : history && <form onSubmit={submit} aria-busy={pending}><fieldset className="finance-fieldset" disabled={pending}>
       <dl className="investment-preview"><div><dt>Saldo awal asli</dt><dd>{formatMinor(history.originalMinor, history.currency, history.exponent)}</dd></div><div><dt>Saldo awal saat ini</dt><dd>{formatMinor(history.effectiveMinor, history.currency, history.exponent)}</dd></div></dl>
       {asset.isActive && <>
-      <label className="field"><span>Saldo awal yang benar ({history.currency})</span><input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+      <label className="field"><span>Saldo awal yang benar ({history.currency})</span><input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" /></label>
       {delta !== null && <p className="finance-hint">Perubahan saldo awal: {delta > 0n ? "+" : ""}{formatMinor(delta, history.currency, history.exponent)}. Saldo saat ini ikut berubah sebesar ini.</p>}
       <label className="field"><span>Alasan koreksi (opsional)</span><textarea rows={2} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} /></label>
       </>}
@@ -649,7 +762,7 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
 
 export function AssetsManager({ assets, totals, investmentTotals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number }[]; investmentTotals: InvestmentTotal[] }) {
   const mobile = useMobileViewport();
-  const [editing, setEditing] = useState<{ mode: "new" | "new-credit" } | { mode: "edit"; asset: FinanceAsset } | null>(null);
+  const [editing, setEditing] = useState<FinanceAsset | "new" | null>(null);
   const [payingCredit, setPayingCredit] = useState<FinanceAsset | null>(null);
   const [correcting, setCorrecting] = useState<FinanceAsset | null>(null);
   const { pending, begin, finish } = useMutationPending();
@@ -663,15 +776,14 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
     catch (cause) { setError(cause instanceof Error ? cause.message : "Aset belum dapat dipulihkan."); }
     finally { finish(); }
   }
-  const openNewAsset = () => setEditing({ mode: "new" });
-  const openNewCredit = () => setEditing({ mode: "new-credit" });
+  const openNewAsset = () => setEditing("new");
   const active = assets.filter((item) => item.isActive);
   const regularActive = active.filter((item) => !isCreditAsset(item));
   const creditActive = active.filter((item) => isCreditAsset(item));
   const archived = assets.filter((item) => !item.isActive);
 
   return <div className="page finance-assets-page"><div className="page-heading finance-heading"><div><span className="eyebrow">POSISI KEUANGAN</span><h1>Assets</h1>
-    </div><div className="page-heading-actions"><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="finance-secondary credit-add-trigger" type="button" onClick={openNewCredit}><CreditCard size={17} /> + Kredit / PayLater</button><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></div></div>
+    </div><div className="page-heading-actions"><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></div></div>
     <div className="asset-overview-grid">{!!totals.length && <section className="asset-total finance-asset-total"><div className="finance-total-heading"><span className="finance-total-icon"><Bank size={17} weight="bold" /></span><span>Total aset tercatat</span></div>
       {totals.map((item) => <strong className="financial-value financial-value--summary" key={item.currency}>{formatMinor(item.amountMinor, item.currency, item.exponent)}</strong>)}
       </section>}
@@ -685,33 +797,26 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
           <div className="asset-copy"><strong>{asset.displayName}</strong><span>{[asset.providerName, asset.assetTypeName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ")}</span>
             {!mobile && asset.assetGroupName && <small>{asset.assetGroupName}</small>}</div></div>
         <div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong>
-        <div className="data-list-actions"><button type="button" className="row-action" onClick={() => setEditing({ mode: "edit", asset })}><PencilSimple size={14} weight="bold" /> Ubah</button><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button></div></div></article>;
+        <div className="data-list-actions"><button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah</button><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button></div></div></article>;
       })}</div></section>}
 
-    <section className="surface credit-assets-section">
-      <SectionHeading
-        title="Kredit & PayLater"
-        eyebrow="TAGIHAN BERJALAN & FASILITAS KREDIT"
-        action={
-          <div className="section-heading-actions">
-            <span className="count-pill">{creditActive.length} akun</span>
-            <button type="button" className="row-action" onClick={openNewCredit}>
-              <Plus size={14} weight="bold" /> Tambah PayLater / Kredit
-            </button>
-          </div>
-        }
-      />
-      {!creditActive.length ? (
-        <p className="finance-hint supporting-prose">
-          Belum ada akun PayLater atau Kartu Kredit. Tambahkan <strong>SPayLater</strong>, <strong>GoPayLater</strong>, <strong>Kredivo</strong>, atau <strong>Kartu Kredit</strong> untuk memisahkan tagihan berjalan dari saldo tabungan dan melunasinya 1-klik tiap akhir bulan.
-        </p>
-      ) : (
+    {creditActive.length > 0 && (
+      <section className="surface credit-assets-section">
+        <SectionHeading
+          title="Kredit & PayLater"
+          eyebrow="TAGIHAN BERJALAN & FASILITAS KREDIT"
+          action={
+            <div className="section-heading-actions">
+              <span className="count-pill">{creditActive.length} akun</span>
+            </div>
+          }
+        />
         <div className="asset-list">
           {creditActive.map((asset) => {
             const mark = resolveProviderMark(asset.providerName, asset.displayName, "coral");
             const meta = parseCreditMeta(asset.note);
-            const bill = creditBillMinor(asset.balanceMinor);
-            const hasBill = bill > 0n;
+            const bills = computeCreditBills(asset);
+            const hasBill = bills.totalUnpaidMinor > 0n;
             return (
               <article className="asset-row data-list-row data-list-row--entity credit-asset-row" key={asset.id}>
                 <div className="data-list-identity">
@@ -721,20 +826,32 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
                     <span>
                       {[
                         asset.providerName,
-                        meta.dueDay ? `Jatuh tempo tgl ${meta.dueDay}` : "PayLater / Kredit",
+                        `Cutoff tgl ${bills.cutoffDay} · Jatuh tempo tgl ${bills.dueDay}`,
                         asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null,
                       ]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
+                    {bills.availableLimitMinor !== null && (
+                      <small>
+                        Sisa limit: <strong>{formatMinor(bills.availableLimitMinor.toString(), asset.currency, asset.exponent)}</strong> dari {formatMinor(bills.limitMinor.toString(), asset.currency, asset.exponent)}
+                      </small>
+                    )}
                     {meta.cleanNote && <small>{meta.cleanNote}</small>}
                   </div>
                 </div>
                 <div className="data-list-management">
                   {hasBill ? (
-                    <strong className="asset-amount financial-value financial-value--entity pnl-negative">
-                      Tagihan {formatMinor(bill.toString(), asset.currency, asset.exponent)}
-                    </strong>
+                    <div className="credit-bill-stack">
+                      <strong className="asset-amount financial-value financial-value--entity pnl-negative">
+                        Tagihan {formatShortDueIso(bills.currentDueIso)}: {formatMinor(bills.currentBillMinor.toString(), asset.currency, asset.exponent)}
+                      </strong>
+                      {bills.nextBillMinor > 0n && (
+                        <small className="credit-next-bill-label">
+                          Periode {formatShortDueIso(bills.nextDueIso)}: <strong>{formatMinor(bills.nextBillMinor.toString(), asset.currency, asset.exponent)}</strong>
+                        </small>
+                      )}
+                    </div>
                   ) : (
                     <strong className="asset-amount financial-value financial-value--entity pnl-positive credit-settled-pill">
                       <CheckCircle size={15} weight="fill" /> Lunas ({formatMinor("0", asset.currency, asset.exponent)})
@@ -753,9 +870,9 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
                     <button
                       type="button"
                       className="row-action"
-                      onClick={() => setEditing({ mode: "edit", asset })}
+                      onClick={() => setEditing(asset)}
                     >
-                      <PencilSimple size={14} weight="bold" /> Ubah
+                      <PencilSimple size={14} weight="bold" /> Ubah / Atur tagihan
                     </button>
                   </div>
                 </div>
@@ -763,8 +880,8 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
             );
           })}
         </div>
-      )}
-    </section>
+      </section>
+    )}
 
     {archived.length > 0 && <><label className="finance-history-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan ({archived.length})</label>
       {showArchived && <section className="surface finance-archived"><SectionHeading title="Aset diarsipkan" />
@@ -773,12 +890,11 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
         return <div className="asset-row data-list-row data-list-row--entity" key={asset.id}><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><strong>{asset.displayName}</strong><small>Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
       })}</div><details className="context-help"><summary>Tentang aset diarsipkan</summary><p className="finance-hint supporting-prose">Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk menggunakannya kembali.</p></details></section>}</>}
     {error && <p className="finance-error" role="alert">{error}</p>}
-    <details className="context-help"><summary>Cara membaca aset & PayLater</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Akun di seksi Kredit & PayLater mencatat akumulasi tagihan berjalan yang otomatis memotong indikator Setelah kewajiban di Home, lalu dapat dilunasi 1-klik di akhir bulan tanpa terhitung dua kali di pengeluaran.</p></details>
+    <details className="context-help"><summary>Cara membaca aset & PayLater</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Untuk menambahkan akun PayLater atau Kartu Kredit, klik Tambah aset lalu pilih tab Kredit & PayLater.</p></details>
     {editing && (
       <AssetForm
-        key={editing.mode === "edit" ? editing.asset.id : editing.mode}
-        initial={editing.mode === "edit" ? editing.asset : undefined}
-        defaultCredit={editing.mode === "new-credit"}
+        key={editing === "new" ? "new" : editing.id}
+        initial={editing === "new" ? undefined : editing}
         onClose={() => setEditing(null)}
       />
     )}

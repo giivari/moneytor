@@ -6,7 +6,7 @@ import { prepareOwnerAssetRead } from "@/lib/repositories/assets";
 import { listActivities } from "./service";
 import { prepareOwnerInvestmentSummaryRead } from "@/lib/investments/read";
 import { horizonDay, planningTotals } from "@/lib/domain/planning";
-import { creditBillMinor, isCreditAsset } from "@/lib/domain/credit";
+import { computeCreditBills, isCreditAsset } from "@/lib/domain/credit";
 import { planningSchemaReady, readPlanningSummary } from "@/lib/planning/repository";
 
 function planningHorizon() {
@@ -69,11 +69,16 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
       const balance = BigInt(asset.balanceMinor);
       const isCredit = isCreditAsset(asset);
       if (isCredit || balance < 0n) {
-        if (asset.isActive && balance < 0n) {
-          entry.creditDebt += creditBillMinor(asset.balanceMinor);
-        }
-        if (!isCredit && balance > 0n) {
-          entry.total += balance;
+        if (asset.isActive) {
+          if (isCredit) {
+            const bills = computeCreditBills(asset);
+            entry.creditDebt += bills.currentBillMinor;
+            if (bills.nextDueIso <= throughDay) {
+              entry.creditDebt += bills.nextBillMinor;
+            }
+          } else if (balance < 0n) {
+            entry.creditDebt += -balance;
+          }
         }
       } else {
         entry.total += balance;
