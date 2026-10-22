@@ -140,20 +140,20 @@ function PlanningForm({ kind, initial, data, sources, positions, today, onClose 
   </dialog>;
 }
 
-function ConfirmAction({ item, action, onClose }: { item: PlanningItem; action: "archive" | "settle" | "cancel"; onClose: () => void }) {
+function ConfirmAction({ item, action, onClose }: { item: PlanningItem; action: "archive" | "settle" | "cancel" | "delete"; onClose: () => void }) {
   const dialog = useFinanceDialog(onClose), send = usePlanningRequest();
   const { notify,refresh } = useFinanceFeedback(); const { pending,begin,finish } = useMutationPending();
   const [error,setError] = useState("");
-  const label = action === "archive" ? item.kind === "reserve" ? "Lepaskan cadangan" : "Arsipkan" : action === "settle" ? "Tandai selesai" : "Batalkan kewajiban";
+  const label = action === "delete" ? "Hapus permanen" : action === "archive" ? item.kind === "reserve" ? "Lepaskan cadangan" : "Arsipkan" : action === "settle" ? "Tandai selesai" : "Batalkan kewajiban";
   async function confirm() {
     if (!begin()) return; setError("");
     try { await send({ action,kind: item.kind,id: item.id,version: item.version });
-      notify(action === "archive" ? "Rencana diarsipkan dan dapat dipulihkan." : "Status kewajiban diperbarui."); refresh(); onClose(); }
+      notify(action === "delete" ? "Rencana berhasil dihapus." : action === "archive" ? "Rencana diarsipkan dan dapat dipulihkan." : "Status kewajiban diperbarui."); refresh(); onClose(); }
     catch (cause) { setError(errorMessage(cause)); } finally { finish(); }
   }
   return <dialog ref={dialog} className="security-confirm" aria-labelledby="planning-confirm-title" onCancel={(event) => { if (pending) event.preventDefault(); }}>
     <h2 id="planning-confirm-title">{label} {item.title}?</h2>
-    <p>{action === "archive" ? "Rencana tidak lagi memengaruhi ringkasan. Riwayat tetap ada dan dapat dipulihkan." : "Status Planning berubah, tetapi tidak ada transaksi atau saldo aset yang berubah. Cadangan terkait tetap disisihkan sampai dilepaskan."}</p>
+    <p>{action === "delete" ? "Rencana ini akan dihapus secara permanen dari daftar Planning." : action === "archive" ? "Rencana tidak lagi memengaruhi ringkasan. Riwayat tetap ada dan dapat dipulihkan." : "Status Planning berubah, tetapi tidak ada transaksi atau saldo aset yang berubah. Cadangan terkait tetap disisihkan sampai dilepaskan."}</p>
     {error && <p className="finance-error" role="alert">{error}</p>}
     <div className="security-confirm-actions"><button autoFocus type="button" className="finance-secondary" disabled={pending} onClick={() => dialog.current?.close()}>Batal</button>
       <button type="button" className={action === "settle" ? "finance-secondary planning-success" : "planning-warning"} disabled={pending} aria-busy={pending} onClick={() => void confirm()}>{pending ? <LoadingIndicator>Menyimpan...</LoadingIndicator> : label}</button></div>
@@ -188,7 +188,7 @@ function LabelManager({ data }: { data: PlanningData }) {
 
 function PlanRow({ item, today, onEdit, onConfirm, onReactivate, busy }: {
   item: PlanningItem; today: string; onEdit: (item: PlanningItem) => void;
-  onConfirm: (item: PlanningItem,action: "archive" | "settle" | "cancel") => void;
+  onConfirm: (item: PlanningItem,action: "archive" | "settle" | "cancel" | "delete") => void;
   onReactivate: (item: PlanningItem) => void; busy: string | null;
 }) {
   const amount = item.kind === "budget" ? item.limitMinor : item.kind === "goal" ? item.targetMinor : item.amountMinor;
@@ -214,15 +214,19 @@ function PlanRow({ item, today, onEdit, onConfirm, onReactivate, busy }: {
         : item.status === "settled" ? "Selesai — tidak lagi dihitung dalam kewajiban aktif."
         : "Dibatalkan — tidak lagi dihitung dalam kewajiban aktif."}</p>}</div>
     <div className="planning-row-end"><strong className="financial-value financial-value--entity">{formatMinor(amount,item.currency,item.exponent)}</strong>
-      <div className="planning-row-actions">{archived ? <button type="button" className="row-action" disabled={busy !== null} aria-busy={busy === item.id} onClick={() => onReactivate(item)}>
-        {busy === item.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : <><ArrowCounterClockwise size={15} /> Pulihkan</>}</button> : item.kind === "obligation" ? item.status === "open" ? <>
+      <div className="planning-row-actions">{archived ? <><button type="button" className="row-action" disabled={busy !== null} aria-busy={busy === item.id} onClick={() => onReactivate(item)}>
+        {busy === item.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : <><ArrowCounterClockwise size={15} /> Pulihkan</>}</button>
+        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"delete")}>Hapus</button></> : item.kind === "obligation" ? item.status === "open" ? <>
         <button type="button" className="row-action" onClick={() => onEdit(item)}><PencilSimple size={15} /> Ubah</button>
         <button type="button" className="row-action" data-tone="positive" onClick={() => onConfirm(item,"settle")}>Selesai</button>
-        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"cancel")}>Batalkan</button></> :
+        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"cancel")}>Batalkan</button>
+        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"delete")}>Hapus</button></> : <>
         <button type="button" className="row-action" disabled={busy !== null} aria-busy={busy === item.id} onClick={() => onReactivate(item)}>
-          {busy === item.id ? <LoadingIndicator>Membuka...</LoadingIndicator> : <><ArrowCounterClockwise size={15} /> Buka kembali</>}</button> : <>
+          {busy === item.id ? <LoadingIndicator>Membuka...</LoadingIndicator> : <><ArrowCounterClockwise size={15} /> Buka kembali</>}</button>
+        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"delete")}>Hapus</button></> : <>
         <button type="button" className="row-action" onClick={() => onEdit(item)}><PencilSimple size={15} /> Ubah</button>
-        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"archive")}><Archive size={15} /> {item.kind === "reserve" ? "Lepaskan" : "Arsipkan"}</button></>}</div></div>
+        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"archive")}><Archive size={15} /> {item.kind === "reserve" ? "Lepaskan" : "Arsipkan"}</button>
+        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"delete")}>Hapus</button></>}</div></div>
   </article>;
 }
 
@@ -231,7 +235,7 @@ export function PlanningManager({ data, positions, sources, throughDay }: {
 }) {
   const [horizon,setHorizon] = useState<7 | 30 | 90>(30), [showArchived,setShowArchived] = useState(false);
   const [form,setForm] = useState<{ kind: PlanKind; item?: PlanningItem } | null>(null);
-  const [confirm,setConfirm] = useState<{ item: PlanningItem; action: "archive" | "settle" | "cancel" } | null>(null);
+  const [confirm,setConfirm] = useState<{ item: PlanningItem; action: "archive" | "settle" | "cancel" | "delete" } | null>(null);
   const [busy,setBusy] = useState<string | null>(null), [error,setError] = useState("");
   const send = usePlanningRequest(), { notify,refresh } = useFinanceFeedback();
   const today = todayFromEnd(throughDay), end = horizonDay(today,horizon);
@@ -253,7 +257,7 @@ export function PlanningManager({ data, positions, sources, throughDay }: {
     const filteredRows: PlanningItem[] = (kind === "budget" ? data.budgets : kind === "goal" ? data.goals : kind === "reserve" ? data.reserves : data.obligations)
       .filter((item) => item.kind === "obligation" || showArchived || item.isActive);
     const sort = sorts[kind];
-    const closed = data.obligations.filter(item => item.status !== "open");
+    const closed = showArchived ? data.obligations.filter(item => item.status !== "open") : [];
     const rows: PlanningItem[] = kind === "obligation" ? [
       ...orderPlanning(data.obligations.filter(item => item.status === "open"),sort.value,today),
       ...sortTemporal(closed, obligationHistorySort.direction, item => item.settledAt ?? item.cancelledAt ?? item.updatedAt, item => item.id),

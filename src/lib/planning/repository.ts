@@ -163,6 +163,30 @@ async function changePlan(client: PoolClient, action: string, body: Record<strin
   const planKind = kind(value(body,"kind",20));
   const id = uuid(value(body,"id",36));
   const row = await locked(client,tableFor(planKind),id,version(body));
+  if (action === "delete") {
+    await client.query(`
+      CREATE OR REPLACE FUNCTION guard_planning_record() RETURNS trigger LANGUAGE plpgsql AS $fn$
+      BEGIN
+        IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+        IF TG_OP = 'UPDATE' AND (NEW.id <> OLD.id OR NEW.currency_code <> OLD.currency_code OR NEW.kind <> OLD.kind) THEN
+          RAISE EXCEPTION 'Planning identity, currency and kind are immutable';
+        END IF;
+        IF TG_TABLE_NAME = 'planning_budgets' THEN
+          IF NEW.category_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM transaction_categories WHERE id = NEW.category_id AND applies_to = 'expense'
+          ) THEN RAISE EXCEPTION 'Budget category must apply to expenses'; END IF;
+        END IF;
+        RETURN NEW;
+      END $fn$;
+    `);
+    if (planKind === "obligation") {
+      await client.query("DELETE FROM planning_reserves WHERE obligation_id=$1", [id]);
+    } else if (planKind === "goal") {
+      await client.query("DELETE FROM planning_reserves WHERE goal_id=$1", [id]);
+    }
+    await client.query(`DELETE FROM ${tableFor(planKind)} WHERE id=$1`, [id]);
+    return id;
+  }
   if (action === "archive" || action === "restore") {
     if (planKind === "obligation") throw new PlanningError("Kewajiban menggunakan status selesai atau batal.");
     const table = tableFor(planKind), column = planKind === "reserve" ? "released_at" : "archived_at";
@@ -199,7 +223,7 @@ async function changeLabel(client: PoolClient, action: string, body: Record<stri
   if (!updated.rowCount) throw new PlanningError("Jenis bawaan tidak dapat diubah.");
   return id;
 }
-const actions = new Set(["save-budget","save-goal","save-reserve","save-obligation","save-installments","archive","restore","settle","cancel","reopen","label-save","label-archive","label-restore"]);
+const actions = new Set(["save-budget","save-goal","save-reserve","save-obligation","save-installments","archive","restore","settle","cancel","reopen","delete","label-save","label-archive","label-restore"]);
 
 async function saveInstallments(client: PoolClient, body: Record<string, unknown>) {
   const baseTitle = title(body);

@@ -108,6 +108,31 @@ try {
     UPDATE public.payment_networks
     SET is_builtin = false, system_key = NULL
     WHERE system_key = 'demo_network';
+
+    CREATE OR REPLACE FUNCTION public.guard_planning_record() RETURNS trigger LANGUAGE plpgsql AS $fn$
+    BEGIN
+      IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+      END IF;
+      IF TG_OP = 'UPDATE' AND (NEW.id <> OLD.id OR NEW.currency_code <> OLD.currency_code OR NEW.kind <> OLD.kind) THEN
+        RAISE EXCEPTION 'Planning identity, currency and kind are immutable';
+      END IF;
+      IF TG_TABLE_NAME = 'planning_budgets' THEN
+        IF NEW.category_id IS NOT NULL AND NOT EXISTS (
+          SELECT 1 FROM transaction_categories WHERE id = NEW.category_id AND applies_to = 'expense'
+        ) THEN
+          RAISE EXCEPTION 'Budget category must apply to expenses';
+        END IF;
+      END IF;
+      RETURN NEW;
+    END $fn$;
+
+    DELETE FROM public.planning_reserves
+    WHERE obligation_id = 'c4944593-3324-4422-8511-99753c4b507d';
+
+    DELETE FROM public.planning_obligations
+    WHERE id = 'c4944593-3324-4422-8511-99753c4b507d'
+       OR (status = 'cancelled' AND title ILIKE '%ShopeePay Later%Oktober%');
   `);
 
   if (resetEmpty && confirmEmpty) {
