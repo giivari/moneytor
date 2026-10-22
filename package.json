@@ -1,0 +1,60 @@
+{
+  "name": "personal-finance-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "vercel-build": "node scripts/vercel-db-setup.mjs --if-configured && next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:list": "node scripts/migrate.mjs --list",
+    "db:status": "node scripts/migrate.mjs --status",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:setup:cloud": "node scripts/vercel-db-setup.mjs",
+    "db:reset:empty": "node scripts/vercel-db-setup.mjs --reset-empty --confirm-empty",
+    "ops:check": "node scripts/backup-drill.mjs --verify-env",
+    "ops:drill": "node scripts/backup-drill.mjs --drill",
+    "test:unit": "node --test tests/domain.test.mjs tests/auth.test.mjs tests/auth-http.test.mjs tests/finance-interaction.test.mjs tests/investment-domain.test.mjs tests/investment-display.test.mjs tests/investment-workflow.test.mjs tests/planning-domain.test.mjs tests/automation-domain.test.mjs tests/income-event-domain.test.mjs tests/composable-domain.test.mjs tests/allocation-domain.test.mjs tests/allocation-presentation.test.mjs tests/automation-review.test.mjs tests/analytics-domain.test.mjs tests/list-order.test.mjs tests/import-domain.test.mjs tests/export-domain.test.mjs tests/production-readiness.test.mjs",
+    "test:ui": "node --test tests/automation-activity-details.test.mjs tests/insights-presentation.test.mjs tests/insights-visuals.test.mjs tests/insights-month.test.mjs tests/list-loading.test.mjs tests/presentation-order.test.mjs tests/mobile-presentation.test.mjs tests/home-overview.test.mjs",
+    "test:domain": "node --test tests/domain.test.mjs",
+    "test:auth": "node --test tests/auth.test.mjs",
+    "test:auth:db": "node --conditions=react-server --test tests/auth-db.test.mjs",
+    "test:auth:http": "node --test tests/auth-http.test.mjs",
+    "test:finance:db": "node --conditions=react-server --test tests/finance-db.test.mjs",
+    "test:investments": "node --test tests/investment-domain.test.mjs",
+    "test:investments:db": "node --conditions=react-server --test tests/investment-db.test.mjs",
+    "test:planning:db": "node --conditions=react-server --test tests/planning-db.test.mjs",
+    "test:automation:db": "node --conditions=react-server --test tests/automation-db.test.mjs",
+    "test:events:db": "node --conditions=react-server --test tests/income-event-db.test.mjs",
+    "test:composable:db": "node --conditions=react-server --test tests/composable-db.test.mjs",
+    "test:allocation:db": "node --conditions=react-server --test tests/allocation-db.test.mjs",
+    "test:analytics:db": "node --conditions=react-server --test tests/analytics-db.test.mjs",
+    "test:imports": "node --test tests/import-domain.test.mjs",
+    "test:imports:db": "node --conditions=react-server --test tests/import-db.test.mjs"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@simplewebauthn/browser": "14.0.0",
+    "@simplewebauthn/server": "14.0.3",
+    "next": "^15.5.0",
+    "pg": "^8.23.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.5.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  }
+}

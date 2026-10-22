@@ -1,0 +1,176 @@
+/* Neutral presentation refinements; color is reserved for financial meaning. */
+h1 {
+  letter-spacing: -.045em;
+}
+p { color: var(--muted); }
+.page { margin-inline: auto; }
+
+.eyebrow {
+  color: #535b60;
+  letter-spacing: .12em;
+}
+
+.welcome-row,
+.page-heading { margin-bottom: 30px; }
+
+.period-pill,
+.count-pill {
+  border-color: #dfe2e4;
+  color: #444b50;
+  box-shadow: 0 2px 8px rgba(24, 29, 32, .035);
+}
+
+.surface,
+.metric-card,
+.summary-strip {
+  border-color: #e1e4e6;
+  box-shadow: 0 4px 22px rgba(24, 29, 32, .045);
+}
+
+.surface { padding: 25px 27px; }
+
+.hero-balance {
+  align-items: stretch;
+  padding: 33px 37px;
+  border: 1px solid #dfe2e4;
+  border-radius: 26px;
+  background: #fff;
+  box-shadow: 0 9px 30px rgba(24, 29, 32, .065);
+}
+
+.hero-kicker { color: #4f585d; }
+.hero-balance h2 { color: #4d555a; }
+.hero-balance > div:first-child > strong { color: #181d20; }
+.hero-balance p { color: #555e63; }
+.hero-aside { border-color: #e1e4e6; }
+.hero-aside strong { color: #202528; }
+
+.metric-grid { gap: 16px; }
+.metric-card { border-radius: 19px; padding: 21px 23px; }
+.metric-card strong { color: #1c2124; }
+.metric-card small { color: #535c61; }
+.metric-card.mobile-metric strong { color: var(--negative); }
+
+.home-columns { gap: 20px; }
+.home-primary,
+.home-secondary { gap: 20px; }
+.account-row,
+.transaction-row,
+.asset-row { border-color: #eceeef; }
+.account-copy span,
+.transaction-main span,
+.transaction-amount span { color: #555e63; }
+.account-balance,
+.transaction-amount strong { color: #22272a; }
+.transaction-amount strong.expense { color: var(--negative); }
+.transaction-amount strong.income { color: var(--positive); }
+.row-caret { color: #727a7f; }
+
+.provider-mark {
+  border-color: #dfe2e4;
+  background: #f7f8f8;
+  color: #40474b;
+}
+.transaction-icon.expense { background: var(--negative-light); color: var(--negative); }
+.transaction-icon.income { background: var(--positive-light); color: var(--positive); }
+.transaction-icon.transfer { background: #f0f1f2; color: #4a5257; }
+.progress { background: #e7e9ea; }
+.progress > span { background: #646c71; }
+
+.insight-panel,
+.note-panel,
+.planning-note { background: #f5f6f6; border-color: #e1e4e6; }
+.insight-panel h2,
+.note-panel h2 { color: #22272a; }
+.note-icon,
+.plan-icon { border-radius: 14px; color: #3b4246; background: #eceeef; }
+.plan-icon.warning { color: var(--warning); background: var(--warning-light); }
+
+.summary-strip { border-radius: 20px; overflow: hidden; }
+.summary-strip strong { color: #202528; }
+.filter-chip { min-height: 38px; color: #3e464a; }
+.filter-chip.active { background: #eceeef; border-color: #d7dbdd; color: #1d2225; }
+
+.asset-total {
+  background: #fff;
+  border-color: #dfe2e4;
+  border-radius: 23px;
+  padding: 29px 33px;
+}
+.asset-total span { color: #4e575c; }
+.asset-total strong { color: #191e21; }
+.asset-copy strong,
+.asset-amount { color: #22272a; }
+.allocation-bar span:first-child,
+.dot.liquid { background: var(--data-cyan); }
+.allocation-bar span:last-child,
+.dot.investment { background: var(--data-violet); }
+.investment-note > svg { color: var(--data-violet); }
+
+.plan-card { min-height: 230px; }
+.plan-values strong { color: #202528; }
+.plan-card[data-tone="blue"] .plan-icon { color: var(--data-blue); background: var(--data-blue-soft); }
+.plan-card[data-tone="teal"] .plan-icon { color: var(--data-teal); background: var(--data-teal-soft); }
+.plan-card[data-tone="teal"] .progress > span { background: var(--data-teal); }
+.plan-card[data-tone="blue"] .progress > span { background: var(--data-blue); }
+.insight-panel .progress > span { background: var(--data-blue); }
+.settings-icon { background: #eceeef; color: #3e464a; }
+
+.quick-dialog,
+.detail-dialog {
+  border: 1px solid #e1e4e6;
+  border-radius: 24px;
+  box-shadow: 0 25px 70px rgba(24, 29, 32, .2);
+}
+.demo-notice { background: #f1f2f3; color: #3e464a; }
+.field > span { color: #343b3f; }
+.field input,
+.field select,
+.amount-input { border-color: #d7dbdd; }
+.segmented { background: #f0f1f2; }
+.segmented button.selected { color: #1d2225; }
+.advanced summary { color: #343b3f; }
+
+@media (max-width: 760px) {
+  .welcome-row,
+  .page-heading { margin-bottom: 22px; }
+  .hero-balance { padding: 25px 24px; }
+  .surface { padding: 20px; }
+  .metric-card { padding: 18px 20px; }
+  .asset-total { padding: 23px; }
+}
+
+/* Transparent aurora with concentrated contrast behind the lettering. */
+.brand-identity {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  --brand-aurora-inset: -12px -16px;
+  --brand-aurora-blur: 6px;
+}
+.brand-wordmark { color: var(--surface); }
+.brand-identity::before {
+  content: "";
+  position: absolute;
+  inset: var(--brand-aurora-inset);
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 62% 50%,
+      color-mix(in srgb, var(--ink) 72%, var(--data-violet)) 0%,
+      color-mix(in srgb, var(--ink) 72%, var(--data-violet)) 28%,
+      transparent 72%),
+    radial-gradient(ellipse at 24% 52%,
+      color-mix(in srgb, var(--data-blue) 75%, transparent) 10%, transparent 68%),
+    radial-gradient(ellipse at 78% 55%,
+      color-mix(in srgb, var(--data-teal) 75%, transparent) 12%, transparent 68%);
+  filter: blur(var(--brand-aurora-blur));
+}
+@media (max-width: 1020px) {
+  .brand-identity {
+    --brand-aurora-inset: -10px -12px;
+    --brand-aurora-blur: 5px;
+  }
+}

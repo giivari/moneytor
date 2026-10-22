@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.env*
+!.env.example
+.env.local-backups/
+npm-debug.log*
+.npm-cache/
+/*.xlsx
+/*.jpg
+/references/
+.vercel/

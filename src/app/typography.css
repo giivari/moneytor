@@ -1,0 +1,237 @@
+/* Shared semantic type scale. Feature styles own layout and color, not emphasis. */
+:root {
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-strong: 700;
+  --type-meta: 12px;
+  --type-metadata: 13px;
+  --type-label: 12px;
+  --type-copy: 14px;
+  --type-helper: clamp(12.5px, calc(12px + .14vw), 14px);
+  --type-entity: 15px;
+  --type-section: 16px;
+  --type-dialog: 20px;
+  --type-page: clamp(24px, 2vw, 30px);
+  --type-hero: 32px;
+  --type-amount-primary: 24px;
+  --type-amount-secondary: 16px;
+  --type-position-value: 18px;
+  --type-value-entity: 16px;
+  --type-value-row: 14px;
+  --type-amount-supporting: 14px;
+}
+
+body { font-size: var(--type-copy); font-weight: var(--weight-regular); }
+strong, b { font-weight: var(--weight-semibold); }
+h1 { font-size: var(--type-page); font-weight: var(--weight-strong); line-height: 1.12; }
+h2 { font-size: var(--type-section); font-weight: var(--weight-semibold); line-height: 1.25; }
+h3 { font-size: var(--type-entity); font-weight: var(--weight-semibold); line-height: 1.25; }
+small { font-size: var(--type-meta); font-weight: var(--weight-regular); }
+
+/* Shared SectionHeading and all equivalent section/dialog titles. */
+.page-heading h1, .welcome-row h1 { font-size: var(--type-page); font-weight: var(--weight-strong); line-height: 1.12; }
+.section-heading h2, .security-group-heading h3 { font-size: var(--type-section); }
+.investment-onboarding h2 { font-size: var(--type-section); font-weight: var(--weight-semibold); line-height: 1.25; }
+.dialog-heading h2, .finance-dialog h2, .detail-dialog h2,
+.planning-dialog-heading h2, .security-confirm h2 { font-size: var(--type-dialog); }
+.auth-card h1 { font-size: 28px; }
+.eyebrow, .hero-kicker {
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+}
+.brand, .auth-brand { font-weight: var(--weight-strong); }
+
+/* One entity-name level across financial lists, plans and security devices. */
+.asset-copy strong, .account-copy strong, .transaction-main strong,
+.investment-holding-heading strong, .investment-meta-row > div > strong,
+.compact-financial-row__identity, .planning-row h3, .automation-rule h3,
+.settings-row strong, .settings-nav-copy strong,
+.settings-catalog-identity strong, .finance-catalog-row strong,
+.credential-details strong, .security-session strong {
+  font-size: var(--type-entity);
+  font-weight: var(--weight-semibold);
+  line-height: 1.25;
+}
+
+/* Metadata remains readable on mobile; it does not acquire weight from a value. */
+.asset-copy span, .asset-copy small, .account-copy span,
+.transaction-main > span, .transaction-amount > span,
+.investment-holding-heading span:not(.investment-units),
+.investment-meta-row small, .investment-history-row small,
+.planning-row p, .planning-row-end > small,
+.automation-rule p, .automation-rule-meta > span,
+.compact-financial-row__context, .compact-financial-row__footer,
+.compact-financial-row__value > small, .compact-financial-row__value > span:not(.financial-value),
+.settings-row span:not(.settings-icon), .settings-nav-copy small,
+.settings-catalog-identity small, .credential-list small, .security-session small,
+.finance-catalog-row span, .finance-catalog-tabs span {
+  font-size: var(--type-metadata);
+  font-weight: var(--weight-regular);
+  line-height: 1.4;
+}
+.investment-holding-heading span:not(.investment-units),
+.investment-meta-row small, .investment-history-row .history-detail small { margin-top: var(--space-xs); }
+
+/* Financial values use an explicit role wherever they are rendered. */
+.compact-metrics dd, .metric-card strong, .summary-strip strong,
+.dialog-total strong {
+  font-size: var(--type-amount-secondary);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.investment-history-row > div > p > .pnl-positive,
+.investment-history-row > div > p > .pnl-negative { font-weight: var(--weight-semibold); }
+.hero-aside strong, .simple-stat strong,
+.planning-breakdown strong, .investment-detail-metrics dd,
+.investment-portfolio-values dd, .investment-opening-state dd,
+.investment-totals-secondary > div:first-child dd,
+.investment-preview dd, .detail-list dd {
+  font-size: var(--type-amount-supporting);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+/* Values own their size; their HTML tag and route do not choose the level. */
+.financial-value {
+  display: inline-block;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.15;
+  font-weight: var(--weight-semibold);
+}
+.financial-value.financial-value--hero { font-size: var(--type-hero); font-weight: var(--weight-strong); line-height: 1.1; }
+.financial-value.financial-value--summary { font-size: var(--type-amount-primary); }
+.financial-value.financial-value--entity { font-size: var(--type-value-entity); }
+.financial-value.financial-value--row { font-size: var(--type-value-row); }
+.financial-value.financial-value--supporting { font-size: var(--type-amount-supporting); font-weight: var(--weight-medium); }
+.financial-value strong { font: inherit; }
+/* Read-only money is never independently scrollable. Only whole grouping
+ * tokens may move to the next line when available space is insufficient. */
+.financial-value.financial-amount { min-width: 0; max-width: 100%; flex-shrink: 1; white-space: normal; overflow: visible; overflow-wrap: normal; word-break: normal; }
+.financial-amount-group { white-space: nowrap; }
+.investment-onboarding .investment-steps li { font-size: var(--type-copy); font-weight: var(--weight-regular); line-height: 1.4; }
+.investment-onboarding .investment-steps li > span { font-size: var(--type-meta); font-weight: var(--weight-medium); }
+.investment-key-metrics small {
+  font-size: var(--type-meta);
+  font-weight: var(--weight-regular);
+  margin-top: var(--space-xs);
+}
+.investment-summary-currency > div > span { margin-bottom: var(--space-xs); }
+.investment-summary-currency > div > span, dt,
+.planning-position-values span, .planning-breakdown span,
+.compact-metrics dt, .hero-aside span,
+.metric-card > span, .summary-strip span, .simple-stat > span,
+.finance-total-heading, .hero-balance h2, .asset-total > span {
+  font-size: var(--type-label);
+  font-weight: var(--weight-regular);
+  line-height: 1.4;
+}
+.chart-value span, .bar-chart small, .category-item > div:first-child,
+.category-item span, .detail-list dt, .progress-caption, .insight-bottom,
+.allocation-line, .plan-values span, .planning-label-row, .dialog-total,
+.simple-stat, .demo-notice, .demo-badge,
+.route-loading-status > span, .settings-security-pending {
+  font-size: var(--type-meta);
+  font-weight: var(--weight-regular);
+}
+.category-item strong { font-size: var(--type-helper); font-weight: var(--weight-medium); }
+.compact-metrics dd { margin-top: var(--space-xs); }
+
+/* Explanations are calm; contextual color still carries warnings and status. */
+.welcome-row p, .page-heading p, .settings-detail-heading p,
+.auth-card > p, .security-confirm p, .finance-empty p,
+.investment-onboarding > p, .planning-first-run p {
+  font-size: var(--type-copy);
+  font-weight: var(--weight-regular);
+}
+.section-header p, .section-heading p, .finance-hint, .finance-error, .finance-confirm p,
+.finance-refresh-status, .finance-empty-inline, .page-footnote,
+.home-context p, .hero-balance p, .finance-asset-total p,
+.investment-summary > p, .investment-warning, .investment-provider-note,
+.investment-price-status, .investment-history-row p,
+.investment-types p, .investment-price-history p, .investment-preview,
+.investment-correction-entry p, .planning-intro, .planning-position p,
+.planning-warning-copy, .planning-empty, .security-help, .security-group-heading p,
+.settings-catalog-confirm p, .settings-catalog-empty, .security-intro p,
+.automation-preview, .auth-hint, .auth-error, .auth-status,
+.insight-summary p, .insight-panel p, .note-panel p, .investment-note p,
+.asset-total p, .plan-card p, .planning-note p, .route-loading > p {
+  font-size: var(--type-helper);
+  font-weight: var(--weight-regular);
+  line-height: 1.5;
+}
+/* Section explanations use the parent canvas; local prose keeps its reading measure. */
+.supporting-prose { max-inline-size: var(--supporting-prose-measure, 75ch); width: 100%; font-size: var(--type-helper); font-weight: var(--weight-regular); line-height: 1.5; }
+.supporting-prose--section { --supporting-prose-measure: none; }
+.finance-hint strong, .investment-correction-entry strong,
+.preview-notice strong, .planning-intro strong, .investment-warning strong,
+.planning-warning-copy strong, .finance-confirm strong, .security-help strong,
+.security-intro strong { font-weight: var(--weight-medium); }
+.preview-notice, .inline-disclosure-loading, .inline-disclosure-error,
+.investment-correction-entry small, .compact-metrics small,
+.metric-card small, .finance-catalog-tabs, .security-notice, .list-reveal-remaining {
+  font-size: var(--type-meta);
+  font-weight: var(--weight-regular);
+}
+
+/* Shared controls: consequence is expressed by color/copy, not heavier type. */
+button { font-weight: var(--weight-medium); }
+.button-primary, .auth-primary {
+  font-size: var(--type-copy);
+  font-weight: var(--weight-semibold);
+}
+.inline-field-action--compact .button-primary { font-size: var(--type-copy); font-weight: var(--weight-medium); }
+.finance-secondary, .finance-danger, .finance-warning, .finance-edit-button,
+.finance-text-button, .planning-warning, .planning-success,
+.security-button, .settings-catalog-add, .auth-secondary, .text-link,
+.settings-back, .form-row-add, .list-disclosure, .disclosure-toggle,
+.page .row-action, .optional-charges-editor button.row-action,
+details > summary, .inline-disclosure-retry, .filter-chip, .segmented button,
+.security-intro a, .action-menu-options > button {
+  font-size: var(--type-helper);
+  font-weight: var(--weight-medium);
+}
+details > summary > span, .transaction-optional summary span,
+.investment-optional summary span { font-size: var(--type-meta); font-weight: var(--weight-regular); }
+.filter-chip.selected, .segmented button.selected { font-weight: var(--weight-semibold); }
+.period-pill, .count-pill, .investment-units, .automation-status,
+.planning-status, .security-count, .investment-steps li, .investment-steps li > span {
+  font-size: var(--type-meta);
+  font-weight: var(--weight-medium);
+}
+.investment-steps li[aria-current="step"] { font-weight: var(--weight-semibold); }
+.finance-asset-mark { font-size: var(--type-entity); font-weight: var(--weight-medium); }
+.floating-nav a, .more-popover > a { font-size: var(--type-meta); font-weight: var(--weight-medium); }
+.floating-nav a[aria-current="page"], .more-popover > a[aria-current="page"] { font-weight: var(--weight-semibold); }
+.bottom-nav > a, .bottom-nav > button, .more-anchor > button { font-size: 11px; font-weight: var(--weight-medium); }
+.navigation-progress-label, .route-loading-status .loading-indicator { font-size: var(--type-helper); font-weight: var(--weight-medium); }
+
+/* OptionalChargesEditor and OptionalFormSection use the same form type as other routes. */
+.field > span, .auth-card label, .security-panel label,
+.finance-history-toggle, .finance-checks label {
+  font-size: var(--type-label);
+  font-weight: var(--weight-medium);
+}
+.field small, .automation-field-hint { font-size: var(--type-meta); font-weight: var(--weight-regular); }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  font-size: var(--type-copy);
+  font-weight: var(--weight-regular);
+}
+.transaction-amount-field input, .amount-input input { font-size: var(--type-position-value); font-weight: var(--weight-medium); }
+.amount-input span { font-size: var(--type-copy); font-weight: var(--weight-medium); }
+.recovery-codes code { font-size: var(--type-meta); }
+
+@media (max-width: 600px) {
+  :root {
+    --type-hero: 32px;
+    --type-amount-primary: 21px;
+    --type-value-entity: 15px;
+    --type-page: 26px;
+  }
+}
+
+.list-sort-control, .list-sort-control select { font-size: var(--type-helper); font-weight: var(--weight-medium); }

@@ -1,0 +1,42 @@
+export type ActivityKind = "income" | "expense" | "transfer";
+export type ActivityDraft = {
+  kind: ActivityKind;
+  amountMinor: string;
+  sourceAssetId?: string;
+  destinationAssetId?: string;
+  categoryId?: string;
+  charges?: { typeId: string; amountMinor: string }[];
+  transferFeeMinor?: string;
+  occurredAt: string;
+  note?: string;
+};
+export type FinanceAsset = {
+  id: string; displayName: string; currency: string; exponent: number;
+  assetTypeId: string; assetTypeName: string; assetGroupId: string | null; assetGroupName: string | null;
+  providerId: string | null; providerName: string | null; paymentNetworkId: string | null;
+  normallyLiquid: boolean; normallySpendable: boolean; safeSuffix: string | null;
+  note: string | null; isActive: boolean; openingMinor: string; balanceMinor: string;
+};
+export type FinanceActivity = {
+  cursorTime?: string;
+  id: string; kind: ActivityKind; baseAmountMinor: string; currency: string; exponent: number;
+  sourceAssetId: string | null; sourceName: string | null;
+  destinationAssetId: string | null; destinationName: string | null;
+  categoryId: string | null; categoryName: string | null;
+  occurredAt: string; note: string | null; status: "posted" | "voided" | "superseded";
+  replacesActivityId: string | null;
+  recurringRuleName?: string;
+  eventInstanceId?: string;
+  eventSourceIncomeId?: string;
+  eventSourceAmountMinor?: string;
+  eventSourceCurrency?: string;
+  eventSourceOccurredAt?: string;
+  eventSourceExponent?: number;
+  automationInstanceId?: string;
+  allocationAdjustmentId?: string;
+  allocationAssessmentId?: string;
+  originalAutomationResultId?: string;
+  automationSourceActivityId?: string;
+  automationSourceKind?: ActivityKind;
+  charges: { id: string; typeId: string; typeName: string; amountMinor: string }[];
+};

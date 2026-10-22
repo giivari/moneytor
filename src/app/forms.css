@@ -1,0 +1,52 @@
+/* Shared optional financial subsections. Money parsing stays with each caller. */
+.optional-form-section { display: grid; gap: 10px; min-width: 0; }
+.optional-form-section > .finance-history-toggle { margin: 0; min-height: 36px; }
+.optional-form-content, .optional-charges-editor { display: grid; gap: 10px; min-width: 0; }
+.optional-form-section .field { margin: 0; }
+.charge-editor-row { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(160px,.8fr) auto; align-items: end; gap: 12px; min-width: 0; }
+.charge-editor-row + .charge-editor-row { border-top: 1px solid var(--line); padding-top: 12px; }
+.charge-editor-row .row-action { justify-self: end; align-self: end; margin-bottom: 5px; }
+.form-row-add { justify-self: start; display: inline-flex; align-items: center; gap: 5px; min-height: 36px; padding: 5px 2px; border: 0; background: transparent; font-family: inherit; cursor: pointer; }
+.form-row-add:disabled { opacity: .6; cursor: not-allowed; }
+.compact-form-block { display: grid; justify-items: start; gap: var(--space-sm); min-width: 0; }
+.compact-form-block > .finance-hint, .compact-form-block > .finance-actions { margin: 0; }
+.inline-field-action { display: grid; grid-template-columns: minmax(0,24ch) max-content; align-items: end; gap: 10px; min-width: 0; width: fit-content; max-width: 100%; }
+.inline-field-action--money { --inline-money-field-size: 18ch; grid-template-columns: minmax(0,var(--inline-money-field-size)) max-content; }
+.inline-field-action > .field { min-width: 0; margin: 0; }
+.inline-field-action__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); min-width: 0; }
+.inline-field-action > button, .inline-field-action__actions > .button-primary { align-self: end; display: inline-flex; align-items: center; justify-content: center; height: var(--control-height); min-height: var(--control-height); border-radius: var(--radius-control); padding-inline: 13px; white-space: nowrap; }
+.inline-field-action--compact { --control-height: 44px; }
+.inline-field-action--compact .button-primary { padding-inline: 12px; }
+@media (min-width: 1021px) {
+  .inline-field-action--compact { --control-height: 40px; }
+}
+.inline-field-action > button:only-child { grid-column: 1 / -1; justify-self: start; }
+.transaction-dialog .optional-form-section { margin-top: 18px; }
+@media (max-width: 600px) {
+  .inline-field-action { grid-template-columns: minmax(0,1fr); width: 100%; }
+  .inline-field-action > button { width: 100%; }
+  .charge-editor-row { grid-template-columns: minmax(0,1fr); gap: 8px; }
+  .charge-editor-row .row-action { margin-bottom: 0; }
+}
+
+/* Compact stable choices use native radios for arrow keys and form validation. */
+.compact-choice { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: var(--radius-control); background: var(--neutral-soft); }
+.compact-choice-option { position: relative; display: flex; flex: 1 1 auto; min-width: 0; cursor: pointer; }
+.compact-choice-option input { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: 0; border: 0; opacity: 0; }
+.compact-choice-option > span { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; min-height: 40px; padding: 6px 10px; border-radius: var(--radius-compact); color: var(--muted); font-size: var(--type-helper); line-height: 1.35; text-align: center; }
+.compact-choice-option input:checked + span { background: var(--surface); color: var(--ink); font-weight: var(--weight-semibold); box-shadow: 0 1px 4px #20242717; }
+.compact-choice-option:hover > span { color: var(--ink); }
+.compact-choice-option input:focus-visible + span { outline: 2px solid var(--data-blue); outline-offset: -2px; }
+.compact-choice-option input:disabled + span { opacity: .6; cursor: not-allowed; }
+.disclosure-heading-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+.disclosure-heading-row > .disclosure-toggle, .disclosure-heading-row > .disclosure-heading { flex: 1 1 auto; min-width: 0; width: auto; }
+.disclosure-heading-row > .row-action { flex: none; }
+.responsive-disclosure[data-expanded="true"] > .disclosure-heading-row > .disclosure-toggle svg { transform: rotate(90deg); }
+
+/* One compact utility treatment for list ordering, separate from data-entry fields. */
+.list-utilities { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); margin-block: var(--space-sm); min-width: 0; }
+.list-utilities > .filter-row { min-width: 0; padding-bottom: 0; }
+.list-sort-control { --list-control-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none'%3E%3Cpath d='M5 13V3m-3 3 3-3 3 3M11 3v10m-3-3 3 3 3-3' stroke='%234c5b64' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; max-inline-size: 100%; min-height: 36px; color: var(--muted); }
+.list-sort-control.list-filter-control { --list-control-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%234c5b64' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.list-sort-control select { width: auto; min-width: 0; max-inline-size: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 999px; appearance: none; padding: 5px 38px 5px 10px; background-image: var(--list-control-icon); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; background-color: var(--surface); color: var(--ink); font-family: inherit; cursor: pointer; }
+.list-sort-control select:focus-visible { outline: 2px solid var(--data-blue); outline-offset: 2px; }

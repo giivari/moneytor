@@ -1,0 +1,14 @@
+export type Portfolio = { id: string; displayName: string; providerId: string | null; providerName: string | null; currency: string; exponent: number; note: string | null; isActive: boolean; canDelete?: boolean };
+export type InstrumentType = { id: string; displayName: string; isBuiltIn: boolean; isActive: boolean };
+export type Instrument = { id: string; displayName: string; symbol: string | null; market: string | null; typeId: string; typeName: string; currency: string; exponent: number; priceSymbol: string | null; isActive: boolean; canDelete?: boolean };
+export type TradeDraft = { kind: "buy" | "sell"; portfolioId: string; instrumentId: string; cashAssetId: string; quantity: string; unitPrice: string; feeMinor: string; occurredAt: string; note?: string };
+export type OpeningDraft = { portfolioId: string; instrumentId: string; quantity: string; costBasisMinor: string; occurredAt: string; initialPrice?: string };
+export type RecordedOpening = OpeningDraft & { id: string; originalQuantity: string; originalCostBasisMinor: string };
+export type OpeningCorrection = { id: string; openingId: string; previousQuantity: string; correctedQuantity: string;
+  previousCostBasisMinor: string; correctedCostBasisMinor: string; note: string | null; createdAt: string };
+export type PricePoint = { id: string; instrumentId: string; price: string; currency: string; asOf: string; sourceType: "manual" | "provider"; sourceId: string | null; insertedAt: string };
+export type InvestmentTrade = TradeDraft & { id: string; currency: string; grossMinor: string; status: "posted" | "voided" | "superseded"; replacesId: string | null; order: string; createdAt: string; removedMinor: string | null; realizedMinor: string | null };
+export type Holding = { portfolioId: string; instrumentId: string; quantity: string; costBasisMinor: string; averageCost: string; realizedMinor: string; marketMinor: string | null; unrealizedMinor: string | null; unrealizedPercent: string | null; price: PricePoint | null; stale: boolean; opening: RecordedOpening | null };
+export type InvestmentTotal = { currency: string; exponent: number; marketMinor: string; costBasisMinor: string; pricedCostBasisMinor: string; unrealizedMinor: string; realizedMinor: string; unpricedCount: number };
+export type InvestmentSnapshot = { portfolios: Portfolio[]; instruments: Instrument[]; instrumentTypes: InstrumentType[]; holdings: Holding[]; trades: InvestmentTrade[]; prices: PricePoint[]; totals: InvestmentTotal[];
+  portfolioTotals: (InvestmentTotal & { portfolioId: string })[]; instrumentTotals: (InvestmentTotal & { instrumentId: string })[]; providerConfigured: boolean };
