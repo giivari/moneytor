@@ -7,6 +7,7 @@ import { ListSortControl } from "./list-sort-control";
 import { useEffect, useRef, useState } from "react";
 import { Bank, PencilSimple, Plus, X } from "@phosphor-icons/react";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
+import { ProviderBrandMark } from "./provider-brand-mark";
 import { financeRequest, requestJson } from "@/lib/finance/client";
 import { ExportMenuButton } from "./export-menu-button";
 import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./finance-form-hooks";
@@ -175,7 +176,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
       <div className="asset-list">{active.map((asset) => {
         const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
         return <article className="asset-row data-list-row data-list-row--entity" key={asset.id}>
-        <div className="data-list-identity"><span className="finance-asset-mark" data-tone={mark.tone}>{mark.monogram}</span>
+        <div className="data-list-identity"><ProviderBrandMark mark={mark} />
           <div className="asset-copy"><strong>{asset.displayName}</strong><span>{[asset.providerName, asset.assetTypeName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ")}</span>
             {!mobile && asset.assetGroupName && <small>{asset.assetGroupName}</small>}</div></div>
         <div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong>
@@ -185,7 +186,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
       {showArchived && <section className="surface finance-archived"><SectionHeading title="Aset diarsipkan" />
       <div className="asset-list">{archived.map((asset) => {
         const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
-        return <div className="asset-row data-list-row data-list-row--entity" key={asset.id}><div className="data-list-identity"><span className="finance-asset-mark" data-tone={mark.tone}>{mark.monogram}</span><div className="asset-copy"><strong>{asset.displayName}</strong><small>Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
+        return <div className="asset-row data-list-row data-list-row--entity" key={asset.id}><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><strong>{asset.displayName}</strong><small>Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
       })}</div><details className="context-help"><summary>Tentang aset diarsipkan</summary><p className="finance-hint supporting-prose">Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk menggunakannya kembali.</p></details></section>}</>}
     {error && <p className="finance-error" role="alert">{error}</p>}
     <details className="context-help"><summary>Cara membaca aset</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo berasal dari saldo awal dan seluruh pergerakan yang tercatat. Total aset menjumlahkan saldo akun dan investasi berharga sekali per mata uang. Akun termasuk kas broker; catat unit instrumen di Investasi agar kepemilikan tidak dihitung dua kali. Posisi tanpa harga belum masuk total aset.</p></details>

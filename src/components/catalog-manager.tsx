@@ -4,6 +4,7 @@ import { sortNamed } from "@/lib/list-order";
 import { useState } from "react";
 import { PencilSimple, Plus } from "@phosphor-icons/react";
 import { CURATED_PAYMENT_NETWORKS, CURATED_PROVIDERS, resolveProviderMark } from "@/lib/domain/provider-marks";
+import { ProviderBrandMark } from "./provider-brand-mark";
 import { financeRequest } from "@/lib/finance/client";
 import type { Catalog, CatalogRecord } from "@/lib/repositories/catalogs";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
@@ -53,7 +54,7 @@ export function CatalogManager({ catalog, items }: { catalog: Catalog; items: Ca
         return <div className="settings-catalog-item" key={item.id}>
         <div className="settings-catalog-row compact-management-item data-list-row data-list-row--actions">
           <div className={mark ? "data-list-identity" : "settings-catalog-identity"}>
-            {mark && <span className="finance-asset-mark" data-tone={mark.tone} aria-hidden="true">{mark.monogram}</span>}
+            {mark && <ProviderBrandMark mark={mark} />}
             <div className="settings-catalog-identity"><strong>{item.displayName}</strong><small>{item.appliesTo === "income" ? "Pemasukan · " : item.appliesTo === "expense" ? "Pengeluaran · " : ""}{item.isBuiltIn ? "Bawaan" : item.isActive ? "Kustom" : "Diarsipkan"}</small></div>
           </div>
           {!item.isBuiltIn && editing !== item.id && <div className="settings-catalog-actions compact-management-actions">
@@ -81,7 +82,7 @@ export function CatalogManager({ catalog, items }: { catalog: Catalog; items: Ca
       </form> : <button type="button" className="settings-catalog-add" onClick={() => { setEditing("new"); setName(""); setConfirmation(null); setError(""); }}><Plus size={18} aria-hidden="true" /> Tambah pilihan</button>}
       {availablePresets.length > 0 && <details className="investment-optional" open={visibleItems.length === 0 || undefined}><summary>Tambah cepat dari katalog terkurasi ({availablePresets.length}) <span>opsional</span></summary>
         <div className="catalog-preset-grid">{availablePresets.map((preset) => <button key={preset.key} type="button" className="finance-edit-button catalog-preset-chip" onClick={() => void run("catalog-create", { displayName: preset.displayName })}>
-          <span className="catalog-preset-mark" data-tone={preset.tone}>{preset.monogram}</span>
+          <ProviderBrandMark mark={{ monogram: preset.monogram, tone: preset.tone, matchedKey: preset.key }} size="sm" />
           <span>+ {preset.displayName}</span>
         </button>)}</div>
       </details>}

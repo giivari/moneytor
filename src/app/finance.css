@@ -239,6 +239,29 @@
   color: #be123c;
 }
 
+.finance-asset-mark--brand,
+.finance-assets-page .finance-asset-mark.finance-asset-mark--brand {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: transparent;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.finance-asset-mark--sm {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 7px;
+  font-size: 9.5px;
+}
+
+.brand-mark-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .catalog-preset-tray {
   display: grid;
   gap: 9px;
@@ -248,17 +271,22 @@
   background: #f8fafb;
 }
 
-.catalog-preset-list {
+.catalog-preset-list,
+.catalog-preset-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+}
+
+.catalog-preset-grid {
+  margin-top: 10px;
 }
 
 .catalog-preset-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: 7px;
+  padding: 5px 11px 5px 6px;
   border-radius: 999px;
   border: 1px solid #cbd4da;
   background: #ffffff;
