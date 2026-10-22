@@ -6,6 +6,7 @@ import { prepareOwnerAssetRead } from "@/lib/repositories/assets";
 import { listActivities } from "./service";
 import { prepareOwnerInvestmentSummaryRead } from "@/lib/investments/read";
 import { horizonDay, planningTotals } from "@/lib/domain/planning";
+import { creditBillMinor, isCreditAsset } from "@/lib/domain/credit";
 import { planningSchemaReady, readPlanningSummary } from "@/lib/planning/repository";
 
 function planningHorizon() {
@@ -62,17 +63,27 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
     const throughDay = planningHorizon();
     const planningReady = await planningSchemaReady(client);
     const planning = planningReady ? await readPlanningSummary(client, throughDay) : new Map();
-    const byCurrency = new Map<string, { currency: string; exponent: number; total: bigint; liquid: bigint; spendable: bigint; expense: bigint; unpricedCount: number }>();
+    const byCurrency = new Map<string, { currency: string; exponent: number; total: bigint; liquid: bigint; spendable: bigint; expense: bigint; creditDebt: bigint; unpricedCount: number }>();
     for (const asset of assets) {
-      const entry = byCurrency.get(asset.currency) ?? { currency: asset.currency, exponent: asset.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, unpricedCount: 0 };
+      const entry = byCurrency.get(asset.currency) ?? { currency: asset.currency, exponent: asset.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, unpricedCount: 0 };
       const balance = BigInt(asset.balanceMinor);
-      entry.total += balance;
-      if (asset.isActive && asset.normallyLiquid) entry.liquid += balance;
-      if (asset.isActive && asset.normallySpendable) entry.spendable += balance;
+      const isCredit = isCreditAsset(asset);
+      if (isCredit || balance < 0n) {
+        if (asset.isActive && balance < 0n) {
+          entry.creditDebt += creditBillMinor(asset.balanceMinor);
+        }
+        if (!isCredit && balance > 0n) {
+          entry.total += balance;
+        }
+      } else {
+        entry.total += balance;
+        if (asset.isActive && asset.normallyLiquid) entry.liquid += balance;
+        if (asset.isActive && asset.normallySpendable) entry.spendable += balance;
+      }
       byCurrency.set(asset.currency, entry);
     }
     for (const total of investment.totals) {
-      const entry = byCurrency.get(total.currency) ?? { currency: total.currency, exponent: total.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, unpricedCount: 0 };
+      const entry = byCurrency.get(total.currency) ?? { currency: total.currency, exponent: total.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, unpricedCount: 0 };
       entry.total += BigInt(total.marketMinor); entry.unpricedCount = total.unpricedCount;
       byCurrency.set(total.currency, entry);
     }
@@ -83,14 +94,17 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
     const missing = [...planning.keys()].filter((currency) => !byCurrency.has(currency));
     if (missing.length) {
       const rows = await client.query<{ currency: string; exponent: number }>("SELECT code AS currency,minor_unit_exponent AS exponent FROM currencies WHERE code = ANY($1::text[])", [missing]);
-      for (const row of rows.rows) byCurrency.set(row.currency, { currency: row.currency, exponent: row.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, unpricedCount: 0 });
+      for (const row of rows.rows) byCurrency.set(row.currency, { currency: row.currency, exponent: row.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, unpricedCount: 0 });
     }
     return { assets, recent, investment, planningReady, throughDay, currencies: [...byCurrency.values()].map((entry) => {
       const commitmentsForCurrency = planning.get(entry.currency);
+      const totalDue = (BigInt(commitmentsForCurrency?.dueMinor ?? "0") + entry.creditDebt).toString();
+      const totalUncovered = (BigInt(commitmentsForCurrency?.uncoveredMinor ?? "0") + entry.creditDebt).toString();
       const position = planningTotals(entry.spendable, commitmentsForCurrency?.reservedMinor ?? "0",
-        commitmentsForCurrency?.dueMinor ?? "0", commitmentsForCurrency?.coveredMinor ?? "0", commitmentsForCurrency?.uncoveredMinor ?? "0");
+        totalDue, commitmentsForCurrency?.coveredMinor ?? "0", totalUncovered);
       return { currency: entry.currency, exponent: entry.exponent, totalMinor: entry.total.toString(),
-        liquidMinor: entry.liquid.toString(), eligibleMinor: entry.spendable.toString(), ...position,
+        liquidMinor: entry.liquid.toString(), eligibleMinor: entry.spendable.toString(),
+        creditDebtMinor: entry.creditDebt.toString(), ...position,
         expenseMinor: entry.expense.toString(), unpricedCount: entry.unpricedCount };
     }) };
   };

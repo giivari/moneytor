@@ -199,7 +199,45 @@ async function changeLabel(client: PoolClient, action: string, body: Record<stri
   if (!updated.rowCount) throw new PlanningError("Jenis bawaan tidak dapat diubah.");
   return id;
 }
-const actions = new Set(["save-budget","save-goal","save-reserve","save-obligation","archive","restore","settle","cancel","reopen","label-save","label-archive","label-restore"]);
+const actions = new Set(["save-budget","save-goal","save-reserve","save-obligation","save-installments","archive","restore","settle","cancel","reopen","label-save","label-archive","label-restore"]);
+
+async function saveInstallments(client: PoolClient, body: Record<string, unknown>) {
+  const baseTitle = title(body);
+  const currency = value(body, "currency", 3);
+  await currencyActive(client, currency);
+  const items = body.installments;
+  if (!Array.isArray(items) || items.length === 0 || items.length > 36) {
+    throw new PlanningError("Jadwal cicilan tidak valid.");
+  }
+  const labelRes = await client.query<{ id: string }>(
+    "SELECT id FROM planning_labels WHERE kind='obligation' AND is_active ORDER BY system_key NULLS LAST, display_name, id LIMIT 1"
+  );
+  let labelId = labelRes.rows[0]?.id;
+  if (!labelId) {
+    labelId = randomUUID();
+    await client.query(
+      "INSERT INTO planning_labels(id,kind,display_name) VALUES($1,'obligation','Cicilan Kredit')",
+      [labelId],
+    );
+  }
+  let firstId = "";
+  for (const rawItem of items) {
+    if (!rawItem || typeof rawItem !== "object") throw new PlanningError("Data cicilan tidak valid.");
+    const item = rawItem as Record<string, unknown>;
+    const amt = amount(item, "amountMinor");
+    const due = day(item, "dueOn")!;
+    const itemTitle = optional(item, "title", 120) || baseTitle;
+    const itemNote = optional(item, "note", 500);
+    const id = randomUUID();
+    if (!firstId) firstId = id;
+    await client.query(
+      "INSERT INTO planning_obligations(id,label_id,title,currency_code,note,amount_minor,due_on) VALUES($1,$2,$3,$4,$5,$6,$7)",
+      [id, labelId, itemTitle, currency, itemNote, amt, due],
+    );
+  }
+  return firstId;
+}
+
 export async function mutatePlanning(action: string, body: Record<string, unknown>, idempotencyKey: string) {
   await requireOwnerSession();
   if (!actions.has(action)) throw new PlanningError("Aksi tidak tersedia.",404);
@@ -212,7 +250,8 @@ export async function mutatePlanning(action: string, body: Record<string, unknow
     if (request.operation !== action || request.request_hash !== hash) throw new PlanningError("Kunci permintaan sudah digunakan untuk perubahan lain.",409);
     if (request.completed) return request.result_id;
     let result: string;
-    if (action.startsWith("save-")) result = await savePlan(client,kind(action.slice(5)),body);
+    if (action === "save-installments") result = await saveInstallments(client, body);
+    else if (action.startsWith("save-")) result = await savePlan(client,kind(action.slice(5)),body);
     else if (action.startsWith("label-")) result = await changeLabel(client,action,body);
     else result = await changePlan(client,action,body);
     await client.query("UPDATE planning_mutation_requests SET completed=true,result_id=$2 WHERE idempotency_key=$1",[key,result]);

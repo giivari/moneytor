@@ -163,6 +163,46 @@ export const CURATED_PROVIDERS: readonly CuratedProviderPreset[] = [
     patterns: [/\be[\s-]*money\b/i, /\buang\s+elektronik\b/i, /\bkartu\s+prabayar\b/i],
   },
   {
+    key: "spaylater",
+    displayName: "SPayLater (ShopeePayLater)",
+    monogram: "SPL",
+    classification: "Dompet digital",
+    tone: "coral",
+    patterns: [/\bspaylater\b/i, /shopee\s*pay\s*later/i],
+  },
+  {
+    key: "gopaylater",
+    displayName: "GoPayLater",
+    monogram: "GPL",
+    classification: "Dompet digital",
+    tone: "teal",
+    patterns: [/\bgopay\s*later\b/i],
+  },
+  {
+    key: "kredivo",
+    displayName: "Kredivo",
+    monogram: "KRD",
+    classification: "Dompet digital",
+    tone: "blue",
+    patterns: [/\bkredivo\b/i],
+  },
+  {
+    key: "akulaku",
+    displayName: "Akulaku PayLater",
+    monogram: "AKL",
+    classification: "Dompet digital",
+    tone: "coral",
+    patterns: [/\bakulaku\b/i],
+  },
+  {
+    key: "indodana",
+    displayName: "Indodana PayLater",
+    monogram: "IDN",
+    classification: "Dompet digital",
+    tone: "teal",
+    patterns: [/\bindodana\b/i],
+  },
+  {
     key: "bibit",
     displayName: "Bibit",
     monogram: "BBT",
@@ -258,7 +298,7 @@ export function resolveProviderMark(
     (!rawAsset || /^e[\s-]*money\s*\/\s*flazz$/i.test(rawAsset));
 
   if (!isGenericUmbrellaOnly) {
-    const specificCardKeys = ["mandiri-emoney", "flazz", "tapcash", "brizzi"] as const;
+    const specificCardKeys = ["spaylater", "gopaylater", "kredivo", "akulaku", "indodana", "mandiri-emoney", "flazz", "tapcash", "brizzi"] as const;
     for (const cardKey of specificCardKeys) {
       const preset = CURATED_PROVIDERS.find((p) => p.key === cardKey);
       const targetText = cardKey === "flazz" && /^e[\s-]*money\s*\/\s*flazz$/i.test(rawProvider)
