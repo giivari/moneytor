@@ -40,6 +40,21 @@
   outline-offset: 2px;
 }
 
+.privacy-toggle-trigger[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.65);
+}
+
+html[data-privacy="hidden"] .financial-amount .financial-amount-group ~ .financial-amount-group,
+html[data-privacy="hidden"] .financial-amount wbr {
+  display: none;
+}
+
+html[data-privacy="hidden"] .financial-value,
+html[data-privacy="hidden"] .financial-amount {
+  letter-spacing: 0.02em;
+}
+
 @media (max-width: 1020px) {
   .onboarding-help-trigger {
     width: 38px;
