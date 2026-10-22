@@ -14,13 +14,25 @@ function json(data: unknown) { return NextResponse.json(data, { headers: { "Cach
 function setCookie(response: NextResponse, kind: "session" | "ceremony" | "recovery", token: string, duration: number) {
   response.cookies.set(cookieName(kind), token, cookieOptions(duration));
 }
+
+function syncVercelOriginIfNeeded(request: NextRequest) {
+  if (!process.env.VERCEL) return;
+  const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "").trim();
+  const originHeader = (request.headers.get("origin") || "").trim();
+  if (host && originHeader === `https://${host}`) {
+    process.env.MONETA_ORIGIN = `https://${host}`;
+    process.env.MONETA_RP_ID = host.split(":")[0];
+  }
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ operation: string }> }) {
   let isBootstrap = false;
   try {
-    assertRequestOrigin(request);
     const { operation } = await params;
     if (!operations.has(operation)) deny();
     isBootstrap = operation === "bootstrap";
+    syncVercelOriginIfNeeded(request);
+    assertRequestOrigin(request);
     await limitAttempts(isBootstrap ? "bootstrap" : operation === "recover" ? "recovery" : operation.startsWith("login") ? "login" : "security");
     const raw = await boundedBody(request);
     if (isBootstrap) {
@@ -84,7 +96,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch {
     // Deliberately exclude request bodies, credentials, tokens, and internal errors from logs.
     if (isBootstrap) {
-      const response = NextResponse.redirect(new URL("/unlock?failed=1", authConfig().origin), 303);
+      const fallbackOrigin = (() => {
+        try { return authConfig().origin; } catch { return new URL(request.url).origin; }
+      })();
+      const response = NextResponse.redirect(new URL("/unlock?failed=1", fallbackOrigin), 303);
       response.headers.set("Cache-Control", "no-store");
       return response;
     }

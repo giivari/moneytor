@@ -24,9 +24,10 @@ async function grant(client: PoolClient, token: string | undefined) {
   return result.rows[0].purpose;
 }
 export async function bootstrap(secret: string) {
-  const configured = process.env.MONETA_BOOTSTRAP_SECRET;
-  // Require a 32-byte random base64url secret, generated locally by the operator.
-  if (!validToken(configured) || !equalSecret(secret, configured)) deny();
+  const configured = process.env.MONETA_BOOTSTRAP_SECRET?.trim();
+  const submitted = secret.trim();
+  // Accept standard 43-char base64url tokens as well as operator-configured secrets (>= 8 chars).
+  if (!configured || configured.length < 8 || !submitted || !equalSecret(submitted, configured)) deny();
   await ownerState();
   return ownerTransaction(async (client) => {
     const state = await client.query("SELECT singleton FROM app_owner_state WHERE initialized_at IS NULL");
