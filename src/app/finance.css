@@ -768,3 +768,36 @@
     width: 100%;
   }
 }
+
+/* Kredit & PayLater: kartu tersendiri, jarak antar-section, dan tata letak mobile yang rapi. */
+.finance-assets-page > .surface + .surface { margin-top: 18px; }
+.credit-assets-section { display: block; }
+.credit-card-list { display: grid; gap: 12px; }
+.credit-card { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid #e2e6e8; border-radius: 16px; background: #fff; }
+.credit-card--due { border-color: #ecc9c4; background: #fffafa; }
+.credit-card-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.credit-card-title { display: grid; gap: 3px; min-width: 0; }
+.credit-card-title strong { color: #1b2124; overflow-wrap: anywhere; }
+.credit-card-title span { color: #4b5962; overflow-wrap: anywhere; }
+.credit-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.credit-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: #f1f4f6; border: 1px solid #e0e6ea; color: #3f4b52; font-size: 12.5px; white-space: nowrap; }
+.credit-limit { display: grid; gap: 7px; }
+.credit-limit-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: #4b5962; }
+.credit-limit-text strong { color: #171c1f; }
+.credit-limit-bar { height: 6px; border-radius: 999px; background: #e6eaed; overflow: hidden; }
+.credit-limit-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--data-coral); }
+.credit-card-note { color: #606b70; }
+.credit-bills { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.credit-bill-box { display: grid; gap: 4px; min-width: 0; padding: 10px 12px; border-radius: 12px; background: #f4f6f7; border: 1px solid #e6eaed; }
+.credit-bill-box > span { color: #4b5962; font-size: 12.5px; }
+.credit-bill-box > strong { color: #171c1f; overflow-wrap: anywhere; }
+.credit-bill-box--current { background: #fdeeed; border-color: #f1cfcb; }
+.credit-bill-box--current > strong { color: var(--negative); }
+.credit-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+@media (max-width: 560px) {
+  .credit-card { padding: 14px; gap: 11px; }
+  .credit-bills { grid-template-columns: 1fr; }
+  .credit-card-actions { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .credit-card-actions .credit-pay-button { width: 100%; min-height: 40px; }
+  .credit-card-actions .row-action { justify-content: center; }
+}

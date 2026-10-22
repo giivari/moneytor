@@ -781,6 +781,74 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
   const regularActive = active.filter((item) => !isCreditAsset(item));
   const creditActive = active.filter((item) => isCreditAsset(item));
   const archived = assets.filter((item) => !item.isActive);
+  const creditFirst = creditActive.some((item) => computeCreditBills(item).totalUnpaidMinor > 0n);
+  const creditSection = creditActive.length > 0 ? (
+    <section className="surface credit-assets-section">
+      <SectionHeading
+        title="Kredit & PayLater"
+        eyebrow={creditFirst ? "PERLU PERHATIAN · ADA TAGIHAN" : "TAGIHAN BERJALAN & FASILITAS KREDIT"}
+        action={<div className="section-heading-actions"><span className="count-pill">{creditActive.length} akun</span></div>}
+      />
+      <div className="credit-card-list">
+        {creditActive.map((asset) => {
+          const mark = resolveProviderMark(asset.providerName, asset.displayName, "coral");
+          const meta = parseCreditMeta(asset.note);
+          const bills = computeCreditBills(asset);
+          const hasBill = bills.totalUnpaidMinor > 0n;
+          const subtitle = [asset.providerName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ");
+          const limitUsedPct = bills.limitMinor > 0n && bills.availableLimitMinor !== null
+            ? Math.min(100, Math.max(0, Math.round(Number(((bills.limitMinor - bills.availableLimitMinor) * 100n) / bills.limitMinor))))
+            : null;
+          return (
+            <article className={`credit-card${hasBill ? " credit-card--due" : ""}`} key={asset.id}>
+              <div className="credit-card-head">
+                <ProviderBrandMark mark={mark} />
+                <div className="credit-card-title">
+                  <strong>{asset.displayName}</strong>
+                  {subtitle && <span>{subtitle}</span>}
+                </div>
+              </div>
+              <div className="credit-card-chips">
+                <span className="credit-chip">Cutoff tgl {bills.cutoffDay}</span>
+                <span className="credit-chip">Jatuh tempo tgl {bills.dueDay}</span>
+              </div>
+              {bills.availableLimitMinor !== null && (
+                <div className="credit-limit">
+                  <div className="credit-limit-text">
+                    <span>Sisa limit</span>
+                    <strong className="financial-value">{formatMinor(bills.availableLimitMinor.toString(), asset.currency, asset.exponent)}</strong>
+                    <small>dari {formatMinor(bills.limitMinor.toString(), asset.currency, asset.exponent)}</small>
+                  </div>
+                  {limitUsedPct !== null && <div className="credit-limit-bar" aria-hidden="true"><span style={{ width: `${limitUsedPct}%` }} /></div>}
+                </div>
+              )}
+              {meta.cleanNote && <small className="credit-card-note">{meta.cleanNote}</small>}
+              {hasBill ? (
+                <div className="credit-bills">
+                  <div className="credit-bill-box credit-bill-box--current">
+                    <span>Tagihan {formatShortDueIso(bills.currentDueIso)}</span>
+                    <strong className="financial-value financial-value--entity">{formatMinor(bills.currentBillMinor.toString(), asset.currency, asset.exponent)}</strong>
+                  </div>
+                  {bills.nextBillMinor > 0n && (
+                    <div className="credit-bill-box">
+                      <span>Periode {formatShortDueIso(bills.nextDueIso)}</span>
+                      <strong className="financial-value financial-value--entity">{formatMinor(bills.nextBillMinor.toString(), asset.currency, asset.exponent)}</strong>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <strong className="pnl-positive credit-settled-pill"><CheckCircle size={15} weight="fill" /> Lunas</strong>
+              )}
+              <div className="credit-card-actions">
+                {hasBill && <button type="button" className="button-primary credit-pay-button" onClick={() => setPayingCredit(asset)}>Bayar tagihan</button>}
+                <button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah / Atur tagihan</button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  ) : null;
 
   return <div className="page finance-assets-page"><div className="page-heading finance-heading"><div><span className="eyebrow">POSISI KEUANGAN</span><h1>Assets</h1>
     </div><div className="page-heading-actions"><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></div></div>
@@ -788,6 +856,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
       {totals.map((item) => <strong className="financial-value financial-value--summary" key={item.currency}>{formatMinor(item.amountMinor, item.currency, item.exponent)}</strong>)}
       </section>}
     <InvestmentSummary totals={investmentTotals} /></div>
+    {creditFirst && creditSection}
     {!regularActive.length ? <section className="surface finance-empty"><h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2><p>{archived.length ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru." : "Buat akun atau aset pertama, lalu catat saldo awalnya."}</p>
       <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : <section className="surface"><SectionHeading title="Akun & nilai tercatat" eyebrow="ASET AKTIF" action={<div className="section-heading-actions"><span className="count-pill">{regularActive.length} aset</span><ExportMenuButton dataset="assets" label="Ekspor Aset" /></div>} />
       <div className="asset-list">{regularActive.map((asset) => {
@@ -800,88 +869,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
         <div className="data-list-actions"><button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah</button><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button></div></div></article>;
       })}</div></section>}
 
-    {creditActive.length > 0 && (
-      <section className="surface credit-assets-section">
-        <SectionHeading
-          title="Kredit & PayLater"
-          eyebrow="TAGIHAN BERJALAN & FASILITAS KREDIT"
-          action={
-            <div className="section-heading-actions">
-              <span className="count-pill">{creditActive.length} akun</span>
-            </div>
-          }
-        />
-        <div className="asset-list">
-          {creditActive.map((asset) => {
-            const mark = resolveProviderMark(asset.providerName, asset.displayName, "coral");
-            const meta = parseCreditMeta(asset.note);
-            const bills = computeCreditBills(asset);
-            const hasBill = bills.totalUnpaidMinor > 0n;
-            return (
-              <article className="asset-row data-list-row data-list-row--entity credit-asset-row" key={asset.id}>
-                <div className="data-list-identity">
-                  <ProviderBrandMark mark={mark} />
-                  <div className="asset-copy">
-                    <strong>{asset.displayName}</strong>
-                    <span>
-                      {[
-                        asset.providerName,
-                        `Cutoff tgl ${bills.cutoffDay} · Jatuh tempo tgl ${bills.dueDay}`,
-                        asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                    {bills.availableLimitMinor !== null && (
-                      <small>
-                        Sisa limit: <strong>{formatMinor(bills.availableLimitMinor.toString(), asset.currency, asset.exponent)}</strong> dari {formatMinor(bills.limitMinor.toString(), asset.currency, asset.exponent)}
-                      </small>
-                    )}
-                    {meta.cleanNote && <small>{meta.cleanNote}</small>}
-                  </div>
-                </div>
-                <div className="data-list-management">
-                  {hasBill ? (
-                    <div className="credit-bill-stack">
-                      <strong className="asset-amount financial-value financial-value--entity pnl-negative">
-                        Tagihan {formatShortDueIso(bills.currentDueIso)}: {formatMinor(bills.currentBillMinor.toString(), asset.currency, asset.exponent)}
-                      </strong>
-                      {bills.nextBillMinor > 0n && (
-                        <small className="credit-next-bill-label">
-                          Periode {formatShortDueIso(bills.nextDueIso)}: <strong>{formatMinor(bills.nextBillMinor.toString(), asset.currency, asset.exponent)}</strong>
-                        </small>
-                      )}
-                    </div>
-                  ) : (
-                    <strong className="asset-amount financial-value financial-value--entity pnl-positive credit-settled-pill">
-                      <CheckCircle size={15} weight="fill" /> Lunas ({formatMinor("0", asset.currency, asset.exponent)})
-                    </strong>
-                  )}
-                  <div className="data-list-actions">
-                    {hasBill && (
-                      <button
-                        type="button"
-                        className="button-primary credit-pay-button"
-                        onClick={() => setPayingCredit(asset)}
-                      >
-                        Bayar tagihan
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="row-action"
-                      onClick={() => setEditing(asset)}
-                    >
-                      <PencilSimple size={14} weight="bold" /> Ubah / Atur tagihan
-                    </button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-    )}
+    {!creditFirst && creditSection}
 
     {archived.length > 0 && <><label className="finance-history-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan ({archived.length})</label>
       {showArchived && <section className="surface finance-archived"><SectionHeading title="Aset diarsipkan" />
