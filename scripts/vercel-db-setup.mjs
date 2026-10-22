@@ -93,6 +93,23 @@ try {
     }
   }
 
+  // Remove fictional placeholder catalog items ('Bank Contoh', 'Dompet Contoh', 'Platform Contoh', 'Jaringan Kartu Contoh')
+  await client.query(`
+    DELETE FROM public.financial_providers fp
+    WHERE fp.system_key IN ('demo_bank', 'demo_wallet', 'demo_investment')
+      AND NOT EXISTS (SELECT 1 FROM public.assets a WHERE a.provider_id = fp.id)
+      AND NOT EXISTS (SELECT 1 FROM public.investment_portfolios ip WHERE ip.provider_id = fp.id);
+    UPDATE public.financial_providers
+    SET is_builtin = false, system_key = NULL
+    WHERE system_key IN ('demo_bank', 'demo_wallet', 'demo_investment');
+    DELETE FROM public.payment_networks pn
+    WHERE pn.system_key = 'demo_network'
+      AND NOT EXISTS (SELECT 1 FROM public.assets a WHERE a.payment_network_id = pn.id);
+    UPDATE public.payment_networks
+    SET is_builtin = false, system_key = NULL
+    WHERE system_key = 'demo_network';
+  `);
+
   if (resetEmpty && confirmEmpty) {
     const tablesToTruncate = [
       "import_staged_rows",

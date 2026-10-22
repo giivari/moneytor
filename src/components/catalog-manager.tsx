@@ -79,7 +79,7 @@ export function CatalogManager({ catalog, items }: { catalog: Catalog; items: Ca
         <div className="settings-catalog-editor-actions"><button type="button" className="finance-secondary" onClick={stopEditing}>Batal</button>
           <button type="submit" className="button-primary" aria-busy={pending}>{pending && operationPending === "catalog-create" ? <LoadingIndicator>Menyimpan…</LoadingIndicator> : "Simpan pilihan"}</button></div>
       </form> : <button type="button" className="settings-catalog-add" onClick={() => { setEditing("new"); setName(""); setConfirmation(null); setError(""); }}><Plus size={18} aria-hidden="true" /> Tambah pilihan</button>}
-      {availablePresets.length > 0 && <details className="investment-optional"><summary>Tambah cepat dari katalog terkurasi ({availablePresets.length}) <span>opsional</span></summary>
+      {availablePresets.length > 0 && <details className="investment-optional" open={visibleItems.length === 0 || undefined}><summary>Tambah cepat dari katalog terkurasi ({availablePresets.length}) <span>opsional</span></summary>
         <div className="catalog-preset-grid">{availablePresets.map((preset) => <button key={preset.key} type="button" className="finance-edit-button catalog-preset-chip" onClick={() => void run("catalog-create", { displayName: preset.displayName })}>
           <span className="catalog-preset-mark" data-tone={preset.tone}>{preset.monogram}</span>
           <span>+ {preset.displayName}</span>
