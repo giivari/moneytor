@@ -1,26 +1,34 @@
 /* Interactive First-Time Feature Callout & Spotlight Tutorial */
 
+@media (min-width: 1021px) {
+  .site-header .header-inner {
+    grid-template-columns: minmax(90px, 1fr) auto minmax(max-content, 1fr);
+  }
+}
+
+.header-actions {
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .onboarding-help-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 38px;
-  padding: 0 12px;
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  flex: none;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.32);
   background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
-  font-size: 13px;
-  font-weight: 600;
   cursor: pointer;
-  white-space: nowrap;
   transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
 }
 
 .onboarding-help-trigger:hover {
-  background: rgba(255, 255, 255, 0.24);
-  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.52);
 }
 
 .onboarding-help-trigger:active {
@@ -34,8 +42,8 @@
 
 @media (max-width: 1020px) {
   .onboarding-help-trigger {
-    min-height: 36px;
-    padding: 0 11px;
+    width: 38px;
+    height: 38px;
     border-color: #d5dce0;
     background: #ffffff;
     color: #253036;
@@ -366,4 +374,3 @@
     transition: none;
   }
 }
-

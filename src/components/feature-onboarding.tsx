@@ -541,8 +541,7 @@ export function FeatureOnboarding() {
         aria-label={`Panduan fitur ${tour.featureName}`}
         title={`Panduan fitur: ${tour.featureName}`}
       >
-        <Question size={18} weight="bold" aria-hidden="true" />
-        <span className="onboarding-help-label">Panduan</span>
+        <Question size={19} weight="bold" aria-hidden="true" />
       </button>
 
       {open && currentStep && (
