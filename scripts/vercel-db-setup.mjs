@@ -13,7 +13,13 @@ if (resetEmpty && !confirmEmpty) {
   throw new Error("To wipe all financial records back to an empty database, pass: --reset-empty --confirm-empty");
 }
 
-const connectionString = (process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
+const connectionString = (
+  process.env.DATABASE_URL_UNPOOLED ||
+  process.env.POSTGRES_URL_NON_POOLING ||
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  ""
+).trim();
 if (!connectionString) {
   if (ifConfigured) {
     console.log("[Vercel DB Setup] No DATABASE_URL/POSTGRES_URL configured during build; skipping migration step.");
