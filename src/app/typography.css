@@ -103,8 +103,8 @@ small { font-size: var(--type-meta); font-weight: var(--weight-regular); }
   line-height: 1.15;
   font-weight: var(--weight-semibold);
 }
-.financial-value.financial-value--hero { font-size: var(--type-hero); font-weight: var(--weight-strong); line-height: 1.1; }
-.financial-value.financial-value--summary { font-size: var(--type-amount-primary); }
+.financial-value.financial-value--hero { font-size: var(--type-hero); font-weight: var(--weight-strong); line-height: 1.1; letter-spacing: -0.025em; }
+.financial-value.financial-value--summary { font-size: var(--type-amount-primary); font-weight: var(--weight-strong); letter-spacing: -0.02em; }
 .financial-value.financial-value--entity { font-size: var(--type-value-entity); }
 .financial-value.financial-value--row { font-size: var(--type-value-row); }
 .financial-value.financial-value--supporting { font-size: var(--type-amount-supporting); font-weight: var(--weight-medium); }

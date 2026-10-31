@@ -1,4 +1,4 @@
-﻿/* Record structure is shared; domains own cell content and financial meaning. */
+/* Record structure is shared; domains own cell content and financial meaning. */
 .list-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:8px 16px; margin-block:12px; min-width:0; }
 .list-toolbar > .filter-row { min-width:0; padding-bottom:0; margin:0; flex-wrap:wrap; }
 .list-toolbar > .finance-history-toggle { margin:0; min-height:36px; }
@@ -11,18 +11,42 @@
 .list-toolbar-options .disclosure-label { display:flex; flex-wrap:wrap; gap:4px 8px; }
 .list-toolbar-options .disclosure-summary { color:var(--warning); font-size:var(--type-meta); }
 .list-sort-control > select { min-width:0; flex:0 1 auto; }
-.financial-table-container { width:100%; min-width:0; }
-.financial-data-table { width:100%; border-collapse:collapse; font-size:var(--type-helper); line-height:1.4; table-layout:auto; }
-.financial-data-table th { text-align:left; color:var(--muted); font-weight:var(--weight-medium); background:var(--neutral-soft); padding:9px 10px; }
-.financial-data-table td { padding:12px 10px; border-bottom:1px solid var(--line); vertical-align:middle; overflow-wrap:anywhere; }
-.financial-data-table tr:last-child td { border-bottom:0; }
-.financial-data-table tbody tr:hover, .financial-data-table tbody tr:focus-within { background:#f8fafb; }
+.financial-table-container, .u-table-wrap { width:100%; min-width:0; max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; }
+.financial-data-table, .u-table { width:100%; border-collapse:collapse; font-size:13.5px; line-height:1.4; table-layout:auto; }
+.financial-data-table thead th, .u-table thead th { text-align:left; font-size:12px; color:#526372; font-weight:var(--weight-semibold); letter-spacing:.01em; background:transparent; padding:8px 12px; border-bottom:1px solid #d8e1e8; white-space:nowrap; }
+.u-table thead th:not(:first-child):not([data-align="left"]) { text-align:right; }
+.financial-data-table th:first-child, .financial-data-table td:first-child, .u-table th:first-child, .u-table td:first-child { padding-left:0; text-align:left; }
+.financial-data-table th:last-child, .financial-data-table td:last-child, .u-table th:last-child, .u-table td:last-child { padding-right:0; }
+.financial-data-table td, .u-table td, .u-table tbody th { padding:10px 12px; border-bottom:1px solid #e7edf2; vertical-align:middle; }
+.financial-data-table td { overflow-wrap:anywhere; }
+.u-table tbody th { font-weight:var(--weight-medium); color:var(--ink); text-align:left; }
+.u-table tbody td:not([data-align="left"]), .u-table tfoot td:not([data-align="left"]) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:var(--weight-semibold); }
+.u-table [data-align="left"] { text-align:left; white-space:normal; font-weight:var(--weight-regular); color:#526372; }
+.financial-data-table tbody tr:last-child > :is(td, th), .u-table tbody tr:last-child > :is(td, th) { border-bottom:0; }
+.u-table:has(tfoot) tbody tr:last-child > :is(td, th) { border-bottom:1px solid #d8e1e8; }
+.u-table tfoot th, .u-table tfoot td { padding:10px 12px 4px; font-weight:var(--weight-strong); color:var(--ink); border-bottom:0; }
+.u-table tfoot th { text-align:left; padding-left:0; }
+.u-table tfoot td:last-child { padding-right:0; }
+.financial-data-table tbody tr:hover > :is(td, th), .financial-data-table tbody tr:focus-within > :is(td, th), .u-table tbody tr:hover > :is(td, th) { background:#f9fbfd; }
 .financial-data-table tr[data-actionable="true"] { cursor:pointer; }
 .record-title-button { display:block; max-width:100%; padding:0; border:0; background:transparent; color:var(--ink); font:inherit; font-weight:var(--weight-semibold); text-align:left; overflow-wrap:anywhere; cursor:inherit; }
 .automation-occurrence[data-actionable="true"] { cursor:pointer; }
-.financial-data-table [data-numeric="true"] { text-align:right; font-variant-numeric:tabular-nums; }
-.financial-data-table td > strong { display:block; font-weight:var(--weight-semibold); }
-.financial-data-table td > small, .financial-data-table td > span > small { display:block; color:var(--muted); margin-top:3px; }
+.financial-data-table [data-numeric="true"] { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.financial-data-table td > strong, .u-table th > strong, .u-table td > strong { font-weight:var(--weight-semibold); color:var(--ink); }
+.financial-data-table td > strong { display:block; }
+.financial-data-table td > small, .financial-data-table td > span > small, .u-cell-sub { display:block; font-size:12px; font-weight:var(--weight-regular); color:#647483; margin-top:2px; line-height:1.35; }
+.u-pill { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; font-style:normal; font-size:11px; font-weight:var(--weight-semibold); background:#eef3f7; color:#475867; vertical-align:middle; white-space:nowrap; }
+.u-pill[data-tone="warning"], .u-pill[data-status="Berjalan"] { background:#fff4de; color:#85530a; }
+.u-pill[data-tone="credit"] { background:#fff1ec; color:#b54324; }
+.u-pill[data-tone="positive"] { background:#eaf6f2; color:#087761; }
+.u-subgrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 28px; align-items:start; min-width:0; }
+.u-table-section { min-width:0; }
+.u-table-title { margin:0 0 6px; font-size:13px; font-weight:var(--weight-semibold); color:var(--ink); }
+.u-inline-bar { width:72px; height:6px; border-radius:999px; background:#eaf0f4; overflow:hidden; display:inline-block; vertical-align:middle; }
+.u-inline-bar > span { display:block; height:100%; border-radius:inherit; background:#557ba0; }
+.u-inline-bar > span[data-tone="negative"] { background:#c34545; }
+.u-inline-bar > span[data-tone="positive"] { background:#09836b; }
+@media (max-width:900px) { .u-subgrid { grid-template-columns:minmax(0,1fr); gap:16px; } }
 .financial-data-table time { color:var(--muted); font-size:var(--type-helper); }
 .financial-data-table .financial-value { white-space:nowrap; overflow-wrap:normal; }
 .financial-data-table [data-kind="income"] { color:var(--positive); }

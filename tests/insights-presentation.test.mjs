@@ -102,7 +102,7 @@ test('true empty reports have zero bars, useful empty states and no fictional va
  const output=html(r);assert.match(output,/Belum ada transaksi tercatat pada periode ini/);assert.match(output,/Belum ada belanja Expense/);assert.match(output,/height="0"/);assert.doesNotMatch(output,/Pratinjau|ilustrasi|39\.900\.000/);assert.equal(p.categoryShares([]).totalMinor,'0');
 });
 test('charts expose exact tooltips, keyboard targets, aligned interval table and interval selection',()=>{
- const output=html();assert.match(output,/role="button" tabindex="0"/);assert.match(output,/aria-pressed=/);assert.match(output,/<title>5 Okt 2026 – 11 Okt 2026, Berjalan: pemasukan Rp1\.000\.000/);assert.match(output,/<table class="insight-interval-table">/);assert.match(output,/<caption>/);assert.match(output,/scope="col"/);assert.match(output,/Rincian minggu/);assert.match(output,/<details/);
+ const output=html();assert.match(output,/role="button" tabindex="0"/);assert.match(output,/aria-pressed=/);assert.match(output,/<title>5 Okt 2026 – 11 Okt 2026, Berjalan: pemasukan Rp1\.000\.000/);assert.match(output,/<table class="u-table insight-interval-table">/);assert.match(output,/<caption>/);assert.match(output,/scope="col"/);assert.match(output,/Rincian minggu/);assert.match(output,/<details/);
 });
 test('annual SSR selects current interval with calendar descriptions and single disclosure indicators',()=>{
  const r=fixture();r.period=reportingPeriod({kind:'current_year'},now);r.monthly=Array.from({length:12},(_,i)=>row(`2026-${String(i+1).padStart(2,'0')}`,{incomeMinor:i===9?'1000000':'0',spendingMinor:i===9?'109000':'0',netMinor:i===9?'891000':'0',activityCount:i===9?'2':'0'}));
@@ -184,7 +184,7 @@ test('money has visible grouping fallback; only charts/tables and carousel retai
 test('primary expanded details are siblings; switching interval/category changes only their shared full-width content',()=>{
  const closed=desktopHtml(),intervals=desktopHtml(fixture(),{'Grafik pemasukan dan kategori':'intervals'}),categories=desktopHtml(fixture(),{'Grafik pemasukan dan kategori':'categories'});
  const summaries=output=>(output.match(/<section class="surface insight-panel insight-summary-card"[\s\S]*?<\/section>/g)||[]).map(card=>card.replaceAll('aria-expanded="true"','aria-expanded="false"'));
- assert.deepEqual(summaries(intervals),summaries(closed));assert.deepEqual(summaries(categories),summaries(closed));assert.equal((intervals.match(/class="insight-detail-content"/g)||[]).length,1);assert.match(intervals,/<table class="insight-interval-table">/);assert.doesNotMatch(categories,/insight-interval-table/);assert.match(categories,/Persentase dihitung dari total seluruh pengeluaran efektif/);assert.match(categories,/Tanpa kategori/);assert.match(categories,/Kategori lama/);assert.match(categories,/Biaya admin pada transaksi Transfer/);assert.match(categories,/Biaya layanan pada Transfer/);assert.match(categories,/91,74%/);
+ assert.deepEqual(summaries(intervals),summaries(closed));assert.deepEqual(summaries(categories),summaries(closed));assert.equal((intervals.match(/class="insight-detail-content"/g)||[]).length,1);assert.match(intervals,/<table class="u-table insight-interval-table">/);assert.doesNotMatch(categories,/insight-interval-table/);assert.match(categories,/Persentase dihitung dari total seluruh pengeluaran efektif/);assert.match(categories,/Tanpa kategori/);assert.match(categories,/Kategori lama/);assert.match(categories,/Biaya admin pada transaksi Transfer/);assert.match(categories,/Biaya layanan pada Transfer/);assert.match(categories,/91,74%/);
 });
 test('desktop account and investment details preserve financial content with one active detail per pair',()=>{
  const r=fixture(),before=JSON.stringify(r);
@@ -246,7 +246,7 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(mobOut,/Internet Rumah/);
  assert.match(mobOut,/Pengeluaran terbesar/);
  assert.match(mobOut,/patungan padel/);
- assert.match(mobOut,/insight-credit-chip">Kredit<\/em>/);
+ assert.match(mobOut,/insight-credit-chip"[^>]*>Kredit<\/em>/);
  assert.doesNotMatch(mobOut,/PayLater &amp; Tagihan|Simpan kategori|\bP3\b|\bP4\b/);
  assert.match(mobOut,/insight-mobile-gatekeep/);
  assert.doesNotMatch(mobOut,/Arus Kas &amp; Pola Keuangan/);
@@ -261,5 +261,21 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(deskOut,/Lainnya \(4 pos\)/);
  assert.doesNotMatch(deskOut,/insight-entry-sub/);
  const expandedCat=desktopHtml(r,{'Grafik pemasukan dan kategori':'categories'});
- assert.match(expandedCat,/insight-entry-sub/);
+ assert.match(expandedCat,/class="u-table"/);
+ assert.match(expandedCat,/class="u-cell-sub"/);
+
+ // Universal adaptive table system & bold hero KPIs across summary, accounts, assets, credit, and top expenses
+ assert.match(deskOut,/financial-value--summary/);
+ assert.match(deskOut,/Perbandingan vs/);
+ assert.match(deskOut,/Komponen belanja &amp; aktivitas/);
+ const expandedAcc=desktopHtml(r,{'Mutasi akun dan posisi aset':'accounts'});
+ assert.match(expandedAcc,/<table class="u-table" aria-label="Rincian mutasi per akun">/);
+ const expandedInv=desktopHtml(r,{'Mutasi akun dan posisi aset':'investments'});
+ assert.match(expandedInv,/Posisi kas &amp; aset saat ini/);
+ assert.match(expandedInv,/Valuasi &amp; transaksi investasi/);
+ const typoCss=fs.readFileSync(new URL('../src/app/typography.css',import.meta.url),'utf8');
+ const dataCss=fs.readFileSync(new URL('../src/app/data-presentation.css',import.meta.url),'utf8');
+ assert.match(typoCss,/\.financial-value\.financial-value--summary\s*\{[\s\S]*?font-weight:\s*var\(--weight-strong\)/);
+ assert.match(dataCss,/\.u-table\b/);
+ assert.match(dataCss,/\.u-subgrid\b/);
 });

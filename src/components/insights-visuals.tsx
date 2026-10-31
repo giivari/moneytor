@@ -243,19 +243,19 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
           <dl className="insight-interval-values" aria-live="polite">
             <div>
               <dt>Pemasukan</dt>
-              <dd>
+              <dd className={BigInt(active.incomeMinor) === 0n ? "insight-zero-muted" : "insight-positive"}>
                 <FinancialAmount value={money(active.incomeMinor)} as="span" />
               </dd>
             </div>
             <div>
               <dt>Belanja</dt>
-              <dd>
+              <dd className={BigInt(active.spendingMinor) === 0n ? "insight-zero-muted" : "insight-negative"}>
                 <FinancialAmount value={money(active.spendingMinor)} as="span" />
               </dd>
             </div>
             <div>
               <dt>Net operasional</dt>
-              <dd className={BigInt(active.netMinor) < 0n ? "insight-negative" : "insight-positive"}>
+              <dd className={BigInt(active.netMinor) < 0n ? "insight-negative" : BigInt(active.netMinor) > 0n ? "insight-positive" : "insight-zero-muted"}>
                 <FinancialAmount value={money(active.netMinor)} as="span" />
               </dd>
             </div>
@@ -286,8 +286,8 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
   }
   return (
     <div className="insight-interval-list-wrap">
-      <div className="insight-chart-scroll" tabIndex={0} role="region" aria-label="Tabel rincian per interval">
-        <table className="insight-interval-table">
+      <div className="u-table-wrap insight-chart-scroll" tabIndex={0} role="region" aria-label="Tabel rincian per interval">
+        <table className="u-table insight-interval-table">
           <caption>Pemasukan, belanja, dan net operasional ({model.currency})</caption>
           <thead>
             <tr>
@@ -307,9 +307,9 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
                 <tr key={row.key}>
                   <th scope="row">
                     <strong>{row.label}</strong>
-                    <small className="insight-interval-badge" data-status={state}>
+                    <em className="u-pill" data-status={state}>
                       {state}
-                    </small>
+                    </em>
                   </th>
                   <td className={inc === 0n ? "insight-zero-muted" : "insight-positive"}>
                     {model.money(row.incomeMinor)}
@@ -339,22 +339,15 @@ function renderCompositionRow(
     "key" | "name" | "archived" | "badge" | "subtitle" | "spendingMinor" | "currency" | "exponent" | "shareBps"
   >,
   color?: string,
-  detailed = false,
 ) {
   return (
-    <li key={row.key} className={detailed ? "insight-comp-row--detailed" : "insight-comp-row--compact"}>
+    <li key={row.key} className="insight-comp-row--compact">
       <span className="insight-comp-name">
         {color && <i style={{ background: color }} />}
         <span className="insight-comp-label">
           {row.name}
           {row.archived ? " · Diarsipkan" : ""}
         </span>
-        {detailed && row.badge && (
-          <em className="insight-fee-badge" data-kind={row.badge.toLowerCase()}>
-            {row.badge}
-          </em>
-        )}
-        {detailed && row.subtitle && <small className="insight-entry-sub">{row.subtitle}</small>}
       </span>
       <strong>
         <FinancialAmount as="span" value={formatMinor(row.spendingMinor, row.currency, row.exponent)} />
@@ -461,10 +454,10 @@ export function InsightsComposition({
             </svg>
             <div>
               <span className="insight-note">Total pengeluaran</span>
-              <FinancialAmount value={formatMinor(total, first.currency, first.exponent)} className="insight-money" />
+              <FinancialAmount value={formatMinor(total, first.currency, first.exponent)} level="summary" className="insight-money" />
             </div>
           </div>
-          <ol className="insight-visual-ranking">{displayRows.map(({ row, color }) => renderCompositionRow(row, color, false))}</ol>
+          <ol className="insight-visual-ranking">{displayRows.map(({ row, color }) => renderCompositionRow(row, color))}</ol>
           {inlineDetails && hasHiddenRows && (
             <details className="insight-inline-detail">
               <summary>Semua kategori &amp; biaya ({sorted.length})</summary>
@@ -481,7 +474,6 @@ export function InsightsCategoryDetails({ rows, charges = [] }: { rows: Dimensio
   const shares = compositionShares(rows, charges);
   const sorted = shares.rows;
   const first = sorted[0];
-  const chargesTotal = BigInt(shares.chargesTotalMinor);
   if (!first || BigInt(shares.totalMinor) === 0n) {
     return <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p>;
   }
@@ -495,41 +487,101 @@ export function InsightsCategoryDetails({ rows, charges = [] }: { rows: Dimensio
 
   return (
     <>
-      {chargesTotal > 0n && (
-        <p className="insight-note">
-          Pokok kategori {formatMinor(shares.principalTotalMinor, first.currency, first.exponent)} + Biaya &amp; pajak{" "}
-          {formatMinor(chargesTotal, first.currency, first.exponent)}.
-        </p>
-      )}
-      <ol className="insight-visual-ranking">{sorted.map((row) => renderCompositionRow(row, undefined, true))}</ol>
-      {charges.length > 0 && (
-        <dl className="insight-lines">
-          <div>
-            <dt>Administrasi / layanan</dt>
-            <dd>
-              <FinancialAmount as="span" value={formatMinor(fees.serviceMinor, first.currency, first.exponent)} />
-            </dd>
+      <div className={charges.length > 0 ? "u-subgrid" : undefined}>
+        <div className="u-table-section">
+          {charges.length > 0 && <h4 className="u-table-title">Rincian pos pengeluaran</h4>}
+          <div className="u-table-wrap">
+            <table className="u-table" aria-label="Rincian kategori dan biaya">
+              <thead>
+                <tr>
+                  <th scope="col">Pos pengeluaran</th>
+                  <th scope="col">Nominal</th>
+                  <th scope="col">Porsi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((row) => {
+                  const isZero = BigInt(row.spendingMinor) === 0n;
+                  return (
+                    <tr key={row.key}>
+                      <th scope="row">
+                        <strong>{row.name}</strong>
+                        {row.archived && <em className="u-pill">Diarsipkan</em>}
+                        {row.badge && (
+                          <em className="u-pill" data-tone={row.badge === "Pajak" ? "warning" : undefined}>
+                            {row.badge}
+                          </em>
+                        )}
+                        {row.subtitle && <small className="u-cell-sub insight-entry-sub">{row.subtitle}</small>}
+                      </th>
+                      <td className={isZero ? "insight-zero-muted" : ""}>
+                        <FinancialAmount as="span" value={formatMinor(row.spendingMinor, row.currency, row.exponent)} />
+                      </td>
+                      <td className="insight-zero-muted">{percentageLabel(row.shareBps)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <div>
-            <dt>Biaya layanan pada Transfer</dt>
-            <dd>
-              <FinancialAmount as="span" value={formatMinor(fees.transferMinor, first.currency, first.exponent)} />
-            </dd>
+        </div>
+
+        {charges.length > 0 && (
+          <div className="u-table-section">
+            <h4 className="u-table-title">Rekapitulasi pokok &amp; biaya</h4>
+            <div className="u-table-wrap">
+              <table className="u-table" aria-label="Rekapitulasi pokok dan biaya">
+                <thead>
+                  <tr>
+                    <th scope="col">Kelompok</th>
+                    <th scope="col">Nominal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">Pokok kategori</th>
+                    <td>
+                      <FinancialAmount as="span" value={formatMinor(shares.principalTotalMinor, first.currency, first.exponent)} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Administrasi / layanan</th>
+                    <td className={BigInt(fees.serviceMinor) === 0n ? "insight-zero-muted" : ""}>
+                      <FinancialAmount as="span" value={formatMinor(fees.serviceMinor, first.currency, first.exponent)} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Biaya layanan pada Transfer</th>
+                    <td className={BigInt(fees.transferMinor) === 0n ? "insight-zero-muted" : ""}>
+                      <FinancialAmount as="span" value={formatMinor(fees.transferMinor, first.currency, first.exponent)} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Pajak</th>
+                    <td className={taxesMinor === 0n ? "insight-zero-muted" : ""}>
+                      <FinancialAmount as="span" value={formatMinor(taxesMinor, first.currency, first.exponent)} />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Biaya lainnya</th>
+                    <td className={otherChargesMinor === 0n ? "insight-zero-muted" : ""}>
+                      <FinancialAmount as="span" value={formatMinor(otherChargesMinor, first.currency, first.exponent)} />
+                    </td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th scope="row">Total pengeluaran</th>
+                    <td>
+                      <FinancialAmount as="span" value={formatMinor(shares.totalMinor, first.currency, first.exponent)} />
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
-          <div>
-            <dt>Pajak</dt>
-            <dd>
-              <FinancialAmount as="span" value={formatMinor(taxesMinor, first.currency, first.exponent)} />
-            </dd>
-          </div>
-          <div>
-            <dt>Biaya lainnya</dt>
-            <dd>
-              <FinancialAmount as="span" value={formatMinor(otherChargesMinor, first.currency, first.exponent)} />
-            </dd>
-          </div>
-        </dl>
-      )}
+        )}
+      </div>
       <p className="insight-note">
         Persentase dihitung dari total seluruh pengeluaran efektif. Biaya Transfer sudah termasuk dalam total belanja, bukan tambahan lagi. Pokok Transfer antar akun sendiri tidak termasuk.
       </p>
