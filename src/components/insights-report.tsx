@@ -60,7 +60,7 @@ export function InsightsReportView({ report, currency, periodKind = "current_mon
       </details>
       {summary.activityCount === "0" && <p className="insight-empty">Belum ada transaksi P3 efektif pada periode ini. Konteks aset dan investasi tetap ditampilkan jika tersedia.</p>}
     </section>
-    <InsightsPrimary report={report} currency={currency} exponent={summary.exponent} selection={monthSelection} slides={slideSelection} categories={data.categories.rows} origins={data.origins} granularity={granularity} />
+    <InsightsPrimary report={report} currency={currency} exponent={summary.exponent} selection={monthSelection} slides={slideSelection} categories={data.categories.rows} charges={data.charges} origins={data.origins} granularity={granularity} />
     <InsightsFinancialSuite report={report} currency={currency} exponent={summary.exponent} granularity={granularity} onRefreshReport={onRefreshReport} />
     <InsightsSecondary items={[
       { key: "fees", title: "Biaya & pajak", summary: `${formatMinor(summary.chargesMinor, currency, summary.exponent)} · Sudah termasuk dalam belanja`, action: "Rincian biaya & pajak", content: <>

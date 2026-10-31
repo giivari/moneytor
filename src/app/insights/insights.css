@@ -276,6 +276,10 @@
 .insights-page .insight-uncategorized-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; min-width: 0; }
 .insights-page .insight-uncategorized-actions .inline-catalog-select { flex: 1 1 200px; min-width: 0; }
 .insights-page .insight-uncategorized-actions .field { margin: 0; }
+.insights-page .insight-composition-subnote { display: block; margin-top: 4px; font-size: 12px; color: #526372; line-height: 1.45; }
+.insights-page .insight-fee-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-style: normal; font-size: 11px; font-weight: 600; background: #eef3f7; color: #365068; vertical-align: middle; }
+.insights-page .insight-fee-badge[data-kind="pajak"] { background: #fdf2e4; color: #80520b; }
+.insights-page .insight-visual-ranking span .insight-entry-sub { display: block; margin-top: 3px; font-size: 12px; color: #526372; font-weight: 400; }
 
 @media (max-width: 960px) {
   .insights-page .insight-cashflow-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }

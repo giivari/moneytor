@@ -112,7 +112,7 @@ export async function readExpenseItems(client: PoolClient, period: ReportingPeri
     sourceName: string;
     note: string | null;
     origin: AnalyticsExpenseItem["origin"];
-    charges: { typeId: string; amountMinor: string }[];
+    charges: { typeId: string; name?: string; amountMinor: string }[];
   }>(`
     WITH RECURSIVE selected AS MATERIALIZED (
       SELECT * FROM financial_activities WHERE status='posted' AND kind='expense' AND occurred_at >= $1 AND occurred_at < $2
@@ -132,8 +132,8 @@ export async function readExpenseItems(client: PoolClient, period: ReportingPeri
       FROM lineage l LEFT JOIN receipts r ON r.id=l.ancestor GROUP BY l.id
     ), charges AS (
       SELECT ac.activity_id,sum(ac.amount_minor::numeric) AS total,
-        COALESCE(jsonb_agg(jsonb_build_object('typeId', ac.charge_type_id::text, 'amountMinor', ac.amount_minor::text) ORDER BY ac.id), '[]'::jsonb) AS list
-      FROM activity_charges ac JOIN selected f ON f.id=ac.activity_id GROUP BY ac.activity_id
+        COALESCE(jsonb_agg(jsonb_build_object('typeId', ac.charge_type_id::text, 'name', t.display_name, 'amountMinor', ac.amount_minor::text) ORDER BY ac.id), '[]'::jsonb) AS list
+      FROM activity_charges ac JOIN selected f ON f.id=ac.activity_id JOIN additional_charge_types t ON t.id=ac.charge_type_id GROUP BY ac.activity_id
     )
     SELECT f.id::text AS id, f.occurred_at AS "occurredAt", f.currency_code AS currency, c.minor_unit_exponent AS exponent,
       f.base_amount_minor::text AS "baseAmountMinor", COALESCE(ch.total,0)::text AS "chargesMinor",

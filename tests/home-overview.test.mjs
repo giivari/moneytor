@@ -61,7 +61,7 @@ const fixture = () => ({throughDay:'2026-11-10',planningReady:true,currencies:[e
 function analyticsFixture() {
  const now=new Date('2026-10-11T08:00:00Z'), period=reportingPeriod({kind:'monthly_trend',months:6},now);
  const measures={currency:'IDR',exponent:0,incomeMinor:'1000000',expensePrincipalMinor:'1231500',spendingMinor:'1232500',netMinor:'-232500',feesMinor:'1000',taxesMinor:'0',otherChargesMinor:'0',transferFeesMinor:'1000',chargesMinor:'1000',transferPrincipalMinor:'100000',activityCount:'3',incomeCount:'1',expenseCount:'1',transferCount:'1'};
- return {version:'p6a.v1',generatedAt:now.toISOString(),period,summary:[measures],byCategory:[{...measures,key:'uncategorized',id:null,name:'Tanpa kategori',archived:false,spendingMinor:'1231500'}],byAccount:[],byOrigin:[],charges:[],investmentFlows:[],daily:[],
+ return {version:'p6a.v1',generatedAt:now.toISOString(),period,summary:[measures],byCategory:[{...measures,key:'uncategorized',id:null,name:'Tanpa kategori',archived:false,spendingMinor:'1231500'}],byAccount:[],byOrigin:[],charges:[{currency:'IDR',exponent:0,typeId:'tf',name:'Biaya transfer',systemKey:'transfer_fee',bucket:'fee',archived:false,activityKind:'transfer',amountMinor:'1000',chargeCount:'1'}],investmentFlows:[],daily:[],
   monthly:monthKeys(period).map(key=>({...measures,key,id:null,name:key,archived:false,...(key==='2026-10'?{}:{incomeMinor:'0',spendingMinor:'0',netMinor:'0',activityCount:'0'})})),
   comparison:{period:previousPeriod({kind:'monthly_trend',months:6},period,now),currencies:[],partialComparison:true,method:'full_previous_period'},context:null};
 }
@@ -244,7 +244,7 @@ test('Home reuses real P6A trend/category report with visible scope and exact, i
  assert.match(output,/Periode berjalan/); assert.match(output,/Tanpa kategori/);
  assert.match(output,/Tren IDR/); assert.match(output,/viewBox="0 0 600 140"/);
  assert.match(output,/pemasukan Rp1\.000\.000, belanja Rp1\.232\.500, net −Rp232\.500/i);
- assert.match(output,/total Rp1\.231\.500/); // category excludes Transfer fee
+ assert.match(output,/total Rp1\.232\.500/); assert.match(output,/Biaya admin pada transaksi Transfer/);
  assert.match(output,/role="button" tabindex="0"/); // only chart selection is interactive
  assert.doesNotMatch(output,/home-mobile-access|insight-interval-picker|<table/);
  assert.deepEqual({snapshot,report},before);

@@ -2,9 +2,9 @@
 
 import { useId, useState } from "react";
 import type { AnalyticsGranularity } from "@/lib/analytics/periods";
-import type { AnalyticsReport, DimensionRow } from "@/lib/analytics/types";
+import type { AnalyticsReport, ChargeReport, DimensionRow } from "@/lib/analytics/types";
 import { compactAxisMoney, inclusiveEndDay, originLabel, percentageLabel, plotPercent } from "@/lib/analytics/presentation";
-import { initialVisualInterval, spendingShares, visualIntervalAxis, visualIntervalState, visualTrend } from "@/lib/analytics/visuals";
+import { compositionShares, initialVisualInterval, spendingShares, visualIntervalAxis, visualIntervalState, visualTrend, type CompositionEntry } from "@/lib/analytics/visuals";
 import { formatMinor } from "@/lib/finance/format";
 import { SectionHeading } from "./section-heading";
 import type { InsightsMonthSelection } from "./use-insights-month";
@@ -12,10 +12,6 @@ import { useInsightsViewport } from "./use-insights-viewport";
 import { FinancialAmount } from "./financial-amount";
 
 const colors = ["#526f99", "#6c5b98", "#357c85", "#8c6943", "#747b86", "#44535f"];
-function categoryShares(rows: DimensionRow[]) {
-  const shares = spendingShares(rows);
-  return { ...shares, rows: [...shares.rows].sort((a, b) => BigInt(a.spendingMinor) === BigInt(b.spendingMinor) ? a.name.localeCompare(b.name) : BigInt(a.spendingMinor) > BigInt(b.spendingMinor) ? -1 : 1) };
-}
 type VisualTrendProps = { report: AnalyticsReport; currency: string; exponent: number; selection?: InsightsMonthSelection; dashboard?: boolean; granularity?: AnalyticsGranularity };
 export function useInsightsVisualTrend({ report, currency, exponent, selection, dashboard = false, granularity = "auto" }: VisualTrendProps) {
   const viewport = useInsightsViewport();
@@ -104,32 +100,57 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
   return <dl className="insight-interval-table">{model.data.fullIntervals.map((row) => <div key={row.key}><dt>{row.label} · {visualIntervalState(row, model.report)}</dt><dd>Pemasukan {model.money(row.incomeMinor)} · Belanja {model.money(row.spendingMinor)} · Net {model.money(row.netMinor)}</dd></div>)}</dl>;
 }
 
-export function InsightsComposition({ rows, inlineDetails = true }: { rows: DimensionRow[]; inlineDetails?: boolean }) {
-  const shares = categoryShares(rows), id = useId();
+function renderCompositionRow(row: CompositionEntry, color?: string) {
+  return (
+    <li key={row.key}>
+      <span>
+        {color && <i style={{ background: color }} />}
+        {row.name}
+        {row.archived ? " · Diarsipkan" : ""}
+        {row.badge && <em className="insight-fee-badge" data-kind={row.badge.toLowerCase()}>{row.badge}</em>}
+        {row.subtitle && <small className="insight-entry-sub">{row.subtitle}</small>}
+      </span>
+      <strong>
+        <FinancialAmount as="span" value={formatMinor(row.spendingMinor, row.currency, row.exponent)} />
+        <small>{percentageLabel(row.shareBps)}</small>
+      </strong>
+    </li>
+  );
+}
+
+export function InsightsComposition({ rows, charges, inlineDetails = true }: { rows: DimensionRow[]; charges?: ChargeReport[]; inlineDetails?: boolean }) {
+  const shares = compositionShares(rows, charges), id = useId();
   const sorted = shares.rows;
-  const total = BigInt(shares.totalMinor), first = rows[0];
+  const active = sorted.filter((row) => BigInt(row.spendingMinor) > 0n);
+  const colorMap = new Map(active.map((row, index) => [row.key, colors[index % colors.length]]));
+  const topSlice = active.slice(0, 3);
+  const extraCharges = active.slice(3).filter((row) => row.kind === "charge");
+  const visibleRows = [...topSlice, ...extraCharges];
+  const total = BigInt(shares.totalMinor), first = sorted[0];
+  const chargesTotal = BigInt(shares.chargesTotalMinor);
   return <>
-    <SectionHeading title="Komposisi belanja" helper="Expense + biaya terlampir. Pokok & Biaya Transfer tidak termasuk." />
+    <SectionHeading title="Komposisi belanja" helper="Pokok pengeluaran per kategori beserta rincian biaya admin, transfer & pajak." />
     {!first || total === 0n ? <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p> : <>
       <div className="insight-composition"><svg viewBox="0 0 160 160" role="img" aria-labelledby={`${id}-title`}>
-        <title id={`${id}-title`}>{`Komposisi kategori; total ${formatMinor(total, first.currency, first.exponent)}. Rincian nominal dan persentase tersedia di bawah.`}</title>
+        <title id={`${id}-title`}>{`Komposisi belanja & biaya; total ${formatMinor(total, first.currency, first.exponent)}. Rincian nominal dan persentase tersedia di bawah.`}</title>
         <circle cx="80" cy="80" r="60" fill="none" stroke="#e8edf1" strokeWidth="24" />
-        {sorted.filter((row) => BigInt(row.spendingMinor) > 0n).map((row, index) => {
-          const offset = sorted.slice(0, index).reduce((amount, item) => amount + BigInt(item.spendingMinor), 0n);
-          return <circle key={row.key} cx="80" cy="80" r="60" pathLength="100" fill="none" stroke={colors[index % colors.length]} strokeWidth="24" strokeDasharray={`${row.percent} ${100 - row.percent}`} strokeDashoffset={-plotPercent(offset, total)} transform="rotate(-90 80 80)"><title>{`${row.name}: ${formatMinor(row.spendingMinor, row.currency, row.exponent)} (${percentageLabel(row.shareBps)})`}</title></circle>;
+        {active.map((row, index) => {
+          const offset = active.slice(0, index).reduce((amount, item) => amount + BigInt(item.spendingMinor), 0n);
+          const detail = row.subtitle ? ` — ${row.subtitle}` : "";
+          return <circle key={row.key} cx="80" cy="80" r="60" pathLength="100" fill="none" stroke={colors[index % colors.length]} strokeWidth="24" strokeDasharray={`${row.percent} ${100 - row.percent}`} strokeDashoffset={-plotPercent(offset, total)} transform="rotate(-90 80 80)"><title>{`${row.name}${detail}: ${formatMinor(row.spendingMinor, row.currency, row.exponent)} (${percentageLabel(row.shareBps)})`}</title></circle>;
         })}
-        <text x="80" y="77" textAnchor="middle" className="insight-donut-label">{sorted.filter((row) => BigInt(row.spendingMinor) > 0n).length}</text><text x="80" y="97" textAnchor="middle" className="insight-axis">kategori</text>
-      </svg><div><span className="insight-note">Total cakupan kategori</span><FinancialAmount value={formatMinor(total, first.currency, first.exponent)} className="insight-money" /></div></div>
-      <ol className="insight-visual-ranking">{sorted.slice(0, 3).map((row, index) => <li key={row.key}><span><i style={{ background: colors[index % colors.length] }} />{row.name}{row.archived ? " · Diarsipkan" : ""}</span><strong><FinancialAmount as="span" value={formatMinor(row.spendingMinor, row.currency, row.exponent)} /><small>{percentageLabel(row.shareBps)}</small></strong></li>)}</ol>
-      {inlineDetails && <details className="insight-inline-detail"><summary>Semua kategori ({rows.length})</summary><InsightsCategoryDetails rows={rows} /></details>}
+        <text x="80" y="77" textAnchor="middle" className="insight-donut-label">{active.length}</text><text x="80" y="97" textAnchor="middle" className="insight-axis">pos belanja</text>
+      </svg><div><span className="insight-note">Total pengeluaran & biaya</span><FinancialAmount value={formatMinor(total, first.currency, first.exponent)} className="insight-money" />{chargesTotal > 0n && <small className="insight-composition-subnote">Pokok {formatMinor(shares.principalTotalMinor, first.currency, first.exponent)} + Biaya/pajak {formatMinor(chargesTotal, first.currency, first.exponent)}</small>}</div></div>
+      <ol className="insight-visual-ranking">{visibleRows.map((row) => renderCompositionRow(row, colorMap.get(row.key)))}</ol>
+      {inlineDetails && <details className="insight-inline-detail"><summary>Semua kategori & biaya ({sorted.length})</summary><InsightsCategoryDetails rows={rows} charges={charges} /></details>}
     </>}
   </>;
 }
 
-export function InsightsCategoryDetails({ rows }: { rows: DimensionRow[] }) {
-  const shares = categoryShares(rows), sorted = shares.rows;
+export function InsightsCategoryDetails({ rows, charges }: { rows: DimensionRow[]; charges?: ChargeReport[] }) {
+  const shares = compositionShares(rows, charges), sorted = shares.rows;
   if (BigInt(shares.totalMinor) === 0n) return <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p>;
-  return <><ol className="insight-visual-ranking">{sorted.map((row) => <li key={row.key}><span>{row.name}{row.archived ? " · Diarsipkan" : ""}</span><strong><FinancialAmount as="span" value={formatMinor(row.spendingMinor, row.currency, row.exponent)} /><small>{percentageLabel(row.shareBps)}</small></strong></li>)}</ol><p className="insight-note">Persentase memakai total cakupan kategori, bukan total belanja termasuk Transfer. Pembulatan dapat membuat jumlah persentase berbeda sedikit dari 100%.</p></>;
+  return <><ol className="insight-visual-ranking">{sorted.map((row) => renderCompositionRow(row))}</ol><p className="insight-note">Persentase dihitung dari total seluruh pengeluaran efektif (pokok belanja per kategori + rincian biaya admin, biaya layanan, biaya transfer, dan pajak). Pokok Transfer antar akun sendiri tidak termasuk. Pembulatan dapat membuat jumlah persentase berbeda sedikit dari 100%.</p></>;
 }
 
 export function InsightsOrigins({ rows }: { rows: DimensionRow[] }) {

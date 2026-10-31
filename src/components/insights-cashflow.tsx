@@ -13,7 +13,7 @@ import {
   plotPercent,
   signedMoney,
 } from "@/lib/analytics/presentation";
-import { incomeShares, visualIntervalAxis, visualTrend } from "@/lib/analytics/visuals";
+import { describeChargeItem, incomeShares, visualIntervalAxis, visualTrend } from "@/lib/analytics/visuals";
 import { financeRequest } from "@/lib/finance/client";
 import { formatMinor } from "@/lib/finance/format";
 import { FinancialAmount } from "./financial-amount";
@@ -98,7 +98,7 @@ function ExpenseCategoryEditor({
           note: item.note ?? undefined,
           sourceAssetId: item.sourceAssetId,
           categoryId,
-          charges: item.charges,
+          charges: item.charges.map((charge) => ({ typeId: charge.typeId, amountMinor: charge.amountMinor })),
         },
       });
       notify("Kategori transaksi berhasil diperbarui.");
@@ -138,6 +138,9 @@ function ExpenseCategoryEditor({
               </div>
               <small>
                 {item.sourceName} · {originLabel(item.origin)} · {dateLabel}
+                {BigInt(item.chargesMinor) > 0n
+                  ? ` · Pokok ${formatMinor(item.baseAmountMinor, currency, exponent)} + ${item.charges.map((c) => `${c.name ?? "Biaya"} ${formatMinor(c.amountMinor, currency, exponent)}`).join(", ")}`
+                  : ""}
                 {item.categoryName ? ` · Kategori saat ini: ${item.categoryName}` : " · Belum berkategori"}
               </small>
             </div>
@@ -207,7 +210,7 @@ export function InsightsFinancialSuite({
 
   // 1. Audit Tanpa Kategori
   const uncategorizedRow = data.categories.rows.find((row) => row.id === null || row.key === "uncategorized");
-  const uncategorizedMinor = BigInt(uncategorizedRow?.spendingMinor ?? "0");
+  const uncategorizedMinor = BigInt(uncategorizedRow?.expensePrincipalMinor ?? uncategorizedRow?.spendingMinor ?? "0");
   const uncategorizedItems = data.expenseItems.filter((item) => item.categoryId === null);
   const categorizedItems = data.expenseItems.filter((item) => item.categoryId !== null);
   const transferFeesMinor = BigInt(summary.transferFeesMinor);
@@ -253,12 +256,27 @@ export function InsightsFinancialSuite({
     })
     .join(" ");
 
-  // Cash Flow Bridge Bars
+  // Cash Flow Bridge Bars (with explicit fee itemization)
   const bridgeDenominator = totalInflow > totalOutflow ? totalInflow : totalOutflow;
+  const itemizedCharges = data.charges
+    .filter((charge) => BigInt(charge.amountMinor) > 0n)
+    .map((charge) => {
+      const desc = describeChargeItem(charge);
+      return {
+        key: `charge:${charge.typeId}:${charge.activityKind}`,
+        label: `${desc.name} — ${desc.subtitle}`,
+        amount: BigInt(charge.amountMinor),
+        tone: "negative" as const,
+      };
+    });
   const bridgeRows = [
-    { key: " inflow", label: "Kas masuk (Income + pencairan investasi)", amount: totalInflow, tone: "positive" },
+    { key: "inflow", label: "Kas masuk (Income + pencairan investasi)", amount: totalInflow, tone: "positive" },
     { key: "principal", label: "Pokok belanja konsumsi (Expense)", amount: expPrincipal, tone: "negative" },
-    { key: "charges", label: "Biaya layanan, admin transfer & pajak", amount: totalCharges, tone: "negative" },
+    ...(itemizedCharges.length > 0
+      ? itemizedCharges
+      : totalCharges > 0n
+        ? [{ key: "charges", label: "Biaya layanan, admin transfer & pajak", amount: totalCharges, tone: "negative" }]
+        : []),
     ...(invBuy + invFees > 0n
       ? [{ key: "invest", label: "Alokasi beli & biaya investasi", amount: invBuy + invFees, tone: "neutral" }]
       : []),
@@ -333,7 +351,7 @@ export function InsightsFinancialSuite({
           <SectionHeading
             eyebrow="AUDIT KATEGORI PENGELUARAN"
             title={`Transaksi belum berkategori (${uncategorizedItems.length})`}
-            helper={`Total ${money(uncategorizedMinor)} berasal murni dari transaksi Pengeluaran (Expense) yang belum memiliki kategori. Pokok maupun biaya Transfer tidak pernah dimasukkan ke Komposisi belanja${transferFeesMinor > 0n ? ` (biaya transfer ${money(transferFeesMinor)} dihitung terpisah)` : ""}.`}
+            helper={`Total pokok ${money(uncategorizedMinor)} berasal dari transaksi Pengeluaran (Expense) yang belum diberi kategori. Seluruh biaya admin, layanan, pajak, maupun biaya transfer sudah dirinci terpisah sesuai jenis biayanya di Komposisi belanja.`}
           />
           <ExpenseCategoryEditor
             items={uncategorizedItems}

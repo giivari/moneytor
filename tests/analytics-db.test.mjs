@@ -91,7 +91,7 @@ test('P6A analytics on strictly disposable PostgreSQL',{skip:!/^moneytor_composa
     });
     if(renderReport)await t.test('real disposable report renders exact totals, compatible category shares, custom charges and no demo data',async()=>{
       const before=await fingerprint(),r=await read(),output=renderReport(r);
-      assert.match(output,/Rp107\.000/);assert.match(output,/Rp4\.893\.000/);assert.match(output,/Rp106\.000/);assert.match(output,/100,00%/);assert.match(output,/Custom charge/);assert.doesNotMatch(output,/Pratinjau ilustrasi|39\.900\.000/);assert.equal(await fingerprint(),before);
+      assert.match(output,/Rp107\.000/);assert.match(output,/Rp4\.893\.000/);assert.match(output,/Rp100\.000/);assert.match(output,/93,45%/);assert.match(output,/Custom charge/);assert.match(output,/Biaya admin pada transaksi Transfer/);assert.doesNotMatch(output,/Pratinjau ilustrasi|39\.900\.000/);assert.equal(await fingerprint(),before);
     });
     await t.test('category/account rankings, editable names, and archived references retained',async()=>{
       await catalogs.renameCustomCatalogItem('transactionCategories',category.id,'Renamed category');

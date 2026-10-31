@@ -33,7 +33,7 @@ export type AnalyticsExpenseItem = {
   sourceName: string;
   note: string | null;
   origin: AnalyticsOrigin;
-  charges: { typeId: string; amountMinor: string }[];
+  charges: { typeId: string; name?: string; amountMinor: string }[];
 };
 export type AnalyticsReport = {
   version: "p6a.v1"; generatedAt: string; period: ReportingPeriod;

@@ -1,4 +1,4 @@
-import type { AnalyticsReport, DimensionRow } from "./types";
+import type { AnalyticsReport, ChargeReport, DimensionRow } from "./types";
 import { dayLabel, inclusiveEndDay, monthLabel, plotPercent } from "./presentation.ts";
 import { jakartaDay, type AnalyticsGranularity } from "./periods.ts";
 
@@ -164,6 +164,125 @@ export function incomeShares(rows: DimensionRow[]) {
     offset += percent;
     return { ...row, percent, offset: start, shareBps: total > 0n ? (BigInt(row.incomeMinor) * 10000n / total).toString() : null };
   }) };
+}
+
+export type CompositionEntry = {
+  key: string;
+  name: string;
+  kind: "category" | "charge";
+  badge: "Biaya" | "Pajak" | null;
+  subtitle: string | null;
+  archived: boolean;
+  currency: string;
+  exponent: number;
+  spendingMinor: string;
+  percent: number;
+  offset: number;
+  shareBps: string | null;
+};
+
+export function describeChargeItem(charge: ChargeReport) {
+  const badge: "Biaya" | "Pajak" = charge.bucket === "tax" ? "Pajak" : "Biaya";
+  const name =
+    charge.activityKind === "transfer" && !/transfer/i.test(charge.name)
+      ? `${charge.name} (Transfer)`
+      : charge.name;
+  const subtitle =
+    charge.activityKind === "transfer"
+      ? `Biaya admin pada transaksi Transfer · ${charge.chargeCount}x`
+      : charge.activityKind === "income"
+        ? `Potongan/biaya pada transaksi Pemasukan · ${charge.chargeCount}x`
+        : charge.bucket === "tax"
+          ? `Pajak pada transaksi Pengeluaran · ${charge.chargeCount}x`
+          : charge.systemKey === "admin_fee"
+            ? `Biaya admin pada transaksi Pengeluaran · ${charge.chargeCount}x`
+            : charge.systemKey === "service_fee"
+              ? `Biaya layanan pada transaksi Pengeluaran · ${charge.chargeCount}x`
+              : `Biaya tambahan pada transaksi Pengeluaran · ${charge.chargeCount}x`;
+  return { name, badge, subtitle };
+}
+
+export function compositionShares(rows: DimensionRow[], charges?: ChargeReport[]) {
+  const currencies = new Set([
+    ...rows.map((row) => row.currency),
+    ...(charges ?? []).map((charge) => charge.currency),
+  ]);
+  if (currencies.size > 1) throw Error("Pilih satu mata uang");
+
+  let principalTotal = 0n;
+  let chargesTotal = 0n;
+  const rawItems: Omit<CompositionEntry, "percent" | "offset" | "shareBps">[] = [];
+
+  for (const row of rows) {
+    const rawSpend = BigInt(row.spendingMinor);
+    const rawPrincipal =
+      charges !== undefined && row.expensePrincipalMinor !== undefined
+        ? BigInt(row.expensePrincipalMinor)
+        : rawSpend;
+    const amount =
+      charges !== undefined
+        ? rawSpend === 0n
+          ? 0n
+          : rawPrincipal < rawSpend
+            ? rawPrincipal
+            : rawSpend
+        : rawSpend;
+    principalTotal += amount;
+    rawItems.push({
+      key: row.key,
+      name: row.name,
+      kind: "category",
+      badge: null,
+      subtitle: charges !== undefined && rawSpend > amount ? "Pokok kategori (biaya tambahan dirinci terpisah)" : null,
+      archived: row.archived,
+      currency: row.currency,
+      exponent: row.exponent,
+      spendingMinor: amount.toString(),
+    });
+  }
+
+  for (const charge of charges ?? []) {
+    const amount = BigInt(charge.amountMinor);
+    chargesTotal += amount;
+    const desc = describeChargeItem(charge);
+    rawItems.push({
+      key: `charge:${charge.typeId}:${charge.activityKind}`,
+      name: desc.name,
+      kind: "charge",
+      badge: desc.badge,
+      subtitle: desc.subtitle,
+      archived: charge.archived,
+      currency: charge.currency,
+      exponent: charge.exponent,
+      spendingMinor: amount.toString(),
+    });
+  }
+
+  const sorted = [...rawItems].sort((a, b) =>
+    BigInt(a.spendingMinor) === BigInt(b.spendingMinor)
+      ? a.name.localeCompare(b.name)
+      : BigInt(a.spendingMinor) > BigInt(b.spendingMinor)
+        ? -1
+        : 1,
+  );
+  const total = principalTotal + chargesTotal;
+  let offset = 0;
+  return {
+    totalMinor: total.toString(),
+    principalTotalMinor: principalTotal.toString(),
+    chargesTotalMinor: chargesTotal.toString(),
+    rows: sorted.map((item) => {
+      const percent = plotPercent(item.spendingMinor, total);
+      const start = offset;
+      offset += percent;
+      return {
+        ...item,
+        percent,
+        offset: start,
+        shareBps: total > 0n ? ((BigInt(item.spendingMinor) * 10000n) / total).toString() : null,
+      };
+    }),
+  };
 }
 
 export function carouselPosition(left: number, positions: number[]) {

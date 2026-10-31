@@ -22,6 +22,17 @@ import { TransactionEditor } from "./transaction-editor";
 import { AppLink } from "./app-link";
 
 const labels = { income: "Pemasukan", expense: "Pengeluaran", transfer: "Transfer" };
+function describeCharges(item: FinanceActivity): string | undefined {
+  if (!item.charges.length) return undefined;
+  const totalFee = item.charges.reduce((n, c) => n + BigInt(c.amountMinor), 0n);
+  const formattedTotal = formatMinor(totalFee.toString(), item.currency, item.exponent);
+  if (item.charges.length === 1) {
+    const label = item.charges[0].typeName?.trim() || "Biaya tambahan";
+    return item.kind === "transfer" ? `${label}: ${formattedTotal}` : `Termasuk ${label} ${formattedTotal}`;
+  }
+  const names = item.charges.map((c) => c.typeName?.trim() || "Biaya").join(" + ");
+  return item.kind === "transfer" ? `${names}: ${formattedTotal}` : `Termasuk ${names} (${formattedTotal})`;
+}
 function totalMinor(item: FinanceActivity) {
   return (BigInt(item.baseAmountMinor) + item.charges.reduce((sum, charge) => sum + BigInt(charge.amountMinor), 0n)).toString();
 }
@@ -70,7 +81,7 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
           {key:"activity",heading:"Aktivitas",render:item=><><button type="button" className="record-title-button" disabled={refreshing} aria-haspopup="dialog" aria-label={`Buka rincian transaksi: ${item.note || labels[item.kind]}`} onClick={()=>openDetails(item)}>{item.note || labels[item.kind]}</button><small data-kind={item.kind}>{labels[item.kind]}</small></>},
           {key:"asset",heading:"Akun / aset",render:item=><>{item.kind==="transfer" ? <>{item.sourceName} → {item.destinationName}</> : item.sourceName || item.destinationName}{item.categoryName&&<small>{item.categoryName}</small>}</>},
           {key:"origin",heading:"Asal",secondary:true,render:item=><span className="record-muted">{item.recurringRuleName ? <>Otomatisasi<small>{item.recurringRuleName}</small></> : "Manual"}</span>},
-          {key:"amount",heading:"Nominal",numeric:true,render:item=><><strong className="financial-value financial-value--row" data-kind={item.kind}>{item.kind==="expense"?"−":item.kind==="income"?"+":""}{formatMinor(activityValueMinor(item),item.currency,item.exponent)}</strong>{item.charges.length>0&&<small>{item.kind==="transfer"?"Biaya "+formatMinor(item.charges.reduce((n,c)=>n+BigInt(c.amountMinor),0n).toString(),item.currency,item.exponent):"Termasuk biaya tambahan"}</small>}</>},
+          {key:"amount",heading:"Nominal",numeric:true,render:item=><>{(() => { const feeText = describeCharges(item); return <><strong className="financial-value financial-value--row" data-kind={item.kind}>{item.kind==="expense"?"−":item.kind==="income"?"+":""}{formatMinor(activityValueMinor(item),item.currency,item.exponent)}</strong>{feeText&&<small>{feeText}</small>}</>; })()}</>},
           {key:"status",heading:"Status",render:item=><small>{item.status==="posted"?"Aktif":item.status==="voided"?"Dibatalkan":"Dikoreksi"}</small>},
         ]} compact={item=><button type="button" className="transaction-button" key={item.id} disabled={refreshing} onClick={() => openDetails(item)}>
             <MoneyMovementRow kind={item.kind} title={item.note || labels[item.kind]}
@@ -79,7 +90,7 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
               status={item.status !== "posted" ? item.status === "voided" ? "Dibatalkan" : "Dikoreksi" : undefined}
               amount={`${item.kind === "expense" ? "−" : item.kind === "income" ? "+" : ""}${formatMinor(activityValueMinor(item), item.currency, item.exponent)}`}
               date={new Date(item.occurredAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-              fee={item.kind === "transfer" && item.charges[0] ? `Biaya ${formatMinor(item.charges[0].amountMinor, item.currency, item.exponent)}` : undefined} />
+              fee={describeCharges(item)} />
           </button>} />)}
       </ListContent>
       <ListToolbar label="Halaman transaksi"><button type="button" className="row-action" disabled={activityPage.loading||activityPage.pageNumber===1} onClick={activityPage.previous}>Sebelumnya</button><span className="record-muted">Halaman {activityPage.pageNumber}</span><button type="button" className="row-action" disabled={activityPage.loading||!activityPage.hasNext} onClick={activityPage.next}>Berikutnya</button></ListToolbar></section>

@@ -65,7 +65,7 @@ test('overview renders canonical income/spending/net and transfer principal sepa
  assert.equal(BigInt(fixture().summary[0].incomeMinor)-BigInt(fixture().summary[0].spendingMinor),BigInt(fixture().summary[0].netMinor));
 });
 test('category shares use Expense-attached costs, not summary spending including transfer fees',()=>{
- const r=fixture(),shares=p.categoryShares(r.byCategory);assert.equal(shares.totalMinor,'108000');assert.equal(shares.rows[0].shareBps,'10000');assert.match(html(r),/100,00%/);assert.match(html(r),/Biaya Transfer tidak termasuk/);
+ const r=fixture(),shares=p.categoryShares(r.byCategory);assert.equal(shares.totalMinor,'108000');assert.equal(shares.rows[0].shareBps,'10000');assert.match(html(r),/total Rp109\.000/);assert.match(html(r),/Biaya admin pada transaksi Transfer/);assert.match(html(r),/Biaya admin pada transaksi Pengeluaran/);assert.match(html(r),/Pajak pada transaksi Pengeluaran/);
  assert.throws(()=>p.categoryShares([...r.byCategory,row('usd',{currency:'USD'})]),/mata uang/);
 });
 test('uncategorized and archived account/category/charge labels remain visible',()=>{
@@ -178,7 +178,7 @@ test('P6C money has visible grouping fallback; only charts/tables and carousel r
 test('primary expanded details are siblings; switching interval/category changes only their shared full-width content',()=>{
  const closed=desktopHtml(),intervals=desktopHtml(fixture(),{'Grafik pemasukan dan kategori':'intervals'}),categories=desktopHtml(fixture(),{'Grafik pemasukan dan kategori':'categories'});
  const summaries=output=>(output.match(/<section class="surface insight-panel insight-summary-card"[\s\S]*?<\/section>/g)||[]).map(card=>card.replaceAll('aria-expanded="true"','aria-expanded="false"'));
- assert.deepEqual(summaries(intervals),summaries(closed));assert.deepEqual(summaries(categories),summaries(closed));assert.equal((intervals.match(/class="insight-detail-content"/g)||[]).length,1);assert.match(intervals,/insight-interval-table/);assert.doesNotMatch(categories,/insight-interval-table/);assert.match(categories,/Persentase memakai total cakupan kategori/);assert.match(categories,/Tanpa kategori/);assert.match(categories,/Kategori lama/);assert.match(categories,/100,00%/);
+ assert.deepEqual(summaries(intervals),summaries(closed));assert.deepEqual(summaries(categories),summaries(closed));assert.equal((intervals.match(/class="insight-detail-content"/g)||[]).length,1);assert.match(intervals,/insight-interval-table/);assert.doesNotMatch(categories,/insight-interval-table/);assert.match(categories,/Persentase dihitung dari total seluruh pengeluaran efektif/);assert.match(categories,/Tanpa kategori/);assert.match(categories,/Kategori lama/);assert.match(categories,/Biaya admin pada transaksi Transfer/);assert.match(categories,/91,74%/);
 });
 test('desktop fees/account/monthly/investment details preserve financial content with one active detail per pair',()=>{
  const r=fixture(),before=JSON.stringify(r);

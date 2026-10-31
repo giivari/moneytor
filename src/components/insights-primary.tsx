@@ -1,26 +1,27 @@
 "use client";
 
 import type { AnalyticsGranularity } from "@/lib/analytics/periods";
-import type { AnalyticsReport, DimensionRow } from "@/lib/analytics/types";
+import type { AnalyticsReport, ChargeReport, DimensionRow } from "@/lib/analytics/types";
 import type { InsightsMonthSelection } from "./use-insights-month";
 import { InsightsCarousel, type InsightsSlideSelection } from "./insights-carousel";
 import { InsightsDetailPair } from "./insights-detail-pair";
 import { InsightsCategoryDetails, InsightsComposition, InsightsIntervalDetails, InsightsOrigins, InsightsTrendSummary, useInsightsVisualTrend } from "./insights-visuals";
 
-export function InsightsPrimary({ report, currency, exponent, selection, slides, categories, origins, granularity = "auto" }: {
+export function InsightsPrimary({ report, currency, exponent, selection, slides, categories, charges = [], origins, granularity = "auto" }: {
   report: AnalyticsReport; currency: string; exponent: number; selection?: InsightsMonthSelection;
-  slides: InsightsSlideSelection; categories: DimensionRow[]; origins: DimensionRow[]; granularity?: AnalyticsGranularity;
+  slides: InsightsSlideSelection; categories: DimensionRow[]; charges?: ChargeReport[]; origins: DimensionRow[]; granularity?: AnalyticsGranularity;
 }) {
   const model = useInsightsVisualTrend({ report, currency, exponent, selection, granularity });
+  const totalCount = categories.length + charges.length;
   if (model.mobile) return <InsightsCarousel selection={slides}>{[
     <InsightsTrendSummary key="trend" model={model} inlineDetails />,
-    <InsightsComposition key="categories" rows={categories} />,
+    <InsightsComposition key="categories" rows={categories} charges={charges} />,
     <InsightsOrigins key="origins" rows={origins} />,
   ]}</InsightsCarousel>;
   return <div className="insight-detail-groups">
     <InsightsDetailPair label="Grafik pemasukan dan kategori" items={[
       { key: "intervals", title: "Pemasukan & belanja", action: "Angka semua interval", content: <InsightsTrendSummary model={model} />, details: <InsightsIntervalDetails model={model} /> },
-      { key: "categories", title: "Komposisi belanja", action: `Semua kategori (${categories.length})`, content: <InsightsComposition rows={categories} inlineDetails={false} />, details: <InsightsCategoryDetails rows={categories} /> },
+      { key: "categories", title: "Komposisi belanja", action: `Semua kategori & biaya (${totalCount})`, content: <InsightsComposition rows={categories} charges={charges} inlineDetails={false} />, details: <InsightsCategoryDetails rows={categories} charges={charges} /> },
     ]} />
     <section className="surface insight-panel insight-origin-section"><InsightsOrigins rows={origins} /></section>
   </div>;
