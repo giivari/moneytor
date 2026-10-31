@@ -233,7 +233,7 @@ export function compositionShares(rows: DimensionRow[], charges?: ChargeReport[]
       name: row.name,
       kind: "category",
       badge: null,
-      subtitle: charges !== undefined && rawSpend > amount ? "Pokok kategori (biaya tambahan dirinci terpisah)" : null,
+      subtitle: null,
       archived: row.archived,
       currency: row.currency,
       exponent: row.exponent,

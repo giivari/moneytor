@@ -1,7 +1,7 @@
 import "server-only";
 import type { PoolClient } from "pg";
 import type { ReportingPeriod } from "./periods";
-import type { AnalyticsExpenseItem, ChargeReport, DimensionRow, InvestmentFlows } from "./types";
+import type { AnalyticsExpenseItem, AnalyticsObligationItem, ChargeReport, DimensionRow, InvestmentFlows } from "./types";
 import { FEE_SYSTEM_KEYS, TAX_SYSTEM_KEYS } from "./domain";
 
 export type AggregateRow = DimensionRow & { dimension: "summary" | "category" | "income_category" | "weekday" | "account" | "origin" | "month" | "day" };
@@ -37,6 +37,7 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
         cat.display_name AS category_name,cat.is_active AS category_active,
         a.display_name AS account_name,a.is_active AS account_active,
         COALESCE(f.source_asset_id,f.destination_asset_id) AS account_id,
+        da.display_name AS dest_account_name,da.is_active AS dest_account_active,
         CASE WHEN f.kind='income' THEN f.base_amount_minor::numeric ELSE 0 END AS income,
         CASE WHEN f.kind='expense' THEN f.base_amount_minor::numeric ELSE 0 END AS expense,
         CASE WHEN f.kind='transfer' THEN f.base_amount_minor::numeric ELSE 0 END AS transfer,
@@ -45,8 +46,12 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
       FROM selected f JOIN currencies c ON c.code=f.currency_code JOIN origins o ON o.id=f.id
       LEFT JOIN charges ch ON ch.activity_id=f.id LEFT JOIN transaction_categories cat ON cat.id=f.category_id
       JOIN assets a ON a.id=COALESCE(f.source_asset_id,f.destination_asset_id)
+      LEFT JOIN assets da ON da.id=f.destination_asset_id AND f.kind='transfer'
     ), dimensions AS (
-      SELECT f.*,d.* FROM facts f CROSS JOIN LATERAL (VALUES
+      SELECT d.dimension,d.key,d.dimension_id,d.name,d.archived,f.currency_code,f.exponent,f.kind,
+        f.income,f.expense,f.fees,f.taxes,f.other,f.transfer_fees,f.charges,f.transfer,
+        0::numeric AS transfer_in,false AS is_transfer_in
+      FROM facts f CROSS JOIN LATERAL (VALUES
         ('summary','summary',NULL::text,'Ringkasan',false),
         ('category',COALESCE(f.category_id::text,'uncategorized'),f.category_id::text,COALESCE(f.category_name,'Tanpa kategori'),NOT COALESCE(f.category_active,true)),
         ('income_category',COALESCE(f.category_id::text,'uncategorized'),f.category_id::text,COALESCE(f.category_name,'Tanpa kategori'),NOT COALESCE(f.category_active,true)),
@@ -59,16 +64,26 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
       WHERE (d.dimension<>'category' OR f.kind='expense')
         AND (d.dimension<>'income_category' OR f.kind='income')
         AND (NOT $4::boolean OR d.dimension='summary')
+      UNION ALL
+      SELECT 'account',f.destination_asset_id::text,f.destination_asset_id::text,f.dest_account_name,NOT COALESCE(f.dest_account_active,true),
+        f.currency_code,f.exponent,f.kind,
+        0::numeric,0::numeric,0::numeric,0::numeric,0::numeric,0::numeric,0::numeric,0::numeric,
+        f.base_amount_minor::numeric AS transfer_in,true AS is_transfer_in
+      FROM facts f
+      WHERE f.kind='transfer' AND f.destination_asset_id IS NOT NULL AND f.dest_account_name IS NOT NULL AND NOT $4::boolean
     )
     SELECT dimension,key,dimension_id AS id,name,archived,currency_code AS currency,exponent,
       sum(income)::text AS "incomeMinor",sum(expense)::text AS "expensePrincipalMinor",
       sum(fees)::text AS "feesMinor",sum(taxes)::text AS "taxesMinor",sum(other)::text AS "otherChargesMinor",
       sum(transfer_fees)::text AS "transferFeesMinor",sum(charges)::text AS "chargesMinor",
       sum(expense+charges)::text AS "spendingMinor",sum(income-expense-charges)::text AS "netMinor",
-      sum(transfer)::text AS "transferPrincipalMinor",count(*)::text AS "activityCount",
+      sum(transfer)::text AS "transferPrincipalMinor",
+      sum(transfer_in)::text AS "transferInMinor",
+      count(*)::text AS "activityCount",
       count(*) FILTER (WHERE kind='income')::text AS "incomeCount",
       count(*) FILTER (WHERE kind='expense')::text AS "expenseCount",
-      count(*) FILTER (WHERE kind='transfer')::text AS "transferCount"
+      count(*) FILTER (WHERE kind='transfer' AND NOT is_transfer_in)::text AS "transferCount",
+      count(*) FILTER (WHERE is_transfer_in)::text AS "transferInCount"
     FROM dimensions GROUP BY dimension,key,dimension_id,name,archived,currency_code,exponent
     ORDER BY currency_code COLLATE "C",dimension COLLATE "C",key COLLATE "C"`, [period.startAt, period.endAt, currency, summaryOnly, FEE_SYSTEM_KEYS, TAX_SYSTEM_KEYS]);
   return result.rows;
@@ -144,11 +159,46 @@ export async function readExpenseItems(client: PoolClient, period: ReportingPeri
     FROM selected f JOIN currencies c ON c.code=f.currency_code JOIN origins o ON o.id=f.id
     LEFT JOIN charges ch ON ch.activity_id=f.id LEFT JOIN transaction_categories cat ON cat.id=f.category_id
     JOIN assets a ON a.id=f.source_asset_id
-    ORDER BY (f.category_id IS NOT NULL) ASC, (f.base_amount_minor::numeric + COALESCE(ch.total,0)) DESC, f.occurred_at DESC
-    LIMIT 80`, [period.startAt, period.endAt, currency]);
+    ORDER BY (f.base_amount_minor::numeric + COALESCE(ch.total,0)) DESC, f.occurred_at DESC
+    LIMIT 50`, [period.startAt, period.endAt, currency]);
   return result.rows.map((row) => ({
     ...row,
     occurredAt: row.occurredAt instanceof Date ? row.occurredAt.toISOString() : String(row.occurredAt),
     charges: Array.isArray(row.charges) ? row.charges : [],
   }));
+}
+
+export type ObligationAnalyticsRow = AnalyticsObligationItem & {
+  currency: string;
+  exponent: number;
+  settledInPeriod: boolean;
+};
+
+export async function readObligationsForAnalytics(
+  client: PoolClient,
+  period: ReportingPeriod,
+  currency: string | null,
+): Promise<ObligationAnalyticsRow[]> {
+  const result = await client.query<ObligationAnalyticsRow>(`
+    SELECT o.id::text AS id, o.title, l.display_name AS "labelName",
+      o.currency_code AS currency, c.minor_unit_exponent AS exponent,
+      o.amount_minor::text AS "amountMinor", o.due_on::text AS "dueOn", o.status,
+      COALESCE(o.settled_at >= $1 AND o.settled_at < $2, false) AS "settledInPeriod",
+      LEAST(o.amount_minor::numeric, COALESCE(r.reserved, 0))::text AS "coveredMinor",
+      GREATEST(o.amount_minor::numeric - COALESCE(r.reserved, 0), 0)::text AS "uncoveredMinor"
+    FROM planning_obligations o
+    JOIN planning_labels l ON l.id = o.label_id
+    JOIN currencies c ON c.code = o.currency_code
+    LEFT JOIN (
+      SELECT obligation_id, sum(amount_minor::numeric) AS reserved
+      FROM planning_reserves
+      WHERE is_active AND obligation_id IS NOT NULL
+      GROUP BY obligation_id
+    ) r ON r.obligation_id = o.id
+    WHERE ($3::text IS NULL OR o.currency_code = $3)
+      AND (o.status = 'open' OR (o.status = 'settled' AND o.settled_at >= $1 AND o.settled_at < $2))
+    ORDER BY (o.status = 'open') DESC, o.due_on ASC, o.id ASC`,
+    [period.startAt, period.endAt, currency],
+  );
+  return result.rows;
 }

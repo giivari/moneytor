@@ -116,9 +116,9 @@ test('filter controls serialize validated inclusive ranges and trend limits',()=
  for(const draft of [{kind:'monthly_trend',months:'37'},{kind:'monthly_trend',months:'0'},{kind:'custom',start:'2026-02-30',end:'2026-03-01'},{kind:'custom',start:'2026-10-12',end:'2026-10-11'},{kind:'custom',start:'2020-01-01',end:'2026-10-11'}])assert.throws(()=>p.insightsQuery({currency:'IDR',start:'2026-10-01',end:'2026-10-31',months:'6',...draft}));
  assert.equal(p.inclusiveEndDay('2027-01-01'),'2026-12-31');assert.equal(p.insightsDraft('period=monthly_trend&months=36&currency=USD','',now).months,'36');
 });
-test('SSR workspace shows real report without loading flash and accessible native controls',()=>{
+test('SSR workspace shows real report without loading flash and auto-apply controls without Terapkan button',()=>{
  const output=renderToStaticMarkup(React.createElement(InsightsWorkspace,{initial:fixture(),initialQuery:'period=current_month&currency=IDR',initialError:'',currencies:[{currency:'IDR',exponent:0},{currency:'USD',exponent:2}]}));
- assert.match(output,/Terapkan/);assert.match(output,/Tahun ini/);assert.match(output,/Tren bulanan/);assert.match(output,/aria-busy="false"/);assert.doesNotMatch(output,/Memuat laporan/);assert.match(output,/Rp891\.000/);
+ assert.doesNotMatch(output,/Terapkan/);assert.match(output,/Tahun Ini/);assert.match(output,/Bulan Ini/);assert.match(output,/Kustom/);assert.match(output,/aria-busy="false"/);assert.doesNotMatch(output,/Memuat laporan/);assert.match(output,/Rp891\.000/);
 });
 test('loading/error rendering cannot claim empty financial results and provides retry',()=>{
  const loading=renderToStaticMarkup(React.createElement(InsightsLoadState,{loading:true,error:'',retry:()=>{}}));assert.match(loading,/Memuat laporan/);assert.doesNotMatch(loading,/Belum ada/);
@@ -196,4 +196,50 @@ test('V2 warnings remain visible outside collapsed detail and visual rendering n
 test('V2 zero costs and no trades render concise text without empty cost charts or valuation history',()=>{
  const r=fixture();r.charges=[];r.investmentFlows=[];r.summary[0]={...r.summary[0],feesMinor:'0',taxesMinor:'0',otherChargesMinor:'0',chargesMinor:'0'};const output=html(r);
  assert.doesNotMatch(output,/class="insight-cost-bars"/);assert.match(output,/Tidak ada biaya atau pajak P3/);assert.match(output,/Tidak ada perdagangan P4/);assert.doesNotMatch(output,/Riwayat pertumbuhan aset|demo-data/);
+});
+test('m-banking refinements: 4+ categories visible, Transfer masuk in accounts, PayLater & Tagihan, read-only top expenses, and mobile gatekeeping',()=>{
+ const r=fixture();
+ r.byCategory=[
+  row('food',{name:'Makanan',expensePrincipalMinor:'40000',spendingMinor:'40000'}),
+  row('trans',{name:'Transport',expensePrincipalMinor:'30000',spendingMinor:'30000'}),
+  row('well',{name:'Wellbeing',expensePrincipalMinor:'20000',spendingMinor:'20000'}),
+  row('util',{name:'Tagihan Listrik',expensePrincipalMinor:'10000',spendingMinor:'10000'}),
+ ];
+ r.byAccount=[
+  row('emoney',{name:'E-Money',incomeMinor:'0',spendingMinor:'50000',transferPrincipalMinor:'0',transferInMinor:'200000',transferInCount:'2',activityCount:'4'}),
+ ];
+ r.expenseItems=[
+  {id:'exp-1',occurredAt:'2026-10-10T08:00:00Z',currency:'IDR',exponent:0,baseAmountMinor:'60500',chargesMinor:'0',spendingMinor:'60500',categoryId:'well',categoryName:'Wellbeing',sourceAssetId:'spaylater',sourceName:'SPayLater',isCreditSource:true,note:'patungan padel',origin:'manual',charges:[]},
+ ];
+ r.creditAndBills=[{
+  currency:'IDR',exponent:0,cashSpendingMinor:'48500',creditSpendingMinor:'60500',creditExpenseCount:'1',
+  creditRepaymentMinor:'300000',creditRepaymentCount:'1',currentCycleBillsMinor:'613632',nextCycleBillsMinor:'381992',
+  totalCreditUnpaidMinor:'995624',
+  facilities:[{id:'spaylater',name:'SPayLater',providerName:'ShopeePay',isActive:true,currentBillMinor:'613632',currentDueIso:'2026-11-01',nextBillMinor:'381992',nextDueIso:'2026-12-01',totalUnpaidMinor:'995624',limitMinor:'22500000',availableLimitMinor:'21504376',dueDay:1,cutoffDay:20,periodSpendingMinor:'60500',periodExpenseCount:'1',periodRepaymentMinor:'300000',periodRepaymentCount:'1'}],
+  billCategorySpendingMinor:'10000',billCategoryCount:'1',automatedSpendingMinor:'100000',automatedExpenseCount:'2',
+  openObligationsMinor:'250000',openObligationsUncoveredMinor:'250000',openObligationsCount:1,
+  settledInPeriodMinor:'0',settledInPeriodCount:0,
+  obligations:[{id:'ob-1',title:'Internet Rumah',labelName:'Tagihan',amountMinor:'250000',coveredMinor:'0',uncoveredMinor:'250000',dueOn:'2026-10-25',status:'open'}],
+ }];
+
+ const mobOut=html(r,'IDR','current_month',true);
+ for(const cat of ['Makanan','Transport','Wellbeing','Tagihan Listrik'])assert.match(mobOut,new RegExp(cat));
+ assert.match(mobOut,/Transfer masuk/);
+ assert.match(mobOut,/Rp200\.000/);
+ assert.match(mobOut,/PayLater &amp; Tagihan/);
+ assert.match(mobOut,/SPayLater/);
+ assert.match(mobOut,/Rp613\.632/);
+ assert.match(mobOut,/Rp381\.992/);
+ assert.match(mobOut,/Internet Rumah/);
+ assert.match(mobOut,/Pengeluaran terbesar/);
+ assert.match(mobOut,/patungan padel/);
+ assert.doesNotMatch(mobOut,/Simpan kategori/);
+ assert.match(mobOut,/insight-mobile-gatekeep/);
+ assert.doesNotMatch(mobOut,/Analisis Mendalam/);
+
+ const deskOut=desktopHtml(r);
+ assert.match(deskOut,/Analisis Mendalam/);
+ assert.match(deskOut,/Arus Kas/);
+ assert.match(deskOut,/Rasio &amp; Burn Rate/);
+ assert.doesNotMatch(deskOut,/insight-mobile-gatekeep/);
 });

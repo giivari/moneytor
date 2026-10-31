@@ -1,12 +1,16 @@
 import "server-only";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { inDatabaseTransaction } from "@/lib/db/pool";
+import { computeCreditBills, isCreditAsset } from "@/lib/domain/credit";
 import { financeSnapshot } from "@/lib/finance/summary";
 import { periodChange } from "./domain";
 import { monthKeys, previousPeriod, reportingPeriod, type AnalyticsGranularity, type PeriodInput } from "./periods";
-import { readAggregates, readCharges, readExpenseItems, readInvestmentFlows } from "./queries";
-import type { AnalyticsReport, DimensionRow, FinancialMeasures } from "./types";
+import { readAggregates, readCharges, readExpenseItems, readInvestmentFlows, readObligationsForAnalytics } from "./queries";
+import type { AnalyticsCreditAndBills, AnalyticsReport, DimensionRow, FinancialMeasures } from "./types";
 import type { PoolClient } from "pg";
+
+const BILL_CATEGORY_RE =
+  /\b(tagihan|listrik|pln|air|pdam|internet|wifi|pulsa|paket\s*data|utilitas|utilities|bills?|langganan|subscription|cicilan|kredit|pay\s*later|spaylater|sewa|kontrakan|kos|kost|asuransi|bpjs|ipl|pajak)\b/i;
 
 async function readCurrencies(client: PoolClient, currency: string | null) {
   return (await client.query<{ currency: string; exponent: number }>(`
@@ -74,7 +78,22 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
     const currencies = await readCurrencies(client, currency);
     const rows = await readAggregates(client, period, currency);
     const previous = await readAggregates(client, prior, currency, true);
-    const dimension = (kind: typeof rows[number]["dimension"]): DimensionRow[] => rows.filter((row) => row.dimension === kind).map((row) => ({ ...measures(row), key: row.key, id: row.id, name: row.name, archived: row.archived }));
+    const dimension = (kind: typeof rows[number]["dimension"]): DimensionRow[] =>
+      rows
+        .filter((row) => row.dimension === kind)
+        .map((row) => ({
+          ...measures(row),
+          key: row.key,
+          id: row.id,
+          name: row.name,
+          archived: row.archived,
+          ...(kind === "account"
+            ? {
+                transferInMinor: row.transferInMinor ?? "0",
+                transferInCount: row.transferInCount ?? "0",
+              }
+            : {}),
+        }));
     const summary = currencies.map((c) => measures(rows.find((r) => r.dimension === "summary" && r.currency === c.currency) ?? empty(c.currency, c.exponent)));
     const monthly = currencies.flatMap((c) => monthKeys(period).map((key) => {
       const row = rows.find((r) => r.dimension === "month" && r.currency === c.currency && r.key === key);
@@ -82,14 +101,139 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
     }));
     const charges = await readCharges(client, period, currency);
     const investmentFlows = await readInvestmentFlows(client, period, currency);
-    const expenseItems = input.includeContext === false ? [] : await readExpenseItems(client, period, currency);
+    const rawExpenseItems = input.includeContext === false ? [] : await readExpenseItems(client, period, currency);
     const snapshot = input.includeContext === false ? null : await financeSnapshot({ includeRecent: false }, client);
+    const obligationsRows =
+      snapshot?.planningReady ? await readObligationsForAnalytics(client, period, currency) : [];
+
+    const byCategory = dimension("category").sort(ranking);
+    const byAccount = dimension("account").sort((a, b) => {
+      const base = ranking(a, b);
+      if (BigInt(a.spendingMinor) !== 0n || BigInt(b.spendingMinor) !== 0n) return base;
+      const flowA = BigInt(a.incomeMinor) + BigInt(a.transferInMinor ?? "0") + BigInt(a.transferPrincipalMinor);
+      const flowB = BigInt(b.incomeMinor) + BigInt(b.transferInMinor ?? "0") + BigInt(b.transferPrincipalMinor);
+      if (flowA !== flowB) return flowB > flowA ? 1 : -1;
+      return base;
+    });
+    const byOrigin = dimension("origin");
+
+    const creditAssets = snapshot ? snapshot.assets.filter((asset) => isCreditAsset(asset)) : [];
+    const creditAssetIds = new Set(creditAssets.map((asset) => asset.id));
+    const expenseItems = rawExpenseItems.map((item) => ({
+      ...item,
+      isCreditSource: creditAssetIds.has(item.sourceAssetId),
+    }));
+
+    const creditAndBills: AnalyticsCreditAndBills[] = snapshot
+      ? currencies.map((c) => {
+          const sumRow = summary.find((s) => s.currency === c.currency) ?? empty(c.currency, c.exponent);
+          const acctMap = new Map(
+            byAccount.filter((r) => r.currency === c.currency && r.id).map((r) => [r.id!, r]),
+          );
+          const facilities = creditAssets
+            .filter((asset) => asset.currency === c.currency)
+            .map((asset) => {
+              const bills = computeCreditBills(asset);
+              const acct = acctMap.get(asset.id);
+              return {
+                id: asset.id,
+                name: asset.displayName,
+                providerName: asset.providerName ?? null,
+                isActive: asset.isActive,
+                currentBillMinor: bills.currentBillMinor.toString(),
+                currentDueIso: bills.currentDueIso,
+                nextBillMinor: bills.nextBillMinor.toString(),
+                nextDueIso: bills.nextDueIso,
+                totalUnpaidMinor: bills.totalUnpaidMinor.toString(),
+                limitMinor: bills.limitMinor.toString(),
+                availableLimitMinor: bills.availableLimitMinor !== null ? bills.availableLimitMinor.toString() : null,
+                dueDay: bills.dueDay,
+                cutoffDay: bills.cutoffDay,
+                periodSpendingMinor: acct?.spendingMinor ?? "0",
+                periodExpenseCount: acct?.expenseCount ?? "0",
+                periodRepaymentMinor: acct?.transferInMinor ?? "0",
+                periodRepaymentCount: acct?.transferInCount ?? "0",
+              };
+            })
+            .filter(
+              (f) =>
+                f.isActive ||
+                BigInt(f.totalUnpaidMinor) > 0n ||
+                BigInt(f.periodSpendingMinor) > 0n ||
+                BigInt(f.periodRepaymentMinor) > 0n,
+            );
+
+          const creditSpendingBig = facilities.reduce((s, f) => s + BigInt(f.periodSpendingMinor), 0n);
+          const creditExpenseCountBig = facilities.reduce((s, f) => s + BigInt(f.periodExpenseCount), 0n);
+          const creditRepaymentBig = facilities.reduce((s, f) => s + BigInt(f.periodRepaymentMinor), 0n);
+          const creditRepaymentCountBig = facilities.reduce((s, f) => s + BigInt(f.periodRepaymentCount), 0n);
+          const totalSpendBig = BigInt(sumRow.spendingMinor);
+          const cashSpendingBig = totalSpendBig > creditSpendingBig ? totalSpendBig - creditSpendingBig : 0n;
+
+          const currentCycleBig = facilities
+            .filter((f) => f.isActive)
+            .reduce((s, f) => s + BigInt(f.currentBillMinor), 0n);
+          const nextCycleBig = facilities
+            .filter((f) => f.isActive)
+            .reduce((s, f) => s + BigInt(f.nextBillMinor), 0n);
+          const totalCreditUnpaidBig = facilities
+            .filter((f) => f.isActive)
+            .reduce((s, f) => s + BigInt(f.totalUnpaidMinor), 0n);
+
+          const billCats = byCategory.filter((r) => r.currency === c.currency && BILL_CATEGORY_RE.test(r.name));
+          const billCatSpendBig = billCats.reduce((s, r) => s + BigInt(r.spendingMinor), 0n);
+          const billCatCountBig = billCats.reduce((s, r) => s + BigInt(r.expenseCount), 0n);
+
+          const autoRow = byOrigin.find((r) => r.currency === c.currency && r.key === "automation");
+          const cObligations = obligationsRows.filter((o) => o.currency === c.currency);
+          const openObs = cObligations.filter((o) => o.status === "open");
+          const settledObs = cObligations.filter((o) => o.settledInPeriod);
+          const openObsBig = openObs.reduce((s, o) => s + BigInt(o.amountMinor), 0n);
+          const openUncoveredBig = openObs.reduce((s, o) => s + BigInt(o.uncoveredMinor), 0n);
+          const settledBig = settledObs.reduce((s, o) => s + BigInt(o.amountMinor), 0n);
+
+          return {
+            currency: c.currency,
+            exponent: c.exponent,
+            cashSpendingMinor: cashSpendingBig.toString(),
+            creditSpendingMinor: creditSpendingBig.toString(),
+            creditExpenseCount: creditExpenseCountBig.toString(),
+            creditRepaymentMinor: creditRepaymentBig.toString(),
+            creditRepaymentCount: creditRepaymentCountBig.toString(),
+            currentCycleBillsMinor: currentCycleBig.toString(),
+            nextCycleBillsMinor: nextCycleBig.toString(),
+            totalCreditUnpaidMinor: totalCreditUnpaidBig.toString(),
+            facilities,
+            billCategorySpendingMinor: billCatSpendBig.toString(),
+            billCategoryCount: billCatCountBig.toString(),
+            automatedSpendingMinor: autoRow?.spendingMinor ?? "0",
+            automatedExpenseCount: autoRow?.expenseCount ?? "0",
+            openObligationsMinor: openObsBig.toString(),
+            openObligationsUncoveredMinor: openUncoveredBig.toString(),
+            openObligationsCount: openObs.length,
+            settledInPeriodMinor: settledBig.toString(),
+            settledInPeriodCount: settledObs.length,
+            obligations: openObs.slice(0, 8).map((o) => ({
+              id: o.id,
+              title: o.title,
+              labelName: o.labelName,
+              amountMinor: o.amountMinor,
+              coveredMinor: o.coveredMinor,
+              uncoveredMinor: o.uncoveredMinor,
+              dueOn: o.dueOn,
+              status: o.status,
+            })),
+          };
+        })
+      : [];
+
     return { version: "p6a.v1", generatedAt: now.toISOString(), period, summary,
-      byCategory: dimension("category").sort(ranking),
+      byCategory,
       byIncomeCategory: dimension("income_category").sort(incomeRanking),
       byWeekday: dimension("weekday"),
-      byAccount: dimension("account").sort(ranking),
-      byOrigin: dimension("origin"), monthly, daily: dimension("day"), charges, investmentFlows, expenseItems,
+      byAccount,
+      byOrigin, monthly, daily: dimension("day"), charges, investmentFlows, expenseItems,
+      creditAndBills,
       comparison: { period: prior, partialComparison: period.partial || prior.partial, method: "full_previous_period",
         currencies: summary.map((row) => {
           const before = previous.find((r) => r.currency === row.currency) ?? empty(row.currency, row.exponent);

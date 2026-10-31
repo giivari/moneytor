@@ -97,7 +97,46 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
 }
 
 export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) {
-  return <dl className="insight-interval-table">{model.data.fullIntervals.map((row) => <div key={row.key}><dt>{row.label} · {visualIntervalState(row, model.report)}</dt><dd>Pemasukan {model.money(row.incomeMinor)} · Belanja {model.money(row.spendingMinor)} · Net {model.money(row.netMinor)}</dd></div>)}</dl>;
+  const all = model.data.fullIntervals;
+  const activeRows = all.filter(
+    (row) =>
+      BigInt(row.incomeMinor) !== 0n ||
+      BigInt(row.spendingMinor) !== 0n ||
+      BigInt(row.activityCount) > 0n,
+  );
+  const hiddenCount = all.length - activeRows.length;
+  if (activeRows.length === 0) {
+    return <p className="insight-empty">Belum ada transaksi tercatat pada interval di periode ini.</p>;
+  }
+  return (
+    <div className="insight-interval-list-wrap">
+      <dl className="insight-interval-table">
+        {activeRows.map((row) => {
+          const inc = BigInt(row.incomeMinor);
+          const exp = BigInt(row.spendingMinor);
+          const net = BigInt(row.netMinor);
+          return (
+            <div key={row.key} className="insight-interval-row">
+              <dt>
+                <strong>{row.label}</strong>
+                <small>{visualIntervalState(row, model.report)}</small>
+              </dt>
+              <dd>
+                {inc > 0n && <span className="insight-positive">Masuk {model.money(row.incomeMinor)}</span>}
+                {exp > 0n && <span className="insight-negative">Belanja {model.money(row.spendingMinor)}</span>}
+                <span className={net < 0n ? "insight-negative" : net > 0n ? "insight-positive" : ""}>
+                  Net {model.money(row.netMinor)}
+                </span>
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+      {hiddenCount > 0 && (
+        <p className="insight-note">{hiddenCount} interval tanpa transaksi disembunyikan agar tetap ringkas.</p>
+      )}
+    </div>
+  );
 }
 
 function renderCompositionRow(row: CompositionEntry, color?: string) {
@@ -123,13 +162,18 @@ export function InsightsComposition({ rows, charges, inlineDetails = true }: { r
   const sorted = shares.rows;
   const active = sorted.filter((row) => BigInt(row.spendingMinor) > 0n);
   const colorMap = new Map(active.map((row, index) => [row.key, colors[index % colors.length]]));
-  const topSlice = active.slice(0, 3);
-  const extraCharges = active.slice(3).filter((row) => row.kind === "charge");
-  const visibleRows = [...topSlice, ...extraCharges];
+  const visibleRows =
+    active.length <= 7
+      ? active
+      : [
+          ...active.slice(0, 6),
+          ...active.slice(6).filter((row) => row.kind === "charge"),
+        ];
+  const hasHiddenRows = sorted.length > visibleRows.length;
   const total = BigInt(shares.totalMinor), first = sorted[0];
   const chargesTotal = BigInt(shares.chargesTotalMinor);
   return <>
-    <SectionHeading title="Komposisi belanja" helper="Pokok pengeluaran per kategori beserta rincian biaya admin, transfer & pajak." />
+    <SectionHeading title="Komposisi belanja" helper="Pengeluaran per kategori beserta rincian biaya admin, transfer & pajak." />
     {!first || total === 0n ? <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p> : <>
       <div className="insight-composition"><svg viewBox="0 0 160 160" role="img" aria-labelledby={`${id}-title`}>
         <title id={`${id}-title`}>{`Komposisi belanja & biaya; total ${formatMinor(total, first.currency, first.exponent)}. Rincian nominal dan persentase tersedia di bawah.`}</title>
@@ -142,7 +186,7 @@ export function InsightsComposition({ rows, charges, inlineDetails = true }: { r
         <text x="80" y="77" textAnchor="middle" className="insight-donut-label">{active.length}</text><text x="80" y="97" textAnchor="middle" className="insight-axis">pos belanja</text>
       </svg><div><span className="insight-note">Total pengeluaran & biaya</span><FinancialAmount value={formatMinor(total, first.currency, first.exponent)} className="insight-money" />{chargesTotal > 0n && <small className="insight-composition-subnote">Pokok {formatMinor(shares.principalTotalMinor, first.currency, first.exponent)} + Biaya/pajak {formatMinor(chargesTotal, first.currency, first.exponent)}</small>}</div></div>
       <ol className="insight-visual-ranking">{visibleRows.map((row) => renderCompositionRow(row, colorMap.get(row.key)))}</ol>
-      {inlineDetails && <details className="insight-inline-detail"><summary>Semua kategori & biaya ({sorted.length})</summary><InsightsCategoryDetails rows={rows} charges={charges} /></details>}
+      {inlineDetails && hasHiddenRows && <details className="insight-inline-detail"><summary>Lihat semua ({sorted.length})</summary><InsightsCategoryDetails rows={rows} charges={charges} /></details>}
     </>}
   </>;
 }

@@ -229,20 +229,88 @@
   .insights-page .insight-visual-ranking strong, .insights-page .insight-interval-values dd { text-align: left; }
 }
 
-/* Comprehensive Cash Flow, Health Ratios, Quick Granularity Pills & Inline Category Audit */
-.insights-page .insight-quick-bar { padding: 14px var(--surface-padding); display: grid; gap: 12px; min-width: 0; }
-.insights-page .insight-quick-group { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
-.insights-page .insight-quick-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #526372; min-width: 112px; }
-.insights-page .insight-pill-row { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 240px; min-width: 0; }
-.insights-page .insight-pill { min-height: 34px; padding: 5px 12px; border-radius: 999px; border: 1px solid #d5dde3; background: #fff; color: #24333f; font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+/* M-Banking & Sekuritas Streamlined Insights UI */
+.insights-page .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.insights-page .insight-toolbar { padding: 14px var(--surface-padding); display: grid; gap: 12px; min-width: 0; }
+.insights-page .insight-toolbar-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px 16px; min-width: 0; }
+.insights-page .insight-toolbar-period { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.insights-page .insight-toolbar-period strong { font-size: 15px; color: #17242d; }
+.insights-page .insight-toolbar-period span { font-size: 13px; color: #526372; }
+.insights-page .insight-toolbar-selects { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.insights-page .insight-inline-select select { min-height: 36px; padding: 6px 30px 6px 12px; border-radius: 999px; border: 1px solid #d5dde3; background-color: #f8fafc; color: #17242d; font-size: 13px; font-weight: 600; cursor: pointer; width: auto; }
+.insights-page .insight-pill-scroller { display: flex; align-items: center; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding-bottom: 2px; min-width: 0; }
+.insights-page .insight-pill-scroller::-webkit-scrollbar { display: none; }
+.insights-page .insight-pill { flex: 0 0 auto; min-height: 34px; padding: 5px 13px; border-radius: 999px; border: 1px solid #d5dde3; background: #fff; color: #24333f; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
 .insights-page .insight-pill:hover { background: #f3f7fa; border-color: #b8c6d1; }
 .insights-page .insight-pill[data-active="true"] { background: #17242d; border-color: #17242d; color: #fff; font-weight: 600; }
+.insights-page .insight-custom-dates { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 10px; border-top: 1px solid #e5e9ed; }
+.insights-page .insight-custom-dates .field { flex: 1 1 160px; max-width: 240px; margin: 0; }
+.insights-page .insight-custom-dates input { width: 100%; min-height: 38px; }
+
+.insights-page .insight-status-strip { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; border-radius: 10px; background: #f4f7fa; border: 1px solid #e2e8ee; color: #475867; font-size: 13px; line-height: 1.45; }
+.insights-page .insight-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #09836b; flex: 0 0 auto; }
+.insights-page .insight-comparison-label { display: inline; color: #647483; }
+
+.insights-page .insight-account-values { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.insights-page .insight-zero-muted { color: #8c9aa6; font-weight: 500; }
+.insights-page .insight-account-net { font-style: normal; font-weight: 600; }
+
+.insights-page .insight-interval-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding-block: 10px; border-bottom: 1px solid #e5e9ed; }
+.insights-page .insight-interval-row dt { display: flex; align-items: baseline; gap: 8px; margin: 0; color: #17242d; }
+.insights-page .insight-interval-row dt small { font-size: 12px; color: #647483; }
+.insights-page .insight-interval-row dd { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
 
 .insights-page .insight-suite { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--dashboard-gap); min-width: 0; }
-.insights-page .insight-cashflow-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 18px; }
+.insights-page .insight-mid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--dashboard-gap); align-items: start; min-width: 0; }
+
+/* PayLater & Tagihan Card */
+.insights-page .insight-compact-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; border-radius: 12px; background: #f8fafc; border: 1px solid #e5e9ed; }
+.insights-page .insight-compact-kpis > div { min-width: 0; }
+.insights-page .insight-compact-kpis span { display: block; font-size: 12px; color: #526372; }
+.insights-page .insight-compact-kpis strong { display: block; font-size: 15px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.insights-page .insight-compact-kpis small { display: block; font-size: 11px; color: #647483; margin-top: 2px; }
+.insights-page .insight-credit-facilities { display: grid; gap: 10px; margin-top: 14px; }
+.insights-page .insight-facility-box { padding: 12px 14px; border-radius: 12px; border: 1px solid #e2e8ee; background: #fff; }
+.insights-page .insight-facility-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; font-size: 14px; }
+.insights-page .insight-facility-head span { font-size: 12px; color: #526372; font-variant-numeric: tabular-nums; }
+.insights-page .insight-facility-bills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed #e2e8ee; }
+.insights-page .insight-facility-bills dt { font-size: 12px; color: #526372; }
+.insights-page .insight-facility-bills dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.insights-page .insight-bill-summary-rows { margin: 14px 0 0; display: grid; gap: 0; }
+.insights-page .insight-bill-summary-rows > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; border-bottom: 1px solid #edf1f5; font-size: 13.5px; }
+.insights-page .insight-bill-summary-rows dt { font-size: 13.5px; color: #475867; }
+.insights-page .insight-bill-summary-rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.insights-page .insight-bill-summary-rows dd small { color: #647483; font-weight: 400; }
+.insights-page .insight-mini-obligations { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+.insights-page .insight-mini-obligations li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px; background: #fbfcfd; border: 1px solid #e8eef3; font-size: 13px; }
+.insights-page .insight-mini-obligations li small { display: block; color: #647483; font-size: 12px; margin-top: 2px; }
+
+/* Top Expenses Ranked List */
+.insights-page .insight-top-list { list-style: none; padding: 0; margin: 4px 0 0; }
+.insights-page .insight-top-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #edf1f5; }
+.insights-page .insight-top-row:last-child { border-bottom: 0; }
+.insights-page .insight-top-rank { width: 24px; height: 24px; border-radius: 50%; background: #eef3f7; color: #365068; font-size: 12px; font-weight: 700; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+.insights-page .insight-top-info { min-width: 0; }
+.insights-page .insight-top-info strong { display: block; font-size: 14px; font-weight: 600; color: #17242d; overflow-wrap: anywhere; }
+.insights-page .insight-top-info small { display: block; font-size: 12px; color: #647483; margin-top: 2px; overflow-wrap: anywhere; }
+.insights-page .insight-top-amount { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.insights-page .insight-credit-chip { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-style: normal; font-size: 10.5px; font-weight: 600; background: #fff1ec; color: #b54324; vertical-align: middle; }
+.insights-page .insight-top-footer { padding-top: 10px; border-top: 1px solid #edf1f5; }
+
+/* Desktop Deep-Dive Segmented Tabs & Mobile Gatekeep */
+.insights-page .insight-mobile-gatekeep { margin: 0; padding: 12px 14px; border-radius: 12px; background: #f5f8fb; border: 1px solid #e2e8ee; color: #526372; font-size: 12.5px; line-height: 1.5; text-align: center; }
+.insights-page .insight-deep-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e9ed; }
+.insights-page .insight-deep-header h2 { margin: 0; font-size: var(--type-section); }
+.insights-page .insight-deep-header .insight-note { margin-top: 4px; }
+.insights-page .insight-seg-tabs { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: #eef3f7; }
+.insights-page .insight-seg-tab { min-height: 34px; padding: 5px 14px; border-radius: 9px; border: 0; background: transparent; color: #475867; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
+.insights-page .insight-seg-tab[data-active="true"] { background: #fff; color: #17242d; box-shadow: 0 1px 3px rgba(23, 36, 45, .08); }
+.insights-page .insight-tab-pane { padding-top: 18px; }
+
+.insights-page .insight-cashflow-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
 .insights-page .insight-cashflow-kpi { padding: 14px; border: 1px solid #e5e9ed; border-radius: 12px; background: #fbfcfd; min-width: 0; }
 .insights-page .insight-cashflow-kpi > span { display: block; font-size: 13px; color: #526372; }
-.insights-page .insight-cashflow-kpi > strong { display: block; font-size: 1.25rem; margin: 6px 0 4px; line-height: 1.3; }
+.insights-page .insight-cashflow-kpi > strong { display: block; font-size: 1.2rem; margin: 6px 0 4px; line-height: 1.3; }
 .insights-page .insight-cashflow-kpi > small { display: block; font-size: 12px; color: #526372; line-height: 1.45; overflow-wrap: anywhere; }
 
 .insights-page .insight-cashflow-chart-wrap { margin-top: 8px; padding-top: 14px; border-top: 1px solid #e5e9ed; }
@@ -253,8 +321,8 @@
 
 .insights-page .insight-bridge-block { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e5e9ed; }
 .insights-page .insight-bridge-block h3 { margin: 0 0 12px; font-size: 15px; }
-.insights-page .insight-bridge-bars { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
-.insights-page .insight-bridge-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 14px; }
+.insights-page .insight-bridge-bars { list-style: none; padding: 0; margin: 0; display: grid; gap: 11px; }
+.insights-page .insight-bridge-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13.5px; }
 .insights-page .insight-bridge-head small { color: #526372; font-size: 12px; }
 .insights-page .insight-category-track span[data-tone="positive"] { background: #09836b; }
 .insights-page .insight-category-track span[data-tone="negative"] { background: #c34545; }
@@ -262,20 +330,11 @@
 .insights-page .insight-health-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .insights-page .insight-health-card { padding: 14px 16px; border: 1px solid #e5e9ed; border-radius: 12px; background: #fbfcfd; min-width: 0; }
 .insights-page .insight-health-card > span { display: block; font-size: 13px; color: #526372; }
-.insights-page .insight-health-card > strong { display: block; font-size: 1.3rem; margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
-.insights-page .insight-health-card > small { display: block; font-size: 12px; color: #526372; line-height: 1.5; overflow-wrap: anywhere; }
+.insights-page .insight-health-card > strong { display: block; font-size: 1.25rem; margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
+.insights-page .insight-health-card > small { display: block; font-size: 12px; color: #526372; line-height: 1.45; overflow-wrap: anywhere; }
 
-.insights-page .insight-subgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--dashboard-gap); align-items: start; min-width: 0; }
-
-.insights-page .insight-uncategorized-panel { border-color: #d6e4f0; }
-.insights-page .insight-uncategorized-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 12px; }
-.insights-page .insight-uncategorized-item { padding: 14px; border: 1px solid #e5e9ed; border-radius: 12px; background: #fbfcfd; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px 16px; align-items: end; }
-.insights-page .insight-uncategorized-meta { min-width: 0; }
-.insights-page .insight-uncategorized-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.insights-page .insight-uncategorized-meta small { display: block; margin-top: 4px; font-size: 13px; color: #526372; overflow-wrap: anywhere; }
-.insights-page .insight-uncategorized-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; min-width: 0; }
-.insights-page .insight-uncategorized-actions .inline-catalog-select { flex: 1 1 200px; min-width: 0; }
-.insights-page .insight-uncategorized-actions .field { margin: 0; }
+.insights-page .insight-subgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; min-width: 0; }
+.insights-page .insight-subgrid h3 { margin: 0; font-size: 16px; }
 .insights-page .insight-composition-subnote { display: block; margin-top: 4px; font-size: 12px; color: #526372; line-height: 1.45; }
 .insights-page .insight-fee-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-style: normal; font-size: 11px; font-weight: 600; background: #eef3f7; color: #365068; vertical-align: middle; }
 .insights-page .insight-fee-badge[data-kind="pajak"] { background: #fdf2e4; color: #80520b; }
@@ -285,10 +344,14 @@
   .insights-page .insight-cashflow-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .insights-page .insight-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .insights-page .insight-subgrid { grid-template-columns: minmax(0, 1fr); }
-  .insights-page .insight-uncategorized-item { grid-template-columns: minmax(0, 1fr); }
+  .insights-page .insight-account-values { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 700px) {
-  .insights-page .insight-quick-label { min-width: 0; width: 100%; }
-  .insights-page .insight-cashflow-kpis, .insights-page .insight-health-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .insights-page .insight-toolbar { padding: 12px 14px; gap: 10px; }
+  .insights-page .insight-compact-kpis { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .insights-page .insight-compact-kpis > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .insights-page .insight-compact-kpis strong { margin-top: 0; text-align: right; }
+  .insights-page .insight-compact-kpis small { display: none; }
+  .insights-page .insight-account-values { grid-template-columns: minmax(0, 1fr); }
 }

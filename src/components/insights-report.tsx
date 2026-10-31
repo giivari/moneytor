@@ -18,26 +18,101 @@ function Money({ value, currency, exponent, className = "", suffix = "" }: { val
   return <FinancialAmount value={text} as="span" className={`insight-money ${className}`} />;
 }
 function Lines({ children }: { children: ReactNode }) { return <dl className="insight-lines">{children}</dl>; }
+
 function Dimensions({ rows, origin = false }: { rows: DimensionRow[]; origin?: boolean }) {
   if (!rows.length) return <p className="insight-note">Belum ada aktivitas tercatat pada periode ini.</p>;
-  return <ul className="insight-dimensions">{rows.map((row) => <li key={row.key}>
-    <div className="insight-dimension-heading"><strong>{origin ? originLabel(row.key) : row.name}{row.archived && <small> · Diarsipkan</small>}</strong><span>{row.activityCount} transaksi</span></div>
-    <dl className="insight-small-values"><div><dt>Pemasukan</dt><dd><Money value={row.incomeMinor} currency={row.currency} exponent={row.exponent} /></dd></div><div><dt>Belanja & biaya</dt><dd><Money value={row.spendingMinor} currency={row.currency} exponent={row.exponent} /></dd></div><div><dt>Transfer keluar</dt><dd><Money value={row.transferPrincipalMinor} currency={row.currency} exponent={row.exponent} /></dd></div></dl>
-  </li>)}</ul>;
+  return (
+    <ul className="insight-dimensions">
+      {rows.map((row) => {
+        const inc = BigInt(row.incomeMinor);
+        const trfIn = BigInt(row.transferInMinor ?? "0");
+        const exp = BigInt(row.spendingMinor);
+        const trfOut = BigInt(row.transferPrincipalMinor);
+        const netMutation = inc + trfIn - exp - trfOut;
+        return (
+          <li key={row.key}>
+            <div className="insight-dimension-heading">
+              <strong>
+                {origin ? originLabel(row.key) : row.name}
+                {row.archived && <small> · Diarsipkan</small>}
+              </strong>
+              <span>
+                {!origin && (
+                  <em className={`insight-account-net ${netMutation < 0n ? "insight-negative" : netMutation > 0n ? "insight-positive" : ""}`}>
+                    Mutasi {signedMoney(netMutation.toString(), row.currency, row.exponent)} ·{" "}
+                  </em>
+                )}
+                {row.activityCount} transaksi
+              </span>
+            </div>
+            <dl className={`insight-small-values ${!origin ? "insight-account-values" : ""}`}>
+              <div>
+                <dt>Pemasukan</dt>
+                <dd className={inc === 0n ? "insight-zero-muted" : "insight-positive"}>
+                  <Money value={row.incomeMinor} currency={row.currency} exponent={row.exponent} />
+                </dd>
+              </div>
+              {!origin && (
+                <div>
+                  <dt>Transfer masuk</dt>
+                  <dd className={trfIn === 0n ? "insight-zero-muted" : "insight-positive"}>
+                    <Money value={row.transferInMinor ?? "0"} currency={row.currency} exponent={row.exponent} />
+                  </dd>
+                </div>
+              )}
+              <div>
+                <dt>Belanja & biaya</dt>
+                <dd className={exp === 0n ? "insight-zero-muted" : "insight-negative"}>
+                  <Money value={row.spendingMinor} currency={row.currency} exponent={row.exponent} />
+                </dd>
+              </div>
+              <div>
+                <dt>Transfer keluar</dt>
+                <dd className={trfOut === 0n ? "insight-zero-muted" : ""}>
+                  <Money value={row.transferPrincipalMinor} currency={row.currency} exponent={row.exponent} />
+                </dd>
+              </div>
+            </dl>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
-export function InsightsReportView({ report, currency, periodKind = "current_month", granularity = "auto", monthSelection, slideSelection = { index: 0, select: () => {} }, onRefreshReport }: { report: AnalyticsReport; currency: string; periodKind?: string; granularity?: AnalyticsGranularity; monthSelection?: InsightsMonthSelection; slideSelection?: InsightsSlideSelection; onRefreshReport?: () => void }) {
+export function InsightsReportView({
+  report,
+  currency,
+  periodKind = "current_month",
+  granularity = "auto",
+  monthSelection,
+  slideSelection = { index: 0, select: () => {} },
+}: {
+  report: AnalyticsReport;
+  currency: string;
+  periodKind?: string;
+  granularity?: AnalyticsGranularity;
+  monthSelection?: InsightsMonthSelection;
+  slideSelection?: InsightsSlideSelection;
+}) {
   const data = insightsCurrency(report, currency), summary = data.summary;
   if (!summary) return <div className="surface insight-state" role="status">Belum ada akun atau portofolio dengan mata uang yang dapat dilaporkan.</div>;
   const money = (value: string, className = "") => <Money value={value} currency={currency} exponent={summary.exponent} className={className} />;
   const fees = feePartition(data.charges);
   const line = (label: string, value: string) => <div key={label}><dt>{label}</dt><dd>{money(value,
     BigInt(value) < 0n ? "insight-negative" : label.startsWith("P/L") && BigInt(value) > 0n ? "insight-positive" : "")}</dd></div>;
+
   return <div className="insight-report">
     <div className="insight-period-heading"><div><strong>{periodLabel(report.period)}</strong><span>{currency} · Kalender Asia/Jakarta</span></div><small>Dibaca {new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(report.generatedAt))} WIB</small></div>
-    {(report.period.partial || report.comparison.partialComparison) && <p className="insight-warning" role="note">{report.period.partial ? "Periode berjalan — angka dapat berubah hingga akhir periode. " : "Periode pembanding belum lengkap. "}Perbandingan bukan penyamaan jumlah hari yang sudah berlalu.</p>}
+    {(report.period.partial || report.comparison.partialComparison) && (
+      <p className="insight-status-strip" role="note">
+        <span className="insight-status-dot" aria-hidden="true" />
+        {report.period.partial ? "Periode berjalan · Angka diperbarui otomatis mengikuti transaksi terbaru." : "Periode pembanding belum penuh."}
+      </p>
+    )}
     {!!(data.assets?.unpricedCount || data.investment?.unpricedCount) && <p className="insight-warning" role="note">Ada posisi investasi tanpa harga. Total aset diketahui dan nilai pasar belum mencakup semuanya; rincian ada di Aset & investasi.</p>}
     {report.context && !report.context.planningReady && <p className="insight-warning" role="note">Planning belum tersedia; konteks kewajiban belum lengkap.</p>}
+
     <section className="surface insight-panel insight-overview" aria-label="Ringkasan keuangan">
       <div className="insight-main-metrics">{([
         ["Pemasukan", "incomeMinor", "income", "positive"],
@@ -46,25 +121,27 @@ export function InsightsReportView({ report, currency, periodKind = "current_mon
       ] as const).map(([label, valueKey, compareKey, tone]) => {
         const comparison = data.comparison?.[compareKey];
         return <div className="insight-main-metric" key={valueKey}><span>{label}</span><strong>{money(summary[valueKey], `insight-${tone}`)}</strong>
-          <small>{comparison ? <>{signedMoney(comparison.differenceMinor, currency, summary.exponent)} <span>({percentageLabel(comparison.percentageChangeBps, true)})</span></> : "—"}<span className="insight-comparison-label">Selisih dari periode pembanding</span></small>
+          <small>{comparison ? <>{signedMoney(comparison.differenceMinor, currency, summary.exponent)} <span>({percentageLabel(comparison.percentageChangeBps, true)})</span></> : "—"}<span className="insight-comparison-label"> · vs periode lalu</span></small>
         </div>;
       })}</div>
-      <p className="insight-note"><span className="insight-net-short">Net = pemasukan − belanja; bukan pertumbuhan aset.</span><span className="insight-net-full">Net = pemasukan − belanja, bukan pertumbuhan total aset. Pokok Transfer internal tidak dihitung sebagai pemasukan atau belanja.</span></p>
-      <details className="insight-inline-detail insight-summary-detail"><summary>Komponen & perbandingan</summary>
-      <dl className="insight-support-metrics">{line("Pokok Expense", summary.expensePrincipalMinor)}{line("Biaya layanan & Transfer", summary.feesMinor)}{line("Pajak", summary.taxesMinor)}{line("Biaya lainnya", summary.otherChargesMinor)}</dl>
-      <dl className="insight-comparison-details">{([['Pemasukan', 'income'], ['Belanja', 'spending'], ['Net operasional', 'net']] as const).map(([label, key]) => <div key={key}><dt>Selisih {label}</dt><dd>{data.comparison ? `${signedMoney(data.comparison[key].differenceMinor, currency, summary.exponent)} (${percentageLabel(data.comparison[key].percentageChangeBps, true)})` : '—'}</dd></div>)}</dl>
+      <p className="insight-note"><span className="insight-net-short">Net = pemasukan − belanja; bukan pertumbuhan aset.</span><span className="insight-net-full">Net = pemasukan − belanja, bukan pertumbuhan total aset. Transfer antar akun sendiri dicatat terpisah.</span></p>
+      <details className="insight-inline-detail insight-summary-detail"><summary>Rincian komponen & perbandingan</summary>
+      <dl className="insight-support-metrics">{line("Pokok pengeluaran", summary.expensePrincipalMinor)}{line("Biaya layanan & Transfer", summary.feesMinor)}{line("Pajak", summary.taxesMinor)}{line("Biaya lainnya", summary.otherChargesMinor)}</dl>
+      <dl className="insight-comparison-details">{([["Pemasukan", "income"], ["Belanja", "spending"], ["Net operasional", "net"]] as const).map(([label, key]) => <div key={key}><dt>Selisih {label}</dt><dd>{data.comparison ? `${signedMoney(data.comparison[key].differenceMinor, currency, summary.exponent)} (${percentageLabel(data.comparison[key].percentageChangeBps, true)})` : "—"}</dd></div>)}</dl>
       <p className="insight-note">Pembanding: {periodLabel(report.comparison.period)}. {["custom", "last_7_days", "last_30_days"].includes(periodKind) ? "Interval sebelumnya dengan jumlah hari yang sama." : "Blok kalender sebelumnya secara penuh."} Persentase — berarti basis tidak positif atau tidak dapat dibandingkan.</p>
-      <p className="insight-note">Pokok Transfer internal tidak dihitung sebagai pemasukan atau belanja.</p>
-      <p className="insight-note insight-activity-meta"><span>{summary.activityCount} transaksi P3 efektif: {summary.incomeCount} Income · {summary.expenseCount} Expense · {summary.transferCount} Transfer.</span>
+      <p className="insight-note insight-activity-meta"><span>{summary.activityCount} transaksi P3 efektif: {summary.incomeCount} Pemasukan · {summary.expenseCount} Pengeluaran · {summary.transferCount} Transfer.</span>
         <span className="insight-transfer-meta">Transfer: <Money value={summary.transferPrincipalMinor} currency={currency} exponent={summary.exponent} suffix="." /></span></p>
       </details>
       {summary.activityCount === "0" && <p className="insight-empty">Belum ada transaksi P3 efektif pada periode ini. Konteks aset dan investasi tetap ditampilkan jika tersedia.</p>}
     </section>
+
     <InsightsPrimary report={report} currency={currency} exponent={summary.exponent} selection={monthSelection} slides={slideSelection} categories={data.categories.rows} charges={data.charges} origins={data.origins} granularity={granularity} />
-    <InsightsFinancialSuite report={report} currency={currency} exponent={summary.exponent} granularity={granularity} onRefreshReport={onRefreshReport} />
+
+    <InsightsFinancialSuite report={report} currency={currency} exponent={summary.exponent} granularity={granularity} />
+
     <InsightsSecondary items={[
       { key: "fees", title: "Biaya & pajak", summary: `${formatMinor(summary.chargesMinor, currency, summary.exponent)} · Sudah termasuk dalam belanja`, action: "Rincian biaya & pajak", content: <>
-        <SectionHeading title="Biaya & pajak" helper="Sudah termasuk dalam belanja P3." />
+        <SectionHeading title="Biaya & pajak" helper="Sudah termasuk dalam total pengeluaran." />
         <InsightsCostBars currency={currency} exponent={summary.exponent} rows={[
           { key: "fee", label: "Layanan (termasuk Transfer)", amount: summary.feesMinor },
           { key: "tax", label: "Pajak", amount: summary.taxesMinor },
@@ -77,12 +154,12 @@ export function InsightsReportView({ report, currency, periodKind = "current_mon
         <p className="insight-note">Biaya Transfer adalah bagian dari total biaya layanan dan belanja, bukan tambahan lagi. Biaya perdagangan P4 ditampilkan terpisah di investasi.</p>
         {data.charges.length ? <ul className="insight-charges">{data.charges.map((row) => <li key={`${row.typeId}:${row.activityKind}`}><span><strong>{row.name}</strong>{row.archived && <small> · Diarsipkan</small>}<small>{row.activityKind} · {row.bucket === "tax" ? "Pajak" : row.bucket === "fee" ? "Biaya layanan" : "Biaya lainnya"} · {row.chargeCount} biaya</small></span>{money(row.amountMinor)}</li>)}</ul> : <p className="insight-empty">Tidak ada biaya atau pajak P3 pada periode ini.</p>}
       </> },
-      { key: "accounts", title: "Aktivitas menurut akun", summary: `${data.accounts.length} akun · Penerima pemasukan / pembayar biaya / asal Transfer`, action: "Rincian aktivitas akun", content: <>
-        <SectionHeading title="Aktivitas menurut akun" helper="Belanja per akun pembayar · Bukan saldo akun." />
+      { key: "accounts", title: "Aktivitas menurut akun", summary: `${data.accounts.length} akun · Pemasukan, Transfer masuk/keluar & Belanja`, action: "Rincian mutasi akun", content: <>
+        <SectionHeading title="Aktivitas menurut akun" helper="Belanja per akun pembayar · Mutasi masuk & keluar ada di rincian." />
         <InsightsCostBars currency={currency} exponent={summary.exponent} rows={[...data.accounts].sort((a,b) => BigInt(a.spendingMinor) === BigInt(b.spendingMinor) ? a.key.localeCompare(b.key) : BigInt(a.spendingMinor) > BigInt(b.spendingMinor) ? -1 : 1).slice(0,4).map(row => ({key:row.key,label:`${row.name}${row.archived ? " · Diarsipkan" : ""}`,amount:row.spendingMinor}))} />
         {!data.accounts.some(row => BigInt(row.spendingMinor) > 0n) && <p className="insight-empty">Belum ada belanja pada akun di periode ini. Pemasukan dan Transfer tersedia di rincian.</p>}
       </>, details: <>
-        <p className="insight-note">Dimensi akun menunjukkan penerima Income, pembayar Expense/biaya, dan asal pokok Transfer keluar. Ini bukan mutasi rekening lengkap dua sisi dan bukan saldo akun.</p><Dimensions rows={data.accounts} />
+        <p className="insight-note">Rincian mutasi per akun mencakup Pemasukan, Transfer masuk, Belanja & biaya, serta Transfer keluar yang tercatat pada periode ini.</p><Dimensions rows={data.accounts} />
       </> },
       { key: "monthly", title: "Rincian angka bulanan", summary: `${data.monthly.length} bulan · Grafik lengkap dan tabel tepat`, action: "Lihat angka bulanan", details: <>
         <InsightsTrend rows={data.monthly} report={report} selection={monthSelection} tableDisclosure={false} />

@@ -119,6 +119,7 @@ export function insightsCurrency(report: AnalyticsReport, currency: string) {
     incomeCategories: (report.byIncomeCategory ?? []).filter((row) => row.currency === currency),
     weekdays: (report.byWeekday ?? []).filter((row) => row.currency === currency),
     expenseItems: (report.expenseItems ?? []).filter((row) => row.currency === currency),
+    creditAndBills: (report.creditAndBills ?? []).find((row) => row.currency === currency),
     monthly: report.monthly.filter((row) => row.currency === currency), charges: report.charges.filter((row) => row.currency === currency),
     accounts: report.byAccount.filter((row) => row.currency === currency), origins: report.byOrigin.filter((row) => row.currency === currency),
     comparison: report.comparison.currencies.find((row) => row.currency === currency),

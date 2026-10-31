@@ -14,7 +14,14 @@ export type FinancialMeasures = {
   spendingMinor: string; netMinor: string; transferPrincipalMinor: string;
   activityCount: string; incomeCount: string; expenseCount: string; transferCount: string;
 };
-export type DimensionRow = FinancialMeasures & { key: string; id: string | null; name: string; archived: boolean };
+export type DimensionRow = FinancialMeasures & {
+  key: string;
+  id: string | null;
+  name: string;
+  archived: boolean;
+  transferInMinor?: string;
+  transferInCount?: string;
+};
 export type ChargeReport = { currency: string; exponent: number; typeId: string; name: string;
   systemKey: string | null; bucket: ChargeBucket; archived: boolean; activityKind: string; amountMinor: string; chargeCount: string };
 export type InvestmentFlows = { currency: string; exponent: number; purchasePrincipalMinor: string;
@@ -31,9 +38,62 @@ export type AnalyticsExpenseItem = {
   categoryName: string | null;
   sourceAssetId: string;
   sourceName: string;
+  isCreditSource?: boolean;
   note: string | null;
   origin: AnalyticsOrigin;
   charges: { typeId: string; name?: string; amountMinor: string }[];
+};
+export type AnalyticsCreditFacility = {
+  id: string;
+  name: string;
+  providerName: string | null;
+  isActive: boolean;
+  currentBillMinor: string;
+  currentDueIso: string;
+  nextBillMinor: string;
+  nextDueIso: string;
+  totalUnpaidMinor: string;
+  limitMinor: string;
+  availableLimitMinor: string | null;
+  dueDay: number;
+  cutoffDay: number;
+  periodSpendingMinor: string;
+  periodExpenseCount: string;
+  periodRepaymentMinor: string;
+  periodRepaymentCount: string;
+};
+export type AnalyticsObligationItem = {
+  id: string;
+  title: string;
+  labelName: string;
+  amountMinor: string;
+  coveredMinor: string;
+  uncoveredMinor: string;
+  dueOn: string;
+  status: "open" | "settled";
+};
+export type AnalyticsCreditAndBills = {
+  currency: string;
+  exponent: number;
+  cashSpendingMinor: string;
+  creditSpendingMinor: string;
+  creditExpenseCount: string;
+  creditRepaymentMinor: string;
+  creditRepaymentCount: string;
+  currentCycleBillsMinor: string;
+  nextCycleBillsMinor: string;
+  totalCreditUnpaidMinor: string;
+  facilities: AnalyticsCreditFacility[];
+  billCategorySpendingMinor: string;
+  billCategoryCount: string;
+  automatedSpendingMinor: string;
+  automatedExpenseCount: string;
+  openObligationsMinor: string;
+  openObligationsUncoveredMinor: string;
+  openObligationsCount: number;
+  settledInPeriodMinor: string;
+  settledInPeriodCount: number;
+  obligations: AnalyticsObligationItem[];
 };
 export type AnalyticsReport = {
   version: "p6a.v1"; generatedAt: string; period: ReportingPeriod;
@@ -43,6 +103,7 @@ export type AnalyticsReport = {
   byIncomeCategory?: DimensionRow[];
   byWeekday?: DimensionRow[];
   expenseItems?: AnalyticsExpenseItem[];
+  creditAndBills?: AnalyticsCreditAndBills[];
   comparison: { period: ReportingPeriod; partialComparison: boolean; method: "full_previous_period";
     currencies: { currency: string; income: ReturnType<typeof import("./domain").periodChange>;
       spending: ReturnType<typeof import("./domain").periodChange>; net: ReturnType<typeof import("./domain").periodChange> }[] };

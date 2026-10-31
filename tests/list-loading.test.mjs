@@ -60,27 +60,36 @@ test('Insights server refresh replaces initial SSR data without a blank frame or
 const findElements=(root,predicate)=>{
  const matches=[];function visit(node){if(!node||typeof node!=='object')return;if(predicate(node))matches.push(node);for(const child of [node.props?.children].flat(Infinity))visit(child);}visit(root);return matches;
 };
-test('Insights real controls apply currency/period to API and URL; browser-history event restores default without stale report',async()=>{
+test('Insights real controls auto-apply currency/period to API and URL; browser-history event restores default without stale report',async()=>{
  const original=globalThis.window,handlers={},pushed=[];
  globalThis.window={location:{pathname:'/insights',search:''},history:{pushState(_a,_b,url){pushed.push(url);}},addEventListener(name,callback){handlers[name]=callback;},removeEventListener(name){delete handlers[name];}};
  const initial={period:{startDay:'2026-10-01',endDayExclusive:'2026-11-01'},summary:[{currency:'IDR'}],generatedAt:'2026-10-11T08:00:00Z',monthly:[{currency:'IDR',key:'2026-10',activityCount:'2'}]};
  const h=harness(InsightsWorkspace,[{initial,initialQuery:'period=current_month&currency=IDR',initialError:'',currencies:[{currency:'IDR',exponent:0},{currency:'USD',exponent:2}]}]);
  try{
-  let tree=h.render();h.commit();findElements(tree,n=>n.props?.slideSelection)[0].props.slideSelection.select(2);tree=h.render();let selects=findElements(tree,n=>n.type==='select');selects[0].props.onChange({target:{value:'previous_month'}});selects[1].props.onChange({target:{value:'USD'}});
-  tree=h.render();findElements(tree,n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});tree=h.render();assert.equal(findElements(tree,n=>n.props?.report).length,0);h.commit();assert.equal(pushed[0],'/insights?period=previous_month&currency=USD');assert.match(h.requests[0].url,/period=previous_month&currency=USD/);
+  let tree=h.render();h.commit();findElements(tree,n=>n.props?.slideSelection)[0].props.slideSelection.select(2);tree=h.render();
+  const prevMonthBtn=findElements(tree,n=>n.type==='button'&&n.props.children==='Bulan Lalu')[0];
+  prevMonthBtn.props.onClick();
+  tree=h.render();assert.equal(findElements(tree,n=>n.props?.report).length,0);h.commit();
+  assert.equal(pushed[0],'/insights?period=previous_month&currency=IDR');assert.match(h.requests[0].url,/period=previous_month&currency=IDR/);
+  const selects=findElements(tree,n=>n.type==='select');
+  selects[1].props.onChange({target:{value:'USD'}});
+  tree=h.render();h.commit();assert.equal(h.requests[0].signal.aborted,true);
+  assert.equal(pushed[1],'/insights?period=previous_month&currency=USD');assert.match(h.requests[1].url,/period=previous_month&currency=USD/);
   const previous={period:{startDay:'2026-09-01',endDayExclusive:'2026-10-01'},summary:[{currency:'USD'}],generatedAt:'2026-10-11T09:00:00Z',monthly:[{currency:'USD',key:'2026-09',activityCount:'0'}]};
-  h.requests[0].resolve(previous);await tick();tree=h.render();assert.equal(findElements(tree,n=>n.props?.report)[0].props.currency,'USD');assert.equal(findElements(tree,n=>n.props?.report)[0].props.monthSelection.month,'2026-09');assert.equal(findElements(tree,n=>n.props?.report)[0].props.slideSelection.index,2);
-  handlers.popstate();tree=h.render();assert.equal(findElements(tree,n=>n.props?.report).length,0);h.commit();assert.match(h.requests[1].url,/period=current_month&currency=IDR/);
-  h.requests[1].resolve(initial);await tick();tree=h.render();assert.equal(findElements(tree,n=>n.props?.report)[0].props.monthSelection.month,'2026-10');
-  window.location.search='?period=previous_month&currency=USD';handlers.popstate();h.render();h.commit();h.requests[2].resolve(previous);await tick();tree=h.render();assert.equal(findElements(tree,n=>n.props?.report)[0].props.monthSelection.month,'2026-09');
+  h.requests[1].resolve(previous);await tick();tree=h.render();assert.equal(findElements(tree,n=>n.props?.report)[0].props.currency,'USD');assert.equal(findElements(tree,n=>n.props?.report)[0].props.monthSelection.month,'2026-09');assert.equal(findElements(tree,n=>n.props?.report)[0].props.slideSelection.index,2);
+  handlers.popstate();tree=h.render();assert.equal(findElements(tree,n=>n.props?.report).length,0);h.commit();assert.match(h.requests[2].url,/period=current_month&currency=IDR/);
+  h.requests[2].resolve(initial);await tick();tree=h.render();assert.equal(findElements(tree,n=>n.props?.report)[0].props.monthSelection.month,'2026-10');
+  window.location.search='?period=previous_month&currency=USD';handlers.popstate();h.render();h.commit();h.requests[3].resolve(previous);await tick();tree=h.render();assert.equal(findElements(tree,n=>n.props?.report)[0].props.monthSelection.month,'2026-09');
  }finally{h.cleanup();globalThis.window=original;}
 });
-test('Insights invalid date submission stays editable with an error and never issues a report request',()=>{
- const original=globalThis.window;globalThis.window={location:{pathname:'/insights'},history:{pushState(){throw Error('Invalid draft must not navigate');}},addEventListener(){},removeEventListener(){}};
- const h=harness(InsightsWorkspace,[{initial:{period:{startDay:'2026-10-01',endDayExclusive:'2026-11-01'},summary:[],generatedAt:'2026-10-11T08:00:00Z'},initialQuery:'period=current_month&currency=IDR',initialError:'',currencies:[{currency:'IDR',exponent:0}]}]);
+test('Insights invalid custom date stays editable with an error and never issues a report request',()=>{
+ const original=globalThis.window;globalThis.window={location:{pathname:'/insights'},history:{pushState(_a,_b,url){if(url.includes('start=2026-10-20'))throw Error('Invalid draft must not navigate');}},addEventListener(){},removeEventListener(){}};
+ const h=harness(InsightsWorkspace,[{initial:{period:{startDay:'2026-10-01',endDayExclusive:'2026-11-01'},summary:[],generatedAt:'2026-10-11T08:00:00Z'},initialQuery:'period=custom&start=2026-10-01&end=2026-10-10&currency=IDR',initialError:'',currencies:[{currency:'IDR',exponent:0}]}]);
  try{
-  let tree=h.render();h.commit();findElements(tree,n=>n.type==='select')[0].props.onChange({target:{value:'custom'}});tree=h.render();const dates=findElements(tree,n=>n.type==='input'&&n.props.type==='date');dates[0].props.onChange({target:{value:'2026-10-20'}});dates[1].props.onChange({target:{value:'2026-10-01'}});
-  tree=h.render();findElements(tree,n=>n.type==='form')[0].props.onSubmit({preventDefault(){}});tree=h.render();assert.equal(findElements(tree,n=>n.props?.role==='alert').length,1);h.commit();assert.equal(h.requests.length,0);
+  let tree=h.render();h.commit();
+  const dates=findElements(tree,n=>n.type==='input'&&n.props.type==='date');
+  dates[0].props.onChange({target:{value:'2026-10-20'}});
+  tree=h.render();assert.equal(findElements(tree,n=>n.props?.role==='alert').length,1);h.commit();assert.equal(h.requests.length,0);
  }finally{h.cleanup();globalThis.window=original;}
 });
 const page=(items,next=null,remaining=0)=>({items:items.map(key=>({key})),next,remaining});
