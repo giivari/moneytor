@@ -10,7 +10,7 @@ import type { AnalyticsCreditAndBills, AnalyticsReport, DimensionRow, FinancialM
 import type { PoolClient } from "pg";
 
 const BILL_CATEGORY_RE =
-  /\b(tagihan|listrik|pln|air|pdam|internet|wifi|pulsa|paket\s*data|utilitas|utilities|bills?|langganan|subscription|cicilan|kredit|pay\s*later|spaylater|sewa|kontrakan|kos|kost|asuransi|bpjs|ipl|pajak)\b/i;
+  /\b(tagihan|listrik|pln|air|pdam|internet|wifi|pulsa|paket\s*data|utilitas|utilities|bills?|langganan|subscription|sewa|kontrakan|kos|kost|asuransi|bpjs|ipl|pajak)\b/i;
 
 async function readCurrencies(client: PoolClient, currency: string | null) {
   return (await client.query<{ currency: string; exponent: number }>(`
@@ -180,7 +180,9 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
             .filter((f) => f.isActive)
             .reduce((s, f) => s + BigInt(f.totalUnpaidMinor), 0n);
 
-          const billCats = byCategory.filter((r) => r.currency === c.currency && BILL_CATEGORY_RE.test(r.name));
+          const billCats = byCategory.filter(
+            (r) => r.currency === c.currency && BILL_CATEGORY_RE.test(r.name) && BigInt(r.spendingMinor) > 0n,
+          );
           const billCatSpendBig = billCats.reduce((s, r) => s + BigInt(r.spendingMinor), 0n);
           const billCatCountBig = billCats.reduce((s, r) => s + BigInt(r.expenseCount), 0n);
 
@@ -206,6 +208,13 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
             facilities,
             billCategorySpendingMinor: billCatSpendBig.toString(),
             billCategoryCount: billCatCountBig.toString(),
+            billCategories: billCats.map((r) => ({
+              key: r.key,
+              name: r.name,
+              spendingMinor: r.spendingMinor,
+              expenseCount: r.expenseCount,
+              archived: r.archived,
+            })),
             automatedSpendingMinor: autoRow?.spendingMinor ?? "0",
             automatedExpenseCount: autoRow?.expenseCount ?? "0",
             openObligationsMinor: openObsBig.toString(),

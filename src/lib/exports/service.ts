@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { validateCatalogName } from "@/lib/domain/catalog";
+import { stripAssetMetaTags } from "@/lib/domain/asset-terms";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { formatMinor } from "@/lib/finance/format";
 import { listActivities } from "@/lib/finance/service";
@@ -189,7 +190,7 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
       a.normallySpendable ? "Ya" : "Tidak",
       a.safeSuffix ?? "",
       a.isActive ? "Aktif" : "Diarsipkan",
-      a.note ?? "",
+      stripAssetMetaTags(a.note),
     ]);
 
     const pdfRows = assets.map((a) => [

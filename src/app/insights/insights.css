@@ -143,10 +143,9 @@
 .insights-page .insight-interval-values dd { margin: 0; text-align: right; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 .insights-page .insight-inline-detail { margin-top: 12px; }
-.insights-page .insight-inline-detail > summary { font-size: 13.5px; font-weight: 500; color: #1767aa; min-height: 34px; display: inline-flex; align-items: center; gap: 6px; list-style: none; }
+.insights-page .insight-inline-detail > summary { font-size: 13.5px; font-weight: 500; color: #1767aa; min-height: 34px; display: inline-flex; align-items: center; gap: 8px; list-style: none; }
 .insights-page .insight-inline-detail > summary::-webkit-details-marker { display: none; }
-.insights-page .insight-inline-detail > summary::before { content: "▸"; font-size: 11px; transition: transform 140ms ease; }
-.insights-page .insight-inline-detail[open] > summary::before { transform: rotate(90deg); }
+.insights-page .insight-inline-detail > summary::before { color: currentColor; }
 
 .insights-page .insight-composition { display: flex; align-items: center; gap: 16px; margin-top: 12px; }
 .insights-page .insight-composition svg { width: 136px; max-width: 46%; flex: 0 0 auto; }
@@ -224,7 +223,7 @@
 .insights-page .insight-toolbar-period strong { font-size: 15px; color: #17242d; }
 .insights-page .insight-toolbar-period span { font-size: 13px; color: #526372; }
 .insights-page .insight-toolbar-selects { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.insights-page .insight-inline-select select { min-height: 36px; padding: 6px 30px 6px 12px; border-radius: 999px; border: 1px solid #d5dde3; background-color: #f8fafc; color: #17242d; font-size: 13px; font-weight: 600; cursor: pointer; width: auto; }
+.insights-page .insight-inline-select select { appearance: none; -webkit-appearance: none; min-height: 36px; padding: 6px 36px 6px 14px; border-radius: 999px; border: 1px solid #d5dde3; background-color: #f8fafc; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4.25 6.25 3.75 3.75 3.75-3.75' stroke='%2317242d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 13px center; background-size: 14px 14px; color: #17242d; font-size: 13px; font-weight: 600; cursor: pointer; width: auto; }
 .insights-page .insight-pill-scroller { display: flex; align-items: center; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding-bottom: 2px; min-width: 0; }
 .insights-page .insight-pill-scroller::-webkit-scrollbar { display: none; }
 .insights-page .insight-pill { flex: 0 0 auto; min-height: 34px; padding: 5px 13px; border-radius: 999px; border: 1px solid #d5dde3; background: #fff; color: #24333f; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
@@ -259,7 +258,10 @@
 .insights-page .insight-asset-snapshot-grid dd { margin: 4px 0 0; font-size: 15px; font-weight: 700; color: #17242d; font-variant-numeric: tabular-nums; }
 
 .insights-page .insight-suite { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--dashboard-gap); min-width: 0; }
-.insights-page .insight-mid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--dashboard-gap); align-items: start; min-width: 0; }
+.insights-page .insight-mid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: var(--dashboard-gap); align-items: start; min-width: 0; }
+@media (min-width: 920px) {
+  .insights-page .insight-mid-grid > :nth-child(3):last-child { grid-column: 1 / -1; }
+}
 
 /* Compact Top Strip inside Kredit & Tagihan */
 .insights-page .insight-compact-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 11px 13px; border-radius: 10px; background: #f8fafc; border: 1px solid #e5e9ed; }

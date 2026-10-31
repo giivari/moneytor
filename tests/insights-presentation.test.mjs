@@ -225,7 +225,9 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
    {id:'spaylater',name:'SPayLater',providerName:'ShopeePay',isActive:true,currentBillMinor:'613632',currentDueIso:'2026-11-01',nextBillMinor:'381992',nextDueIso:'2026-12-01',totalUnpaidMinor:'995624',limitMinor:'22500000',availableLimitMinor:'21504376',dueDay:1,cutoffDay:20,periodSpendingMinor:'60500',periodExpenseCount:'1',periodRepaymentMinor:'300000',periodRepaymentCount:'1'},
    {id:'bca-cc',name:'Kartu Kredit BCA',providerName:'BCA',isActive:true,currentBillMinor:'1000000',currentDueIso:'2026-11-15',nextBillMinor:'0',nextDueIso:'2026-12-15',totalUnpaidMinor:'1000000',limitMinor:'15000000',availableLimitMinor:'14000000',dueDay:15,cutoffDay:5,periodSpendingMinor:'0',periodExpenseCount:'0',periodRepaymentMinor:'0',periodRepaymentCount:'0'},
   ],
-  billCategorySpendingMinor:'10000',billCategoryCount:'1',automatedSpendingMinor:'100000',automatedExpenseCount:'2',
+  billCategorySpendingMinor:'10000',billCategoryCount:'1',
+  billCategories:[{key:'util',name:'Tagihan Listrik',spendingMinor:'10000',expenseCount:'1',archived:false}],
+  automatedSpendingMinor:'100000',automatedExpenseCount:'17',
   openObligationsMinor:'250000',openObligationsUncoveredMinor:'250000',openObligationsCount:1,
   settledInPeriodMinor:'0',settledInPeriodCount:0,
   obligations:[{id:'ob-1',title:'Internet Rumah',labelName:'Tagihan',amountMinor:'250000',coveredMinor:'0',uncoveredMinor:'250000',dueOn:'2026-10-25',status:'open'}],
@@ -235,7 +237,10 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  for(const cat of ['Makanan','Transport','Wellbeing','Tagihan Listrik'])assert.match(mobOut,new RegExp(cat));
  assert.match(mobOut,/Transfer masuk/);
  assert.match(mobOut,/Rp200\.000/);
- assert.match(mobOut,/Kredit &amp; Tagihan/);
+ assert.match(mobOut,/Fasilitas Kredit/);
+ assert.match(mobOut,/Tagihan &amp; Kewajiban/);
+ assert.match(mobOut,/class="surface insight-panel insight-credit-card"/);
+ assert.match(mobOut,/class="surface insight-panel insight-bills-card"/);
  assert.match(mobOut,/Belanja via Kredit/);
  assert.match(mobOut,/Pelunasan Kredit/);
  assert.match(mobOut,/Total 2 fasilitas kredit/);
@@ -247,7 +252,8 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(mobOut,/Pengeluaran terbesar/);
  assert.match(mobOut,/patungan padel/);
  assert.match(mobOut,/insight-credit-chip"[^>]*>Kredit<\/em>/);
- assert.doesNotMatch(mobOut,/PayLater &amp; Tagihan|Simpan kategori|\bP3\b|\bP4\b/);
+ // Automation is a recording method, NOT a bill or credit debt; Credit & Bills are never merged into one card
+ assert.doesNotMatch(mobOut,/Kredit &amp; Tagihan|PayLater &amp; Tagihan|Pengeluaran rutin \/ terjadwal|transaksi otomatis|Saldo fasilitas kredit belum lunas|Simpan kategori|\bP3\b|\bP4\b/);
  assert.match(mobOut,/insight-mobile-gatekeep/);
  assert.doesNotMatch(mobOut,/Arus Kas &amp; Pola Keuangan/);
 
@@ -279,6 +285,7 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(typoCss,/\.financial-value\.financial-value--summary\s*\{[\s\S]*?font-weight:\s*var\(--weight-strong\)/);
  assert.match(dataCss,/\.u-table tfoot th, \.u-table tfoot td \{[^}]*border-top:1\.5px solid #cbd5e1; border-bottom:0;/);
  assert.ok(dataCss.indexOf('.u-table tr > :is(th, td):first-child')>dataCss.indexOf('.u-table tfoot th'));
- assert.doesNotMatch(insightsCss,/table:has\(tfoot\)|\.insights-page tfoot/);
+ assert.doesNotMatch(insightsCss,/table:has\(tfoot\)|\.insights-page tfoot|content:\s*"▸"/);
+ assert.match(insightsCss,/\.insights-page \.insight-inline-select select \{[^}]*appearance:\s*none/);
  assert.match(dataCss,/\.u-subgrid\b/);
 });

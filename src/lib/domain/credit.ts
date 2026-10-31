@@ -1,4 +1,5 @@
 import type { FinanceAsset } from "@/lib/finance/types";
+import { stripAssetMetaTags } from "./asset-terms.ts";
 
 const CREDIT_TAG_RE = /^\[CREDIT(?::([^\]]*))?\]\s*/i;
 const CREDIT_NAME_RE =
@@ -40,7 +41,7 @@ export function parseCreditMeta(note?: string | null): CreditMeta {
       carryCurrentMinor: 0n,
       carryNextMinor: 0n,
       deferredMinor: 0n,
-      cleanNote: raw,
+      cleanNote: stripAssetMetaTags(raw),
     };
   }
 
@@ -69,7 +70,7 @@ export function parseCreditMeta(note?: string | null): CreditMeta {
     carryCurrentMinor,
     carryNextMinor: carryNextMinor > 0n ? carryNextMinor : 0n,
     deferredMinor: deferredMinor > 0n ? deferredMinor : 0n,
-    cleanNote: raw.slice(match[0].length).trim(),
+    cleanNote: stripAssetMetaTags(raw.slice(match[0].length)),
   };
 }
 
@@ -85,7 +86,7 @@ export function encodeCreditNote(
     deferredMinor?: bigint;
   },
 ): string | undefined {
-  const stripped = parseCreditMeta(cleanNote).cleanNote;
+  const stripped = stripAssetMetaTags(cleanNote);
   if (!isCredit) {
     return stripped || undefined;
   }

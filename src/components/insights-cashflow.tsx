@@ -123,7 +123,7 @@ export function InsightsFinancialSuite({
   const totalOutflow = opSpending + invBuy + invFees;
   const netCashFlow = totalInflow - totalOutflow;
 
-  // Credit Facilities & Routine Bills
+  // Credit Facilities (strictly separated from non-credit Bills & Obligations; Automation is a recording method, not a bill)
   const cb = data.creditAndBills;
   const facilities = cb?.facilities ?? [];
   const creditSpend = BigInt(cb?.creditSpendingMinor ?? "0");
@@ -133,23 +133,24 @@ export function InsightsFinancialSuite({
   const nextCycleBills = BigInt(cb?.nextCycleBillsMinor ?? "0");
   const totalCreditUnpaid = BigInt(cb?.totalCreditUnpaidMinor ?? "0");
 
-  const autoOriginRow = data.origins.find((r) => r.key === "automation");
-  const autoSpend = BigInt(cb?.automatedSpendingMinor ?? autoOriginRow?.spendingMinor ?? "0");
-  const autoCount = cb?.automatedExpenseCount ?? autoOriginRow?.expenseCount ?? "0";
   const billCatSpend = BigInt(cb?.billCategorySpendingMinor ?? "0");
   const billCatCount = cb?.billCategoryCount ?? "0";
+  const billCategories = cb?.billCategories ?? [];
   const openObs = cb?.obligations ?? [];
   const openObsTotal = BigInt(cb?.openObligationsMinor ?? "0");
   const settledObsCount = cb?.settledInPeriodCount ?? 0;
   const settledObsTotal = BigInt(cb?.settledInPeriodMinor ?? "0");
 
-  const hasCreditOrBillsCard =
+  const hasCreditCard =
     facilities.length > 0 ||
+    creditSpend > 0n ||
+    creditRepay > 0n ||
+    totalCreditUnpaid > 0n;
+
+  const hasBillsCard =
     openObs.length > 0 ||
     settledObsCount > 0 ||
-    autoSpend > 0n ||
-    billCatSpend > 0n ||
-    opSpending > 0n;
+    billCatSpend > 0n;
 
   const sortedExpenses = [...data.expenseItems].sort((a, b) => {
     const diff = BigInt(b.spendingMinor) - BigInt(a.spendingMinor);
@@ -248,7 +249,6 @@ export function InsightsFinancialSuite({
           ? "tahunan"
           : "bulanan";
 
-  const hasRoutineBillRows = autoSpend > 0n || billCatSpend > 0n || settledObsCount > 0;
   const limitedFacilities = facilities.filter((f) => f.availableLimitMinor !== null && BigInt(f.limitMinor) > 0n);
   const totalAvailableLimit = limitedFacilities.reduce((sum, f) => sum + BigInt(f.availableLimitMinor ?? "0"), 0n);
 
@@ -630,11 +630,11 @@ export function InsightsFinancialSuite({
       )}
 
       <div className="insight-mid-grid">
-        {hasCreditOrBillsCard && (
-          <section className="surface insight-panel insight-credit-bills-card" aria-label="Kredit dan Tagihan">
+        {hasCreditCard && (
+          <section className="surface insight-panel insight-credit-card" aria-label="Fasilitas Kredit">
             <SectionHeading
-              title="Kredit & Tagihan"
-              helper="Pemakaian fasilitas kredit, pelunasan, dan kewajiban jatuh tempo."
+              title="Fasilitas Kredit"
+              helper="Pemakaian limit, siklus jatuh tempo, dan pelunasan akun kredit."
             />
 
             <div className="insight-compact-kpis">
@@ -730,18 +730,27 @@ export function InsightsFinancialSuite({
                 </table>
               </div>
             )}
+          </section>
+        )}
 
-            {openObs.length > 0 && (
-              <div className="u-table-wrap insight-table-gap">
+        {hasBillsCard && (
+          <section className="surface insight-panel insight-bills-card" aria-label="Tagihan dan Kewajiban">
+            <SectionHeading
+              title="Tagihan & Kewajiban"
+              helper="Kewajiban jatuh tempo di Planning serta realisasi belanja kategori tagihan & utilitas."
+            />
+
+            {(openObs.length > 0 || settledObsCount > 0) && (
+              <div className="u-table-wrap">
                 <table className="u-table" aria-label="Kewajiban aktif dan tagihan belum lunas">
                   <thead>
                     <tr>
-                      <th scope="col">Kewajiban belum lunas</th>
+                      <th scope="col">Kewajiban Planning</th>
                       <th scope="col">Nominal</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {openObs.slice(0, 3).map((ob) => (
+                    {openObs.slice(0, 5).map((ob) => (
                       <tr key={ob.id}>
                         <th scope="row">
                           <strong>{ob.title}</strong>
@@ -754,24 +763,24 @@ export function InsightsFinancialSuite({
                         </td>
                       </tr>
                     ))}
-                    {totalCreditUnpaid > 0n && (
+                    {settledObsCount > 0 && (
                       <tr>
                         <th scope="row">
-                          <strong>Saldo fasilitas kredit belum lunas</strong>
-                          <small className="u-cell-sub">{facilities.length} fasilitas kredit</small>
+                          <strong>Kewajiban dilunasi periode ini</strong>
+                          <small className="u-cell-sub">{settledObsCount} kewajiban selesai</small>
                         </th>
-                        <td className="insight-negative">
-                          <FinancialAmount as="span" value={money(totalCreditUnpaid)} />
+                        <td className="insight-positive">
+                          <FinancialAmount as="span" value={money(settledObsTotal)} />
                         </td>
                       </tr>
                     )}
                   </tbody>
-                  {(openObs.length > 1 || totalCreditUnpaid > 0n) && (
+                  {openObs.length > 1 && (
                     <tfoot>
                       <tr>
-                        <th scope="row">Total kewajiban &amp; tagihan aktif</th>
+                        <th scope="row">Total kewajiban belum lunas</th>
                         <td className="insight-negative">
-                          <FinancialAmount as="span" value={money(totalCreditUnpaid + openObsTotal)} />
+                          <FinancialAmount as="span" value={money(openObsTotal)} />
                         </td>
                       </tr>
                     </tfoot>
@@ -780,28 +789,30 @@ export function InsightsFinancialSuite({
               </div>
             )}
 
-            {hasRoutineBillRows && (
-              <div className="u-table-wrap insight-table-gap">
-                <table className="u-table" aria-label="Aktivitas tagihan dan pengeluaran rutin">
+            {billCatSpend > 0n && (
+              <div className={`u-table-wrap${openObs.length > 0 || settledObsCount > 0 ? " insight-table-gap" : ""}`}>
+                <table className="u-table" aria-label="Realisasi pengeluaran kategori tagihan dan utilitas">
                   <thead>
                     <tr>
-                      <th scope="col">Aktivitas rutin &amp; tagihan</th>
+                      <th scope="col">Tagihan &amp; utilitas tercatat</th>
                       <th scope="col">Nominal</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {autoSpend > 0n && (
-                      <tr>
-                        <th scope="row">
-                          <strong>Pengeluaran rutin / terjadwal</strong>
-                          {BigInt(autoCount) > 0n && <small className="u-cell-sub">{autoCount}x transaksi otomatis</small>}
-                        </th>
-                        <td>
-                          <FinancialAmount as="span" value={money(autoSpend)} />
-                        </td>
-                      </tr>
-                    )}
-                    {billCatSpend > 0n && (
+                    {billCategories.length > 0 ? (
+                      billCategories.map((cat) => (
+                        <tr key={cat.key}>
+                          <th scope="row">
+                            <strong>{cat.name}</strong>
+                            {cat.archived && <em className="u-pill">Diarsipkan</em>}
+                            <small className="u-cell-sub">{cat.expenseCount}x transaksi</small>
+                          </th>
+                          <td>
+                            <FinancialAmount as="span" value={money(cat.spendingMinor)} />
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
                       <tr>
                         <th scope="row">
                           <strong>Kategori tagihan &amp; utilitas</strong>
@@ -812,18 +823,17 @@ export function InsightsFinancialSuite({
                         </td>
                       </tr>
                     )}
-                    {settledObsCount > 0 && (
+                  </tbody>
+                  {billCategories.length > 1 && (
+                    <tfoot>
                       <tr>
-                        <th scope="row">
-                          <strong>Kewajiban Planning dilunasi</strong>
-                          <small className="u-cell-sub">{settledObsCount} kewajiban selesai</small>
-                        </th>
-                        <td className="insight-positive">
-                          <FinancialAmount as="span" value={money(settledObsTotal)} />
+                        <th scope="row">Total tagihan &amp; utilitas</th>
+                        <td>
+                          <FinancialAmount as="span" value={money(billCatSpend)} />
                         </td>
                       </tr>
-                    )}
-                  </tbody>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             )}

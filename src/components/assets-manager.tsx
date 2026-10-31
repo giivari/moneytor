@@ -8,6 +8,18 @@ import { useEffect, useRef, useState } from "react";
 import { Bank, CheckCircle, PencilSimple, Plus, X } from "@phosphor-icons/react";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
 import {
+  bpsToInput,
+  encodeAssetTermsNote,
+  estimateAssetMonthlyYield,
+  formatAdminScheduleLabel,
+  formatBpsRate,
+  formatInterestCycleLabel,
+  parseAssetTerms,
+  parseBpsInput,
+  stripAssetMetaTags,
+  type InterestCycle,
+} from "@/lib/domain/asset-terms";
+import {
   computeCreditBills,
   encodeCreditNote,
   formatShortDueIso,
@@ -23,12 +35,32 @@ import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./fin
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
-import type { AssetOpeningHistory } from "@/lib/repositories/assets";
+import type { AssetDetailInfo, AssetOpeningHistory } from "@/lib/repositories/assets";
 import type { ActivityDraft, FinanceAsset } from "@/lib/finance/types";
 import type { InvestmentTotal } from "@/lib/investments/types";
+import { AppLink } from "./app-link";
+import { FinancialAmount } from "./financial-amount";
 import { SectionHeading } from "./section-heading";
 import { InvestmentSummary } from "./investment-summary";
 import { useMobileViewport } from "./use-mobile-viewport";
+
+const ADMIN_DAY_CHOICES = [
+  { value: "0", label: "Akhir bulan" },
+  ...Array.from({ length: 28 }, (_, idx) => ({
+    value: String(idx + 1),
+    label: `Tanggal ${idx + 1}`,
+  })),
+];
+
+function shouldIgnoreRowClick(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("button, a, input, select, textarea, label, summary"));
+}
+
+function formatSignedMinor(amountMinor: bigint, currency: string, exponent: number): string {
+  if (amountMinor === 0n) return formatMinor(0n, currency, exponent);
+  const absFormatted = formatMinor(amountMinor < 0n ? -amountMinor : amountMinor, currency, exponent);
+  return amountMinor > 0n ? `+${absFormatted}` : `−${absFormatted}`;
+}
 
 function AssetForm({
   initial,
@@ -46,6 +78,7 @@ function AssetForm({
   const [confirmArchive, setConfirmArchive] = useState(false);
 
   const initialMeta = parseCreditMeta(initial?.note);
+  const initialTerms = parseAssetTerms(initial?.note);
   const initialBills = initial ? computeCreditBills(initial) : null;
   const [isCredit, setIsCredit] = useState<boolean>(
     initial ? isCreditAsset(initial) : false,
@@ -72,6 +105,20 @@ function AssetForm({
       : "",
   );
 
+  // Regular account fee & deposit/savings interest terms
+  const [adminFee, setAdminFee] = useState<string>(
+    initial && initialTerms.adminFeeMinor > 0n
+      ? minorToInput(initialTerms.adminFeeMinor.toString(), initial.exponent)
+      : "",
+  );
+  const [adminDay, setAdminDay] = useState<string>(String(initialTerms.adminDay));
+  const [autoPostAdmin, setAutoPostAdmin] = useState<boolean>(initialTerms.autoPostAdminFee);
+  const [interestRate, setInterestRate] = useState<string>(bpsToInput(initialTerms.interestRateBps));
+  const [interestTax, setInterestTax] = useState<string>(
+    initialTerms.interestRateBps > 0 ? bpsToInput(initialTerms.interestTaxBps) || "0" : "20",
+  );
+  const [interestCycle, setInterestCycle] = useState<InterestCycle>(initialTerms.interestCycle);
+
   const [name, setName] = useState(initial?.displayName ?? "");
   const [currency, setCurrency] = useState(initial?.currency ?? "IDR");
   const [opening, setOpening] = useState("");
@@ -82,12 +129,49 @@ function AssetForm({
   const [liquid, setLiquid] = useState(initial?.normallyLiquid ?? true);
   const [spendable, setSpendable] = useState(initial?.normallySpendable ?? true);
   const [suffix, setSuffix] = useState(initial?.safeSuffix ?? "");
-  const [note, setNote] = useState(initialMeta.cleanNote);
+  const [note, setNote] = useState(stripAssetMetaTags(initial?.note));
   const exponent = options?.currencies.find((item) => item.code === currency)?.exponent ?? 0;
 
   const parsedDueNum = Number(dueDay) >= 1 && Number(dueDay) <= 31 ? Number(dueDay) : 1;
   const previewCurrentDue = formatShortDueIso(nextMonthlyDueDayIso(parsedDueNum, 0));
   const previewNextDue = formatShortDueIso(nextMonthlyDueDayIso(parsedDueNum, 1));
+
+  let previewAdminMinor = 0n;
+  try {
+    if (adminFee.trim()) previewAdminMinor = BigInt(inputToMinor(adminFee.trim(), exponent));
+    if (previewAdminMinor < 0n) previewAdminMinor = 0n;
+  } catch {
+    previewAdminMinor = 0n;
+  }
+
+  let previewRateBps = 0;
+  try {
+    if (interestRate.trim()) previewRateBps = parseBpsInput(interestRate, 100);
+  } catch {
+    previewRateBps = 0;
+  }
+
+  let previewTaxBps = 2000;
+  try {
+    if (interestTax.trim()) previewTaxBps = parseBpsInput(interestTax, 100);
+  } catch {
+    previewTaxBps = 2000;
+  }
+
+  let previewBaseBalance = initial ? BigInt(initial.balanceMinor) : 0n;
+  if (!initial && opening.trim()) {
+    try {
+      previewBaseBalance = BigInt(inputToMinor(opening.trim(), exponent));
+    } catch {
+      previewBaseBalance = 0n;
+    }
+  }
+
+  const yieldPreview = estimateAssetMonthlyYield(previewBaseBalance, {
+    adminFeeMinor: previewAdminMinor,
+    interestRateBps: previewRateBps,
+    interestTaxBps: previewTaxBps,
+  });
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,31 +179,63 @@ function AssetForm({
     setError("");
     setOperation("save");
     try {
-      const parsedDue = dueDay.trim() ? Number(dueDay.trim()) : 1;
-      const parsedCutoff = cutoffDay.trim() ? Number(cutoffDay.trim()) : 20;
-      const limitMinor = creditLimit.trim()
-        ? BigInt(inputToMinor(creditLimit.trim(), exponent))
-        : 0n;
-      const desiredCurrentMinor = currentBillInput.trim()
-        ? BigInt(inputToMinor(currentBillInput.trim(), exponent))
-        : 0n;
-      const desiredNextMinor = nextBillInput.trim()
-        ? BigInt(inputToMinor(nextBillInput.trim(), exponent))
-        : 0n;
-      const existingBalance = initial ? BigInt(initial.balanceMinor) : 0n;
+      let encodedNote: string | undefined;
 
-      // Ensure computeCreditBills returns exact desiredCurrentMinor and desiredNextMinor
-      const carryCurrentMinor = desiredCurrentMinor + existingBalance;
-      const carryNextMinor = desiredNextMinor;
+      if (isCredit) {
+        const parsedDue = dueDay.trim() ? Number(dueDay.trim()) : 1;
+        const parsedCutoff = cutoffDay.trim() ? Number(cutoffDay.trim()) : 20;
+        const limitMinor = creditLimit.trim()
+          ? BigInt(inputToMinor(creditLimit.trim(), exponent))
+          : 0n;
+        const desiredCurrentMinor = currentBillInput.trim()
+          ? BigInt(inputToMinor(currentBillInput.trim(), exponent))
+          : 0n;
+        const desiredNextMinor = nextBillInput.trim()
+          ? BigInt(inputToMinor(nextBillInput.trim(), exponent))
+          : 0n;
+        const existingBalance = initial ? BigInt(initial.balanceMinor) : 0n;
 
-      const encodedNote = encodeCreditNote(note, isCredit, {
-        dueDay: parsedDue,
-        cutoffDay: parsedCutoff,
-        limitMinor,
-        carryCurrentMinor,
-        carryNextMinor,
-        deferredMinor: 0n,
-      });
+        const carryCurrentMinor = desiredCurrentMinor + existingBalance;
+        const carryNextMinor = desiredNextMinor;
+
+        encodedNote = encodeCreditNote(note, true, {
+          dueDay: parsedDue,
+          cutoffDay: parsedCutoff,
+          limitMinor,
+          carryCurrentMinor,
+          carryNextMinor,
+          deferredMinor: 0n,
+        });
+      } else {
+        const parsedAdminMinor = adminFee.trim()
+          ? BigInt(inputToMinor(adminFee.trim(), exponent))
+          : 0n;
+        if (parsedAdminMinor < 0n) {
+          throw new Error("Biaya admin bulanan tidak boleh negatif.");
+        }
+        const parsedRate = interestRate.trim() ? parseBpsInput(interestRate, 100) : 0;
+        const parsedTax =
+          parsedRate > 0
+            ? interestTax.trim()
+              ? parseBpsInput(interestTax, 100)
+              : 2000
+            : 2000;
+        const parsedAdminDay = Number(adminDay);
+        encodedNote = encodeAssetTermsNote(note, {
+          adminFeeMinor: parsedAdminMinor,
+          adminDay: parsedAdminDay,
+          autoPostAdminFee: parsedAdminMinor > 0n && autoPostAdmin,
+          interestRateBps: parsedRate,
+          interestTaxBps: parsedTax,
+          interestCycle,
+          interestDay: parsedAdminDay,
+          adminRuleId: initialTerms.adminRuleId,
+        });
+      }
+
+      if (encodedNote && encodedNote.length > 1000) {
+        throw new Error("Catatan terlalu panjang.");
+      }
 
       const openingMinorStr = initial
         ? undefined
@@ -421,28 +537,130 @@ function AssetForm({
             </div>
 
             {!isCredit ? (
-              <div className="finance-checks">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={liquid}
-                    onChange={(event) => {
-                      setLiquid(event.target.checked);
-                      if (!event.target.checked) setSpendable(false);
-                    }}
-                  />{" "}
-                  Dana likuid
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={spendable}
-                    disabled={!liquid}
-                    onChange={(event) => setSpendable(event.target.checked)}
-                  />{" "}
-                  Dapat digunakan
-                </label>
-              </div>
+              <>
+                <div className="finance-checks">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={liquid}
+                      onChange={(event) => {
+                        setLiquid(event.target.checked);
+                        if (!event.target.checked) setSpendable(false);
+                      }}
+                    />{" "}
+                    Dana likuid
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={spendable}
+                      disabled={!liquid}
+                      onChange={(event) => setSpendable(event.target.checked)}
+                    />{" "}
+                    Dapat digunakan
+                  </label>
+                </div>
+
+                <div className="field-grid">
+                  <label className="field">
+                    <span>Biaya admin bulanan ({currency})</span>
+                    <input
+                      inputMode="decimal"
+                      value={adminFee}
+                      onChange={(event) => setAdminFee(event.target.value)}
+                      placeholder="0 — Gratis admin"
+                    />
+                    <small>Opsional. Potongan administrasi rutin rekening.</small>
+                  </label>
+                  <label className="field">
+                    <span>Bunga simpanan / deposito (% p.a.)</span>
+                    <input
+                      inputMode="decimal"
+                      value={interestRate}
+                      onChange={(event) => setInterestRate(event.target.value)}
+                      placeholder="Mis. 0,5 atau 4,25"
+                    />
+                    <small>Opsional. Suku bunga tahunan tabungan atau deposito.</small>
+                  </label>
+                </div>
+
+                {(previewAdminMinor > 0n || previewRateBps > 0) && (
+                  <div className="asset-terms-config">
+                    <div className="field-grid">
+                      {previewAdminMinor > 0n && (
+                        <label className="field">
+                          <span>Jadwal potong biaya admin</span>
+                          <select value={adminDay} onChange={(event) => setAdminDay(event.target.value)}>
+                            {ADMIN_DAY_CHOICES.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {previewRateBps > 0 && (
+                        <>
+                          <label className="field">
+                            <span>Siklus pencairan bunga</span>
+                            <select
+                              value={interestCycle}
+                              onChange={(event) => setInterestCycle(event.target.value as InterestCycle)}
+                            >
+                              <option value="monthly">Bulanan</option>
+                              <option value="daily">Cair harian</option>
+                              <option value="maturity">Saat jatuh tempo</option>
+                            </select>
+                          </label>
+                          <label className="field">
+                            <span>Pajak bunga (%)</span>
+                            <input
+                              inputMode="decimal"
+                              value={interestTax}
+                              onChange={(event) => setInterestTax(event.target.value)}
+                              placeholder="20"
+                            />
+                            <small>Umumnya 20% PPh final simpanan/deposito.</small>
+                          </label>
+                        </>
+                      )}
+                    </div>
+
+                    {previewAdminMinor > 0n && (
+                      <label className="asset-auto-admin-check">
+                        <input
+                          type="checkbox"
+                          checked={autoPostAdmin}
+                          onChange={(event) => setAutoPostAdmin(event.target.checked)}
+                        />
+                        <span>Catat biaya admin otomatis tiap bulan di Automation</span>
+                      </label>
+                    )}
+
+                    {previewBaseBalance > 0n && previewRateBps > 0 && (
+                      <p className="asset-terms-preview">
+                        Estimasi bunga bersih:{" "}
+                        <strong>
+                          +{formatMinor(yieldPreview.netInterestMonthlyMinor.toString(), currency, exponent)}/bln
+                        </strong>{" "}
+                        ({formatMinor(yieldPreview.netInterestAnnualMinor.toString(), currency, exponent)}/thn)
+                        {previewAdminMinor > 0n && (
+                          <>
+                            {" · "}Net setelah admin:{" "}
+                            <strong
+                              className={
+                                yieldPreview.netAfterAdminMonthlyMinor < 0n ? "pnl-negative" : "pnl-positive"
+                              }
+                            >
+                              {formatSignedMinor(yieldPreview.netAfterAdminMonthlyMinor, currency, exponent)}/bln
+                            </strong>
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
             ) : (
               <p className="finance-hint">
                 Transaksi s.d. tanggal <strong>{cutoffDay || 20}</strong> masuk ke tagihan jatuh tempo terdekat (<strong>{previewCurrentDue}</strong>), sedangkan transaksi di atas tanggal <strong>{cutoffDay || 20}</strong> otomatis masuk ke tagihan periode berikutnya (<strong>{previewNextDue}</strong>).
@@ -531,6 +749,436 @@ function AssetForm({
           </fieldset>
         </form>
       )}
+    </dialog>
+  );
+}
+
+function AssetDetailDialog({
+  asset,
+  onClose,
+  onEdit,
+  onCorrectOpening,
+  onPayBill,
+}: {
+  asset: FinanceAsset;
+  onClose: () => void;
+  onEdit: () => void;
+  onCorrectOpening: () => void;
+  onPayBill: () => void;
+}) {
+  const dialog = useFinanceDialog(onClose);
+  const [detail, setDetail] = useState<AssetDetailInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    requestJson<AssetDetailInfo>(`/api/finance/asset-detail?id=${encodeURIComponent(asset.id)}`, {
+      cache: "no-store",
+    })
+      .then((data) => {
+        if (active) {
+          setDetail(data);
+          setLoading(false);
+        }
+      })
+      .catch((cause) => {
+        if (active) {
+          setError(cause instanceof Error ? cause.message : "Detail akun belum dapat dimuat.");
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [asset.id]);
+
+  const isCredit = isCreditAsset(asset);
+  const mark = resolveProviderMark(
+    asset.providerName,
+    asset.displayName,
+    isCredit ? "coral" : asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet",
+  );
+  const terms = parseAssetTerms(asset.note);
+  const cleanNote = stripAssetMetaTags(asset.note);
+  const bills = computeCreditBills(asset);
+  const hasBill = bills.totalUnpaidMinor > 0n;
+
+  const balanceBig = BigInt(asset.balanceMinor);
+  const openingBig = BigInt(asset.openingMinor);
+  const netDeltaBig = balanceBig - openingBig;
+  const yieldEst = estimateAssetMonthlyYield(balanceBig, terms);
+
+  const money = (val: string | bigint) => formatMinor(val, asset.currency, asset.exponent);
+  const headerSubtitle = [
+    asset.providerName,
+    asset.assetTypeName,
+    asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <dialog
+      ref={dialog}
+      className="finance-dialog asset-detail-dialog"
+      aria-labelledby="asset-detail-title"
+    >
+      <div className="dialog-heading asset-detail-heading">
+        <div className="asset-detail-identity">
+          <ProviderBrandMark mark={mark} />
+          <div>
+            <span className="eyebrow">
+              {!asset.isActive
+                ? "ASET DIARSIPKAN"
+                : isCredit
+                  ? "DETAIL FASILITAS KREDIT"
+                  : "DETAIL REKENING & ASET"}
+            </span>
+            <h2 id="asset-detail-title">{asset.displayName}</h2>
+            {headerSubtitle && <p className="asset-detail-subtitle">{headerSubtitle}</p>}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Tutup"
+          onClick={() => dialog.current?.close()}
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="asset-detail-hero">
+        {isCredit ? (
+          <>
+            <div className="asset-detail-hero-main">
+              <span>Total kewajiban belum lunas</span>
+              <strong className={`financial-value financial-value--summary ${hasBill ? "pnl-negative" : "pnl-positive"}`}>
+                {hasBill ? money(bills.totalUnpaidMinor) : "Lunas"}
+              </strong>
+            </div>
+            <div className="asset-detail-hero-pair">
+              <div>
+                <span>Tagihan terdekat ({formatShortDueIso(bills.currentDueIso)})</span>
+                <strong className={bills.currentBillMinor > 0n ? "pnl-negative" : "pnl-positive"}>
+                  {bills.currentBillMinor > 0n ? money(bills.currentBillMinor) : "Lunas"}
+                </strong>
+              </div>
+              <div>
+                <span>
+                  {bills.availableLimitMinor !== null
+                    ? "Sisa limit tersedia"
+                    : `Periode depan (${formatShortDueIso(bills.nextDueIso)})`}
+                </span>
+                <strong>
+                  {bills.availableLimitMinor !== null
+                    ? money(bills.availableLimitMinor)
+                    : money(bills.nextBillMinor)}
+                </strong>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="asset-detail-hero-main">
+              <span>Saldo tercatat saat ini</span>
+              <strong className="financial-value financial-value--summary">{money(balanceBig)}</strong>
+            </div>
+            <div className="asset-detail-hero-pair">
+              <div>
+                <span>Saldo awal efektif</span>
+                <strong>{money(openingBig)}</strong>
+              </div>
+              <div>
+                <span>Akumulasi mutasi bersih</span>
+                <strong
+                  className={
+                    netDeltaBig > 0n ? "pnl-positive" : netDeltaBig < 0n ? "pnl-negative" : ""
+                  }
+                >
+                  {formatSignedMinor(netDeltaBig, asset.currency, asset.exponent)}
+                </strong>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="asset-detail-section">
+        <h3 className="u-table-title">Profil &amp; ketentuan akun</h3>
+        <div className="u-table-wrap">
+          <table className="u-table" aria-label="Profil dan ketentuan akun">
+            <tbody>
+              <tr>
+                <th scope="row">
+                  <strong>Klasifikasi</strong>
+                </th>
+                <td>
+                  {asset.assetTypeName}
+                  {asset.assetGroupName ? ` · ${asset.assetGroupName}` : ""}
+                </td>
+              </tr>
+              {(asset.providerName || detail?.paymentNetworkName || asset.safeSuffix) && (
+                <tr>
+                  <th scope="row">
+                    <strong>Penyedia &amp; jaringan</strong>
+                  </th>
+                  <td>
+                    {[
+                      asset.providerName,
+                      detail?.paymentNetworkName,
+                      asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </td>
+                </tr>
+              )}
+              {isCredit ? (
+                <>
+                  <tr>
+                    <th scope="row">
+                      <strong>Siklus tagihan</strong>
+                    </th>
+                    <td>
+                      Cutoff tgl {bills.cutoffDay} · Jatuh tempo tgl {bills.dueDay}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <strong>Limit kredit</strong>
+                    </th>
+                    <td>
+                      {bills.limitMinor > 0n ? (
+                        <>
+                          {money(bills.limitMinor)}
+                          {bills.availableLimitMinor !== null && (
+                            <small className="u-cell-sub">
+                              Tersedia {money(bills.availableLimitMinor)}
+                            </small>
+                          )}
+                        </>
+                      ) : (
+                        <span className="asset-muted-val">Tidak dibatasi</span>
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <strong>Tagihan periode depan ({formatShortDueIso(bills.nextDueIso)})</strong>
+                    </th>
+                    <td>{money(bills.nextBillMinor)}</td>
+                  </tr>
+                </>
+              ) : (
+                <>
+                  <tr>
+                    <th scope="row">
+                      <strong>Status likuiditas</strong>
+                    </th>
+                    <td>
+                      {!asset.isActive
+                        ? "Diarsipkan"
+                        : asset.normallySpendable
+                          ? "Dana likuid · Dapat digunakan"
+                          : asset.normallyLiquid
+                            ? "Dana likuid · Cadangan"
+                            : "Aset non-likuid"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <strong>Biaya admin bulanan</strong>
+                      {terms.adminFeeMinor > 0n && (
+                        <small className="u-cell-sub">
+                          Potong {formatAdminScheduleLabel(terms.adminDay)} ·{" "}
+                          {terms.autoPostAdminFee && detail?.adminAutomationStatus !== "paused"
+                            ? "Otomatis tercatat"
+                            : "Pencatatan manual"}
+                        </small>
+                      )}
+                    </th>
+                    <td className={terms.adminFeeMinor > 0n ? "pnl-negative" : "asset-muted-val"}>
+                      {terms.adminFeeMinor > 0n ? `${money(terms.adminFeeMinor)}/bln` : "Gratis (Rp0)"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <strong>Bunga simpanan / deposito</strong>
+                      {terms.interestRateBps > 0 && (
+                        <small className="u-cell-sub">
+                          Pajak {formatBpsRate(terms.interestTaxBps)} ·{" "}
+                          {formatInterestCycleLabel(terms.interestCycle, terms.interestDay)}
+                        </small>
+                      )}
+                    </th>
+                    <td className={terms.interestRateBps > 0 ? "pnl-positive" : "asset-muted-val"}>
+                      {terms.interestRateBps > 0
+                        ? `${formatBpsRate(terms.interestRateBps)} p.a.`
+                        : "Tidak diatur (0%)"}
+                    </td>
+                  </tr>
+                  {(terms.interestRateBps > 0 || terms.adminFeeMinor > 0n) && (
+                    <tr>
+                      <th scope="row">
+                        <strong>Estimasi hasil bersih / bulan</strong>
+                        <small className="u-cell-sub">
+                          {terms.interestRateBps > 0
+                            ? `Bunga bersih +${money(yieldEst.netInterestMonthlyMinor)}${
+                                terms.adminFeeMinor > 0n ? ` − admin ${money(terms.adminFeeMinor)}` : ""
+                              }`
+                            : `Biaya admin rutin ${money(terms.adminFeeMinor)}/bln`}
+                        </small>
+                      </th>
+                      <td
+                        className={
+                          yieldEst.netAfterAdminMonthlyMinor > 0n
+                            ? "pnl-positive"
+                            : yieldEst.netAfterAdminMonthlyMinor < 0n
+                              ? "pnl-negative"
+                              : "asset-muted-val"
+                        }
+                      >
+                        {formatSignedMinor(yieldEst.netAfterAdminMonthlyMinor, asset.currency, asset.exponent)}
+                      </td>
+                    </tr>
+                  )}
+                </>
+              )}
+              {cleanNote && (
+                <tr>
+                  <th scope="row">
+                    <strong>Catatan</strong>
+                  </th>
+                  <td>{cleanNote}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="asset-detail-section">
+        <div className="asset-detail-section-head">
+          <h3 className="u-table-title">Transaksi terakhir</h3>
+          {detail && detail.activitySummary.activityCount > 0 && (
+            <span className="asset-detail-count">{detail.activitySummary.activityCount} transaksi tercatat</span>
+          )}
+        </div>
+        {loading ? (
+          <div className="route-loading-status asset-detail-loading" role="status">
+            <LoadingIndicator>Memuat riwayat akun…</LoadingIndicator>
+          </div>
+        ) : error ? (
+          <p role="alert" className="finance-error">
+            {error}
+          </p>
+        ) : detail && detail.recentActivities.length > 0 ? (
+          <>
+            <div className="u-table-wrap">
+              <table className="u-table" aria-label="Transaksi terakhir akun">
+                <thead>
+                  <tr>
+                    <th scope="col">Transaksi</th>
+                    <th scope="col">Mutasi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.recentActivities.map((act) => {
+                    const shortDate = new Date(act.occurredAt).toLocaleDateString("id-ID", {
+                      timeZone: "Asia/Jakarta",
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    });
+                    const title =
+                      act.note?.trim() ||
+                      (act.kind === "transfer"
+                        ? act.direction === "in"
+                          ? `Transfer dari ${act.counterpartyName ?? "akun lain"}`
+                          : `Transfer ke ${act.counterpartyName ?? "akun lain"}`
+                        : act.categoryName || (act.kind === "income" ? "Pemasukan" : "Pengeluaran"));
+                    const kindLabel =
+                      act.kind === "transfer"
+                        ? act.direction === "in"
+                          ? "Transfer masuk"
+                          : "Transfer keluar"
+                        : act.categoryName ?? (act.kind === "income" ? "Pemasukan" : "Pengeluaran");
+                    const signedVal =
+                      act.direction === "in"
+                        ? `+${money(act.amountMinor)}`
+                        : `−${money(act.amountMinor)}`;
+                    return (
+                      <tr key={act.id}>
+                        <th scope="row">
+                          <strong>{title}</strong>
+                          <small className="u-cell-sub">
+                            {kindLabel} · {shortDate}
+                          </small>
+                        </th>
+                        <td className={act.direction === "in" ? "pnl-positive" : "pnl-negative"}>
+                          <FinancialAmount as="span" value={signedVal} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="asset-detail-more">
+              <AppLink className="text-link" href="/transactions" onClick={onClose}>
+                Lihat semua transaksi di Transactions →
+              </AppLink>
+            </div>
+          </>
+        ) : (
+          <p className="finance-hint asset-detail-empty">Belum ada transaksi tercatat pada akun ini.</p>
+        )}
+      </div>
+
+      <div className="finance-actions">
+        <button type="button" className="finance-secondary" onClick={() => dialog.current?.close()}>
+          Tutup
+        </button>
+        {!isCredit && (
+          <button
+            type="button"
+            className="finance-secondary"
+            onClick={() => {
+              onClose();
+              onCorrectOpening();
+            }}
+          >
+            {asset.isActive ? "Koreksi saldo awal" : "Riwayat saldo awal"}
+          </button>
+        )}
+        {isCredit && hasBill && asset.isActive && (
+          <button
+            type="button"
+            className="finance-secondary"
+            onClick={() => {
+              onClose();
+              onPayBill();
+            }}
+          >
+            Bayar tagihan
+          </button>
+        )}
+        {asset.isActive && (
+          <button
+            type="button"
+            className="button-primary"
+            onClick={() => {
+              onClose();
+              onEdit();
+            }}
+          >
+            <PencilSimple size={15} weight="bold" />
+            {isCredit ? "Ubah fasilitas" : "Ubah aset"}
+          </button>
+        )}
+      </div>
     </dialog>
   );
 }
@@ -764,6 +1412,7 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
 
 export function AssetsManager({ assets, totals, investmentTotals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number }[]; investmentTotals: InvestmentTotal[] }) {
   const mobile = useMobileViewport();
+  const [viewingAsset, setViewingAsset] = useState<FinanceAsset | null>(null);
   const [editing, setEditing] = useState<FinanceAsset | "new" | null>(null);
   const [payingCredit, setPayingCredit] = useState<FinanceAsset | null>(null);
   const [correcting, setCorrecting] = useState<FinanceAsset | null>(null);
@@ -784,6 +1433,11 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
   const creditActive = active.filter((item) => isCreditAsset(item));
   const archived = assets.filter((item) => !item.isActive);
   const creditFirst = creditActive.some((item) => computeCreditBills(item).totalUnpaidMinor > 0n);
+
+  const liveViewingAsset = viewingAsset
+    ? assets.find((item) => item.id === viewingAsset.id) ?? viewingAsset
+    : null;
+
   const creditSection = creditActive.length > 0 ? (
     <section className="surface credit-assets-section">
       <SectionHeading
@@ -802,11 +1456,23 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
             ? Math.min(100, Math.max(0, Math.round(Number(((bills.limitMinor - bills.availableLimitMinor) * 100n) / bills.limitMinor))))
             : null;
           return (
-            <article className={`credit-card${hasBill ? " credit-card--due" : ""}`} key={asset.id}>
+            <article
+              className={`credit-card credit-card--interactive${hasBill ? " credit-card--due" : ""}`}
+              key={asset.id}
+              onClick={(event) => {
+                if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
+              }}
+            >
               <div className="credit-card-head">
                 <ProviderBrandMark mark={mark} />
                 <div className="credit-card-title">
-                  <strong>{asset.displayName}</strong>
+                  <button
+                    type="button"
+                    className="asset-title-trigger"
+                    onClick={() => setViewingAsset(asset)}
+                  >
+                    <strong>{asset.displayName}</strong>
+                  </button>
                   {subtitle && <span>{subtitle}</span>}
                 </div>
               </div>
@@ -863,10 +1529,29 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
       <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : <section className="surface"><SectionHeading title="Akun & nilai tercatat" eyebrow="ASET AKTIF" action={<div className="section-heading-actions"><span className="count-pill">{regularActive.length} aset</span><ExportMenuButton dataset="assets" label="Ekspor Aset" /></div>} />
       <div className="asset-list">{regularActive.map((asset) => {
         const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
-        return <article className="asset-row data-list-row data-list-row--entity" key={asset.id}>
+        const terms = parseAssetTerms(asset.note);
+        const termSummary = [
+          !mobile && asset.assetGroupName ? asset.assetGroupName : null,
+          terms.interestRateBps > 0 ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.` : null,
+          terms.adminFeeMinor > 0n ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return <article
+          className="asset-row asset-row--interactive data-list-row data-list-row--entity"
+          key={asset.id}
+          onClick={(event) => {
+            if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
+          }}
+        >
         <div className="data-list-identity"><ProviderBrandMark mark={mark} />
-          <div className="asset-copy"><strong>{asset.displayName}</strong><span>{[asset.providerName, asset.assetTypeName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ")}</span>
-            {!mobile && asset.assetGroupName && <small>{asset.assetGroupName}</small>}</div></div>
+          <div className="asset-copy">
+            <button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}>
+              <strong>{asset.displayName}</strong>
+            </button>
+            <span>{[asset.providerName, asset.assetTypeName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ")}</span>
+            {termSummary && <small>{termSummary}</small>}
+          </div></div>
         <div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong>
         <div className="data-list-actions"><button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah</button><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button></div></div></article>;
       })}</div></section>}
@@ -877,10 +1562,26 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
       {showArchived && <section className="surface finance-archived"><SectionHeading title="Aset diarsipkan" />
       <div className="asset-list">{archived.map((asset) => {
         const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
-        return <div className="asset-row data-list-row data-list-row--entity" key={asset.id}><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><strong>{asset.displayName}</strong><small>Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
+        return <div
+          className="asset-row asset-row--interactive data-list-row data-list-row--entity"
+          key={asset.id}
+          onClick={(event) => {
+            if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
+          }}
+        ><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}><strong>{asset.displayName}</strong></button><small>Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
       })}</div><details className="context-help"><summary>Tentang aset diarsipkan</summary><p className="finance-hint supporting-prose">Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk menggunakannya kembali.</p></details></section>}</>}
     {error && <p className="finance-error" role="alert">{error}</p>}
-    <details className="context-help"><summary>Cara membaca aset &amp; fasilitas kredit</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Untuk menambahkan Kartu Kredit, PayLater, atau pinjaman lainnya, klik Tambah aset lalu pilih tab Fasilitas Kredit.</p></details>
+    <details className="context-help"><summary>Cara membaca aset &amp; fasilitas kredit</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Klik nama atau baris aset untuk melihat rincian ketentuan akun, bunga simpanan, biaya admin, dan mutasi terakhir.</p></details>
+    {liveViewingAsset && (
+      <AssetDetailDialog
+        key={liveViewingAsset.id}
+        asset={liveViewingAsset}
+        onClose={() => setViewingAsset(null)}
+        onEdit={() => setEditing(liveViewingAsset)}
+        onCorrectOpening={() => setCorrecting(liveViewingAsset)}
+        onPayBill={() => setPayingCredit(liveViewingAsset)}
+      />
+    )}
     {editing && (
       <AssetForm
         key={editing === "new" ? "new" : editing.id}

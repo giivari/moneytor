@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertRequestOrigin, boundedBody } from "@/lib/auth/http";
 import { currentOwnerSession } from "@/lib/auth/session";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
-import { insertAssetWithOpening, updateAsset, archiveAsset, restoreAsset, listAssets, assetOpeningHistory, correctAssetOpening, OpeningCorrectionError } from "@/lib/repositories/assets";
+import { insertAssetWithOpening, updateAsset, archiveAsset, restoreAsset, listAssets, assetOpeningHistory, readAssetDetail, correctAssetOpening, OpeningCorrectionError } from "@/lib/repositories/assets";
 import { deleteCustomCatalogItem, restoreCustomCatalogItem, archiveCustomCatalogItem, insertCustomCatalogItem, insertCustomCategory, listCatalog, renameCustomCatalogItem, type Catalog } from "@/lib/repositories/catalogs";
 import { postActivity, replaceActivity, voidActivity } from "@/lib/finance/service";
 import { LifecycleError } from "@/lib/repositories/lifecycle";
@@ -43,10 +43,13 @@ function assetFields(body: Record<string, unknown>) {
 }
 export async function GET(request: NextRequest, { params }: { params: Promise<{ operation: string }> }) {
   const operation = (await params).operation;
-  if (operation !== "options" && operation !== "asset-opening") return json({ error: "Tidak tersedia" }, 404);
+  if (operation !== "options" && operation !== "asset-opening" && operation !== "asset-detail") {
+    return json({ error: "Tidak tersedia" }, 404);
+  }
   if (!await currentOwnerSession()) return json({ error: "Sesi berakhir" }, 401);
   try {
     if (operation === "asset-opening") return json(await assetOpeningHistory(str(request.nextUrl.searchParams.get("id"), 36)));
+    if (operation === "asset-detail") return json(await readAssetDetail(str(request.nextUrl.searchParams.get("id"), 36)));
     const [assets, currencies, providers, paymentNetworks, assetTypes, assetGroups, transactionCategories, chargeTypes] = await Promise.all([
       listAssets(false),
       import("@/lib/db/pool").then(({ database }) => database().query<{ code: string; minor_unit_exponent: number }>(

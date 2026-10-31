@@ -72,6 +72,13 @@ export type AnalyticsObligationItem = {
   dueOn: string;
   status: "open" | "settled";
 };
+export type AnalyticsBillCategoryItem = {
+  key: string;
+  name: string;
+  spendingMinor: string;
+  expenseCount: string;
+  archived: boolean;
+};
 export type AnalyticsCreditAndBills = {
   currency: string;
   exponent: number;
@@ -86,6 +93,7 @@ export type AnalyticsCreditAndBills = {
   facilities: AnalyticsCreditFacility[];
   billCategorySpendingMinor: string;
   billCategoryCount: string;
+  billCategories?: AnalyticsBillCategoryItem[];
   automatedSpendingMinor: string;
   automatedExpenseCount: string;
   openObligationsMinor: string;

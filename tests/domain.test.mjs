@@ -7,6 +7,16 @@ import {
   assertUniqueSystemKeys, customCatalogItem, validateCatalogName,
 } from "../src/lib/domain/catalog.ts";
 import { planActivity } from "../src/lib/domain/ledger.ts";
+import {
+  bpsToInput,
+  encodeAssetTermsNote,
+  estimateAssetMonthlyYield,
+  formatBpsRate,
+  parseAssetTerms,
+  parseBpsInput,
+  stripAssetMetaTags,
+} from "../src/lib/domain/asset-terms.ts";
+import { encodeCreditNote, parseCreditMeta } from "../src/lib/domain/credit.ts";
 
 const source = { id: "source", currency: "IDR", isActive: true };
 const destination = { id: "destination", currency: "IDR", isActive: true };
@@ -90,4 +100,49 @@ test("invalid references, signs, and cross-currency transfers are rejected", () 
   assert.throws(() => planActivity({ kind: "expense", amountMinor: 1n, source, category: { ...customExpenseCategory, appliesTo: "income" } }), /does not apply/);
   assert.throws(() => planActivity({ kind: "expense", amountMinor: 1n, source, charges: [{ id: "old", amountMinor: 1n, type: { ...builtInFee, isActive: false } }] }), /Inactive reference/);
   assert.throws(() => planActivity({ kind: "expense", amountMinor: 1n, source, charges: [{ id: "orphan", amountMinor: 1n }] }), /Unknown reference/);
+});
+
+test("asset admin fee & deposit interest terms encode, parse, strip cleanly, and compute exact net yield", () => {
+  const ruleUuid = "11111111-2222-4333-8444-555555555555";
+  const encoded = encodeAssetTermsNote("Tabungan utama gaji", {
+    adminFeeMinor: 11000n,
+    adminDay: 25,
+    autoPostAdminFee: true,
+    interestRateBps: parseBpsInput("4,25"),
+    interestTaxBps: parseBpsInput("20"),
+    interestCycle: "monthly",
+    interestDay: 25,
+    adminRuleId: ruleUuid,
+  });
+  assert.ok(encoded?.startsWith("[ACCT:"));
+  const parsed = parseAssetTerms(encoded);
+  assert.equal(parsed.hasTerms, true);
+  assert.equal(parsed.adminFeeMinor, 11000n);
+  assert.equal(parsed.adminDay, 25);
+  assert.equal(parsed.autoPostAdminFee, true);
+  assert.equal(parsed.interestRateBps, 425);
+  assert.equal(parsed.interestTaxBps, 2000);
+  assert.equal(parsed.interestCycle, "monthly");
+  assert.equal(parsed.adminRuleId, ruleUuid);
+  assert.equal(parsed.cleanNote, "Tabungan utama gaji");
+  assert.equal(formatBpsRate(parsed.interestRateBps), "4,25%");
+  assert.equal(bpsToInput(parsed.interestRateBps), "4,25");
+  assert.equal(stripAssetMetaTags(encoded), "Tabungan utama gaji");
+
+  // Switching between regular account terms and credit meta never leaves stale tags behind
+  const switchedToCredit = encodeCreditNote(encoded, true, { dueDay: 1, cutoffDay: 20, limitMinor: 5000000n });
+  assert.ok(switchedToCredit?.startsWith("[CREDIT:"));
+  assert.doesNotMatch(switchedToCredit ?? "", /\[ACCT:/);
+  assert.equal(parseCreditMeta(switchedToCredit).cleanNote, "Tabungan utama gaji");
+
+  // 12,000,000 IDR @ 6% p.a. (600 bps) = 720,000/yr gross -> 60,000/mo gross -> 20% tax = 12,000 -> 48,000 net/mo; minus 11,000 admin = +37,000/mo
+  const yieldEst = estimateAssetMonthlyYield(12000000n, {
+    adminFeeMinor: 11000n,
+    interestRateBps: 600,
+    interestTaxBps: 2000,
+  });
+  assert.equal(yieldEst.grossMonthlyMinor, 60000n);
+  assert.equal(yieldEst.taxMonthlyMinor, 12000n);
+  assert.equal(yieldEst.netInterestMonthlyMinor, 48000n);
+  assert.equal(yieldEst.netAfterAdminMonthlyMinor, 37000n);
 });
