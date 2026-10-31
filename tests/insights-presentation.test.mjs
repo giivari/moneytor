@@ -275,7 +275,10 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(expandedInv,/Valuasi &amp; transaksi investasi/);
  const typoCss=fs.readFileSync(new URL('../src/app/typography.css',import.meta.url),'utf8');
  const dataCss=fs.readFileSync(new URL('../src/app/data-presentation.css',import.meta.url),'utf8');
+ const insightsCss=fs.readFileSync(new URL('../src/app/insights/insights.css',import.meta.url),'utf8');
  assert.match(typoCss,/\.financial-value\.financial-value--summary\s*\{[\s\S]*?font-weight:\s*var\(--weight-strong\)/);
- assert.match(dataCss,/\.u-table\b/);
+ assert.match(dataCss,/\.u-table tfoot th, \.u-table tfoot td \{[^}]*border-top:1\.5px solid #cbd5e1; border-bottom:0;/);
+ assert.ok(dataCss.indexOf('.u-table tr > :is(th, td):first-child')>dataCss.indexOf('.u-table tfoot th'));
+ assert.doesNotMatch(insightsCss,/table:has\(tfoot\)|\.insights-page tfoot/);
  assert.match(dataCss,/\.u-subgrid\b/);
 });

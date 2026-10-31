@@ -29,21 +29,9 @@
 .insights-page .insight-transfer-meta { display: inline-flex; align-items: baseline; gap: 4px; max-width: 100%; min-width: 0; }
 .insights-page .insight-transfer-meta .insight-money { display: inline; min-width: 0; font-weight: 600; color: #17242d; }
 
-/* Universal Table Alignment inside Insights */
-.insights-page table { width: 100%; margin-top: 4px; font-size: 13.5px; line-height: 1.4; border-collapse: collapse; }
-.insights-page caption { text-align: left; font-size: 12px; color: #647483; padding-bottom: 6px; }
-.insights-page th, .insights-page td { padding: 10px 12px; border-bottom: 1px solid #e7edf2; vertical-align: middle; font-variant-numeric: tabular-nums; }
-.insights-page thead th { font-size: 12px; font-weight: 600; color: #526372; letter-spacing: .01em; padding: 8px 12px; border-bottom: 1px solid #d8e1e8; white-space: nowrap; text-align: right; }
-.insights-page th:first-child, .insights-page td:first-child { padding-left: 0; text-align: left; }
-.insights-page th:last-child, .insights-page td:last-child { padding-right: 0; }
-.insights-page tr > th[scope="row"] { font-weight: 500; color: #17242d; white-space: normal; text-align: left; }
-.insights-page tr > td { text-align: right; white-space: nowrap; font-weight: 600; }
-.insights-page tr:last-child > :is(th, td) { border-bottom: 0; }
-.insights-page table:has(tfoot) tr:last-child > :is(th, td) { border-bottom: 1px solid #d8e1e8; }
-.insights-page tfoot tr:last-child > :is(th, td) { border-bottom: 0; padding: 10px 12px 2px; font-weight: 700; color: #17242d; }
-.insights-page tfoot th:first-child { padding-left: 0; }
-.insights-page tfoot td:last-child { padding-right: 0; }
-.insights-page .insight-table-gap { margin-top: 12px; }
+/* Universal Table Spacing inside Insights (cells & tfoot owned by .u-table in data-presentation.css) */
+.insights-page .u-table { margin-top: 4px; }
+.insights-page .insight-table-gap { margin-top: 14px; }
 .insights-page .insight-rank-num { display: inline-block; min-width: 20px; font-size: 12.5px; font-weight: 700; color: #647483; font-variant-numeric: tabular-nums; margin-right: 4px; }
 
 .insights-page dt { color: #526372; font-size: 13px; line-height: 1.4; }

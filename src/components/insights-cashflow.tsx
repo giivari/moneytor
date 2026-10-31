@@ -248,13 +248,9 @@ export function InsightsFinancialSuite({
           ? "tahunan"
           : "bulanan";
 
-  const hasBillRows =
-    autoSpend > 0n ||
-    billCatSpend > 0n ||
-    openObs.length > 0 ||
-    currentCycleBills > 0n ||
-    nextCycleBills > 0n ||
-    settledObsCount > 0;
+  const hasRoutineBillRows = autoSpend > 0n || billCatSpend > 0n || settledObsCount > 0;
+  const limitedFacilities = facilities.filter((f) => f.availableLimitMinor !== null && BigInt(f.limitMinor) > 0n);
+  const totalAvailableLimit = limitedFacilities.reduce((sum, f) => sum + BigInt(f.availableLimitMinor ?? "0"), 0n);
 
   return (
     <div className="insight-suite">
@@ -691,7 +687,10 @@ export function InsightsFinancialSuite({
                           </th>
                           <td className="insight-zero-muted">
                             {fac.availableLimitMinor !== null && limit > 0n ? (
-                              <FinancialAmount as="span" value={money(fac.availableLimitMinor)} />
+                              <>
+                                <FinancialAmount as="span" value={money(fac.availableLimitMinor)} />
+                                <small className="u-cell-sub">dari {money(limit)}</small>
+                              </>
                             ) : (
                               "—"
                             )}
@@ -712,8 +711,12 @@ export function InsightsFinancialSuite({
                     <tfoot>
                       <tr>
                         <th scope="row">Total {facilities.length} fasilitas kredit</th>
-                        <td className={totalCreditUnpaid > 0n ? "insight-negative" : "insight-zero-muted"}>
-                          <FinancialAmount as="span" value={money(totalCreditUnpaid)} />
+                        <td className="insight-zero-muted">
+                          {limitedFacilities.length > 0 ? (
+                            <FinancialAmount as="span" value={money(totalAvailableLimit)} />
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className={currentCycleBills > 0n ? "insight-negative" : "insight-positive"}>
                           {currentCycleBills > 0n ? <FinancialAmount as="span" value={money(currentCycleBills)} /> : "Lunas"}
@@ -728,12 +731,61 @@ export function InsightsFinancialSuite({
               </div>
             )}
 
-            {hasBillRows && (
+            {openObs.length > 0 && (
               <div className="u-table-wrap insight-table-gap">
-                <table className="u-table" aria-label="Ringkasan tagihan dan kewajiban">
+                <table className="u-table" aria-label="Kewajiban aktif dan tagihan belum lunas">
                   <thead>
                     <tr>
-                      <th scope="col">Tagihan &amp; kewajiban</th>
+                      <th scope="col">Kewajiban belum lunas</th>
+                      <th scope="col">Nominal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openObs.slice(0, 3).map((ob) => (
+                      <tr key={ob.id}>
+                        <th scope="row">
+                          <strong>{ob.title}</strong>
+                          <small className="u-cell-sub">
+                            {ob.labelName} · Jatuh tempo {dayLabel(ob.dueOn)}
+                          </small>
+                        </th>
+                        <td className="insight-negative">
+                          <FinancialAmount as="span" value={money(ob.amountMinor)} />
+                        </td>
+                      </tr>
+                    ))}
+                    {totalCreditUnpaid > 0n && (
+                      <tr>
+                        <th scope="row">
+                          <strong>Saldo fasilitas kredit belum lunas</strong>
+                          <small className="u-cell-sub">{facilities.length} fasilitas kredit</small>
+                        </th>
+                        <td className="insight-negative">
+                          <FinancialAmount as="span" value={money(totalCreditUnpaid)} />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  {(openObs.length > 1 || totalCreditUnpaid > 0n) && (
+                    <tfoot>
+                      <tr>
+                        <th scope="row">Total kewajiban &amp; tagihan aktif</th>
+                        <td className="insight-negative">
+                          <FinancialAmount as="span" value={money(totalCreditUnpaid + openObsTotal)} />
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            )}
+
+            {hasRoutineBillRows && (
+              <div className="u-table-wrap insight-table-gap">
+                <table className="u-table" aria-label="Aktivitas tagihan dan pengeluaran rutin">
+                  <thead>
+                    <tr>
+                      <th scope="col">Aktivitas rutin &amp; tagihan</th>
                       <th scope="col">Nominal</th>
                     </tr>
                   </thead>
@@ -760,19 +812,6 @@ export function InsightsFinancialSuite({
                         </td>
                       </tr>
                     )}
-                    {openObs.slice(0, 3).map((ob) => (
-                      <tr key={ob.id}>
-                        <th scope="row">
-                          <strong>{ob.title}</strong>
-                          <small className="u-cell-sub">
-                            {ob.labelName} · Jatuh tempo {dayLabel(ob.dueOn)}
-                          </small>
-                        </th>
-                        <td className="insight-negative">
-                          <FinancialAmount as="span" value={money(ob.amountMinor)} />
-                        </td>
-                      </tr>
-                    ))}
                     {settledObsCount > 0 && (
                       <tr>
                         <th scope="row">
@@ -785,16 +824,6 @@ export function InsightsFinancialSuite({
                       </tr>
                     )}
                   </tbody>
-                  {(openObs.length > 0 || currentCycleBills > 0n || nextCycleBills > 0n) && (
-                    <tfoot>
-                      <tr>
-                        <th scope="row">Total kewajiban &amp; tagihan aktif</th>
-                        <td className="insight-negative">
-                          <FinancialAmount as="span" value={money(totalCreditUnpaid + openObsTotal)} />
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
                 </table>
               </div>
             )}

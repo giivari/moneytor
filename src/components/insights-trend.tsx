@@ -74,7 +74,7 @@ export function InsightsTrend({ rows, report, selection, tableDisclosure = true 
     </select></label>
     <div aria-live="polite"><p className="insight-note insight-selected-month"><strong>{monthLabel(active.key)}</strong> · {monthState(active.key, report)}</p>
       <dl className="insight-small-values"><div><dt>Pemasukan</dt><dd><FinancialAmount value={money(active.incomeMinor)} /></dd></div><div><dt>Belanja</dt><dd><FinancialAmount value={money(active.spendingMinor)} /></dd></div><div><dt>Net operasional</dt><dd><FinancialAmount value={money(active.netMinor)} /></dd></div></dl></div>
-    <MonthlyTable disclosure={tableDisclosure}><div className="insight-chart-scroll" tabIndex={0} role="region" aria-label="Tabel angka bulanan yang dapat digeser"><table>
+    <MonthlyTable disclosure={tableDisclosure}><div className="insight-chart-scroll" tabIndex={0} role="region" aria-label="Tabel angka bulanan yang dapat digeser"><table className="u-table">
       <caption>Pemasukan, belanja, dan net operasional ({currency})</caption><thead><tr><th scope="col">Bulan</th><th scope="col">Pemasukan</th><th scope="col">Belanja</th><th scope="col">Net</th></tr></thead>
       <tbody>{rows.map((row) => <tr key={row.key}><th scope="row">{monthLabel(row.key)} {monthState(row.key, report)}</th><td>{money(row.incomeMinor)}</td><td>{money(row.spendingMinor)}</td><td>{money(row.netMinor)}</td></tr>)}</tbody>
     </table></div></MonthlyTable>

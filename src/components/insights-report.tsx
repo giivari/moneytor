@@ -298,6 +298,14 @@ export function InsightsReportView({
                         {rowCell("Pajak", summary.taxesMinor)}
                         {rowCell("Biaya lainnya", summary.otherChargesMinor)}
                       </tbody>
+                      <tfoot>
+                        <tr>
+                          <th scope="row">Total belanja</th>
+                          <td className={BigInt(summary.spendingMinor) === 0n ? "insight-zero-muted" : "insight-negative"}>
+                            {money(summary.spendingMinor)}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>
