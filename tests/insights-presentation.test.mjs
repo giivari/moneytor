@@ -252,6 +252,8 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(mobOut,/Pengeluaran terbesar/);
  assert.match(mobOut,/patungan padel/);
  assert.match(mobOut,/insight-credit-chip"[^>]*>Kredit<\/em>/);
+ assert.match(mobOut,/Beban thd Pemasukan \(DTI\)/);
+ assert.match(mobOut,/Beban thd Dana Kas Likuid/);
  // Automation is a recording method, NOT a bill or credit debt; Credit & Bills are never merged into one card
  assert.doesNotMatch(mobOut,/Kredit &amp; Tagihan|PayLater &amp; Tagihan|Pengeluaran rutin \/ terjadwal|transaksi otomatis|Saldo fasilitas kredit belum lunas|Simpan kategori|\bP3\b|\bP4\b/);
  assert.match(mobOut,/insight-mobile-gatekeep/);
@@ -261,6 +263,8 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(deskOut,/Arus Kas &amp; Pola Keuangan/);
  assert.match(deskOut,/Arus Kas Kumulatif/);
  assert.match(deskOut,/Rasio &amp; Burn Rate/);
+ assert.match(deskOut,/Beban thd Pemasukan \(DTI\)/);
+ assert.match(deskOut,/Beban thd Dana Kas Likuid/);
  assert.doesNotMatch(deskOut,/insight-mobile-gatekeep/);
 
  // 8 active items (4 categories + 4 fees): summary card stays neat at 5 single-line rows using Lainnya
@@ -287,5 +291,7 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.ok(dataCss.indexOf('.u-table tr > :is(th, td):first-child')>dataCss.indexOf('.u-table tfoot th'));
  assert.doesNotMatch(insightsCss,/table:has\(tfoot\)|\.insights-page tfoot|content:\s*"▸"/);
  assert.match(insightsCss,/\.insights-page \.insight-inline-select select \{[^}]*appearance:\s*none/);
+ assert.match(insightsCss,/\.insights-page \.insight-mid-grid \{[^}]*align-items:\s*stretch/);
+ assert.match(insightsCss,/\.insights-page \.insight-credit-ratios-strip/);
  assert.match(dataCss,/\.u-subgrid\b/);
 });

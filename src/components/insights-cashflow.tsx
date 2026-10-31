@@ -212,6 +212,24 @@ export function InsightsFinancialSuite({
   const runwayDays =
     liquidMinor !== null && liquidMinor > 0n && dailyBurnMinor > 0n ? liquidMinor / dailyBurnMinor : null;
 
+  const totalDebt = totalCreditUnpaid > 0n ? totalCreditUnpaid : currentCycleBills + nextCycleBills;
+  const debtToIncomeBps =
+    opIncome > 0n && totalDebt > 0n
+      ? (totalDebt * 10000n) / opIncome
+      : totalDebt === 0n && opIncome > 0n
+        ? 0n
+        : null;
+  const debtToLiquidBps =
+    liquidMinor !== null && liquidMinor > 0n && totalDebt > 0n
+      ? (totalDebt * 10000n) / liquidMinor
+      : totalDebt === 0n && liquidMinor !== null
+        ? 0n
+        : null;
+  const cashCoverageBps =
+    totalDebt > 0n && liquidMinor !== null && liquidMinor > 0n
+      ? (liquidMinor * 10000n) / totalDebt
+      : null;
+
   const incomeBreakdown = incomeShares(data.incomeCategories)
     .rows.filter((row) => BigInt(row.incomeMinor) > 0n)
     .sort((a, b) =>
@@ -554,6 +572,29 @@ export function InsightsFinancialSuite({
                       </tr>
                       <tr>
                         <th scope="row">
+                          <strong>Rasio Beban Utang (Debt-to-Income / DTI)</strong>
+                          <small className="u-cell-sub">
+                            {totalDebt > 0n
+                              ? opIncome > 0n
+                                ? `Kewajiban kredit ${money(totalDebt)} thd pemasukan (Aman < 30%)`
+                                : "Belum ada pemasukan periode ini"
+                              : "Tidak ada kewajiban kredit aktif"}
+                          </small>
+                        </th>
+                        <td
+                          className={
+                            debtToIncomeBps === null
+                              ? "insight-zero-muted"
+                              : debtToIncomeBps > 3000n
+                                ? "insight-negative"
+                                : "insight-positive"
+                          }
+                        >
+                          {debtToIncomeBps !== null ? percentageLabel(debtToIncomeBps.toString()) : "—"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th scope="row">
                           <strong>Burn Rate Harian ({daysElapsed.toString()} hr)</strong>
                           <small className="u-cell-sub">
                             Estimasi 30 hari: <FinancialAmount as="span" value={money(projectedMonthlyBurn)} />
@@ -586,6 +627,29 @@ export function InsightsFinancialSuite({
                         </th>
                         <td className={expenseCount === 0n ? "insight-zero-muted" : ""}>
                           {expenseCount > 0n ? <FinancialAmount as="span" value={money(avgExpenseMinor)} /> : "—"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th scope="row">
+                          <strong>Rasio Utang thd Dana Kas Likuid</strong>
+                          <small className="u-cell-sub">
+                            {totalDebt > 0n
+                              ? liquidMinor !== null && liquidMinor > 0n
+                                ? `Kas likuid ${money(liquidMinor)} menutup ${percentageLabel(cashCoverageBps?.toString() ?? "0")} utang`
+                                : "Saldo kas likuid belum tersedia"
+                              : "Bebas utang kredit"}
+                          </small>
+                        </th>
+                        <td
+                          className={
+                            debtToLiquidBps === null
+                              ? "insight-zero-muted"
+                              : debtToLiquidBps > 10000n
+                                ? "insight-negative"
+                                : "insight-positive"
+                          }
+                        >
+                          {debtToLiquidBps !== null ? percentageLabel(debtToLiquidBps.toString()) : "—"}
                         </td>
                       </tr>
                       <tr>
@@ -660,6 +724,45 @@ export function InsightsFinancialSuite({
               </div>
             </div>
 
+            <div className="insight-credit-ratios-strip">
+              <div className="insight-credit-ratio-box">
+                <span className="insight-ratio-label">Beban thd Pemasukan (DTI)</span>
+                <strong
+                  className={
+                    debtToIncomeBps !== null && debtToIncomeBps > 3000n
+                      ? "insight-negative"
+                      : "insight-positive"
+                  }
+                >
+                  {debtToIncomeBps !== null ? percentageLabel(debtToIncomeBps.toString()) : "—"}
+                </strong>
+                <small className="u-cell-sub">
+                  {opIncome > 0n
+                    ? `Kewajiban ${money(totalDebt)} dari pemasukan ${money(opIncome)} (Aman < 30%)`
+                    : "Belum ada pemasukan pada periode ini"}
+                </small>
+              </div>
+              <div className="insight-credit-ratio-box">
+                <span className="insight-ratio-label">Beban thd Dana Kas Likuid</span>
+                <strong
+                  className={
+                    debtToLiquidBps !== null && debtToLiquidBps > 10000n
+                      ? "insight-negative"
+                      : "insight-positive"
+                  }
+                >
+                  {debtToLiquidBps !== null ? percentageLabel(debtToLiquidBps.toString()) : "—"}
+                </strong>
+                <small className="u-cell-sub">
+                  {liquidMinor !== null && liquidMinor > 0n
+                    ? totalDebt > 0n
+                      ? `Kas saat ini (${money(liquidMinor)}) menutup ${percentageLabel(cashCoverageBps?.toString() ?? "0")} kewajiban`
+                      : "Tidak ada beban kredit aktif"
+                    : "Data saldo kas likuid belum tersedia"}
+                </small>
+              </div>
+            </div>
+
             {facilities.length > 0 && (
               <div className="u-table-wrap insight-chart-scroll insight-table-gap">
                 <table className="u-table" aria-label="Daftar fasilitas kredit">
@@ -678,18 +781,36 @@ export function InsightsFinancialSuite({
                       const unpaid = BigInt(fac.totalUnpaidMinor);
                       const limit = BigInt(fac.limitMinor);
                       const usedPct = limit > 0n ? plotPercent(unpaid, limit) : 0;
+                      const facIncomeBps = opIncome > 0n && unpaid > 0n ? (unpaid * 10000n) / opIncome : null;
+                      const facLiquidBps =
+                        liquidMinor !== null && liquidMinor > 0n && unpaid > 0n ? (unpaid * 10000n) / liquidMinor : null;
                       return (
                         <tr key={fac.id}>
                           <th scope="row">
                             <strong>{fac.name}</strong>
                             {!fac.isActive && <em className="u-pill">Diarsipkan</em>}
-                            {limit > 0n && <small className="u-cell-sub">Terpakai {usedPct}%</small>}
+                            <small className="u-cell-sub">
+                              {facIncomeBps !== null
+                                ? `${percentageLabel(facIncomeBps.toString())} pemasukan`
+                                : ""}
+                              {facIncomeBps !== null && facLiquidBps !== null ? " · " : ""}
+                              {facLiquidBps !== null
+                                ? `${percentageLabel(facLiquidBps.toString())} kas likuid`
+                                : ""}
+                              {facIncomeBps === null && facLiquidBps === null
+                                ? limit > 0n
+                                  ? `Plafon terpakai ${usedPct}%`
+                                  : "Bebas tagihan"
+                                : ""}
+                            </small>
                           </th>
                           <td className="insight-zero-muted">
                             {fac.availableLimitMinor !== null && limit > 0n ? (
                               <>
                                 <FinancialAmount as="span" value={money(fac.availableLimitMinor)} />
-                                <small className="u-cell-sub">dari {money(limit)}</small>
+                                <small className="u-cell-sub">
+                                  dari {money(limit)} (plafon {usedPct}%)
+                                </small>
                               </>
                             ) : (
                               "—"
@@ -730,6 +851,20 @@ export function InsightsFinancialSuite({
                 </table>
               </div>
             )}
+
+            <p className="insight-note insight-card-footer">
+              {totalDebt > 0n ? (
+                <>
+                  Kewajiban kredit aktif{" "}
+                  <FinancialAmount as="span" value={money(totalDebt)} className="insight-money" />
+                  . Rasio beban utang: <strong>{debtToIncomeBps !== null ? percentageLabel(debtToIncomeBps.toString()) : "—"}</strong>{" "}
+                  dari pemasukan · <strong>{debtToLiquidBps !== null ? percentageLabel(debtToLiquidBps.toString()) : "—"}</strong>{" "}
+                  dari kas likuid.
+                </>
+              ) : (
+                <>Tidak ada tagihan kredit berjalan atau pinjaman aktif pada periode ini.</>
+              )}
+            </p>
           </section>
         )}
 
@@ -837,6 +972,17 @@ export function InsightsFinancialSuite({
                 </table>
               </div>
             )}
+
+            <p className="insight-note insight-card-footer">
+              {openObsTotal > 0n || billCatSpend > 0n ? (
+                <>
+                  Total kewajiban terbuka &amp; tagihan tercatat{" "}
+                  <FinancialAmount as="span" value={money(openObsTotal + billCatSpend)} className="insight-money" />.
+                </>
+              ) : (
+                <>Semua kewajiban operasional &amp; tagihan tercatat telah terlunasi.</>
+              )}
+            </p>
           </section>
         )}
 
@@ -857,12 +1003,19 @@ export function InsightsFinancialSuite({
               </details>
             )}
 
-            {uncategorizedCount > 0 && (
-              <p className="insight-note insight-top-footer">
-                Ada {uncategorizedCount} pengeluaran tanpa kategori ·{" "}
-                <AppLink href="/transactions?kind=expense">Ubah detail di Transactions →</AppLink>
-              </p>
-            )}
+            <p className="insight-note insight-top-footer">
+              {uncategorizedCount > 0 ? (
+                <>
+                  Ada {uncategorizedCount} pengeluaran tanpa kategori ·{" "}
+                  <AppLink href="/transactions?kind=expense">Ubah detail di Transactions →</AppLink>
+                </>
+              ) : (
+                <>
+                  Semua transaksi memiliki kategori ·{" "}
+                  <AppLink href="/transactions?kind=expense">Lihat seluruh mutasi di Transactions →</AppLink>
+                </>
+              )}
+            </p>
           </section>
         )}
       </div>

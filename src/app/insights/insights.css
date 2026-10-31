@@ -258,9 +258,30 @@
 .insights-page .insight-asset-snapshot-grid dd { margin: 4px 0 0; font-size: 15px; font-weight: 700; color: #17242d; font-variant-numeric: tabular-nums; }
 
 .insights-page .insight-suite { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--dashboard-gap); min-width: 0; }
-.insights-page .insight-mid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: var(--dashboard-gap); align-items: start; min-width: 0; }
+.insights-page .insight-mid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: var(--dashboard-gap); align-items: stretch; min-width: 0; }
 @media (min-width: 920px) {
+  .insights-page .insight-mid-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .insights-page .insight-mid-grid > :nth-child(3):last-child { grid-column: 1 / -1; }
+}
+
+.insights-page .insight-credit-card,
+.insights-page .insight-bills-card,
+.insights-page .insight-top-expenses-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+.insights-page .insight-credit-card .u-table-wrap,
+.insights-page .insight-bills-card .u-table-wrap,
+.insights-page .insight-top-expenses-card .u-table-wrap {
+  flex: 1 1 auto;
+}
+.insights-page .insight-card-footer,
+.insights-page .insight-top-footer {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid #e7edf2;
 }
 
 /* Compact Top Strip inside Kredit & Tagihan */
@@ -269,7 +290,13 @@
 .insights-page .insight-compact-kpis > div > span { display: block; font-size: 12px; color: #526372; line-height: 1.35; }
 .insights-page .insight-compact-kpis > div > strong { display: block; font-size: 15px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
 .insights-page .insight-compact-kpis > div > small { display: block; font-size: 11px; color: #647483; margin-top: 2px; }
-.insights-page .insight-top-footer { padding-top: 10px; border-top: 1px solid #e7edf2; }
+
+/* Debt Ratio Strip in Credit Card */
+.insights-page .insight-credit-ratios-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #f8fafc; border: 1px solid #e5e9ed; }
+.insights-page .insight-credit-ratio-box { min-width: 0; }
+.insights-page .insight-ratio-label { display: block; font-size: 12px; color: #526372; line-height: 1.35; }
+.insights-page .insight-credit-ratio-box > strong { display: block; font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.insights-page .insight-credit-ratio-box > small { display: block; font-size: 11px; color: #647483; margin-top: 2px; line-height: 1.35; }
 
 /* Desktop Deep-Dive Segmented Tabs & Mobile Gatekeep */
 .insights-page .insight-mobile-gatekeep { margin: 0; padding: 4px 8px; color: #647483; font-size: 12px; line-height: 1.5; text-align: center; }
@@ -306,5 +333,6 @@
   .insights-page .insight-compact-kpis > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .insights-page .insight-compact-kpis > div > strong { margin-top: 0; text-align: right; }
   .insights-page .insight-compact-kpis > div > small { display: none; }
+  .insights-page .insight-credit-ratios-strip { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .insights-page .insight-asset-snapshot-grid { grid-template-columns: minmax(0, 1fr); }
 }
