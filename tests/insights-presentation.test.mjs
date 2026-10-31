@@ -242,4 +242,10 @@ test('m-banking refinements: 4+ categories visible, Transfer masuk in accounts, 
  assert.match(deskOut,/Arus Kas/);
  assert.match(deskOut,/Rasio &amp; Burn Rate/);
  assert.doesNotMatch(deskOut,/insight-mobile-gatekeep/);
+
+ // 8 active items (4 categories + 4 fees): summary card stays neat at 5 single-line rows using Lainnya
+ assert.match(deskOut,/Lainnya \(4 pos\)/);
+ assert.doesNotMatch(deskOut,/insight-entry-sub/);
+ const expandedCat=desktopHtml(r,{'Grafik pemasukan dan kategori':'categories'});
+ assert.match(expandedCat,/insight-entry-sub/);
 });

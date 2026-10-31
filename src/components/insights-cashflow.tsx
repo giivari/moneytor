@@ -11,7 +11,7 @@ import {
   plotPercent,
   signedMoney,
 } from "@/lib/analytics/presentation";
-import { describeChargeItem, incomeShares, visualIntervalAxis, visualTrend } from "@/lib/analytics/visuals";
+import { incomeShares, visualIntervalAxis, visualTrend } from "@/lib/analytics/visuals";
 import { formatShortDueIso } from "@/lib/domain/credit";
 import { formatMinor } from "@/lib/finance/format";
 import { AppLink } from "./app-link";
@@ -72,8 +72,6 @@ export function InsightsFinancialSuite({
 
   const opIncome = BigInt(summary.incomeMinor);
   const opSpending = BigInt(summary.spendingMinor);
-  const expPrincipal = BigInt(summary.expensePrincipalMinor);
-  const totalCharges = BigInt(summary.chargesMinor);
   const transferFeesMinor = BigInt(summary.transferFeesMinor);
   const invBuy = BigInt(data.flows?.purchasePrincipalMinor ?? "0");
   const invSell = BigInt(data.flows?.saleProceedsMinor ?? "0");
@@ -115,9 +113,9 @@ export function InsightsFinancialSuite({
     const diff = BigInt(b.spendingMinor) - BigInt(a.spendingMinor);
     return diff !== 0n ? (diff > 0n ? 1 : -1) : b.occurredAt.localeCompare(a.occurredAt);
   });
-  const topLimit = mobile ? 5 : 8;
+  const topLimit = 5;
   const visibleTopExpenses = sortedExpenses.slice(0, topLimit);
-  const extraTopExpenses = mobile ? [] : sortedExpenses.slice(topLimit, 15);
+  const extraTopExpenses = mobile ? [] : sortedExpenses.slice(topLimit, 12);
   const uncategorizedCount = data.expenseItems.filter((item) => item.categoryId === null).length;
 
   const hasAnyActivity =
@@ -153,37 +151,6 @@ export function InsightsFinancialSuite({
       return `${cx},${cy}`;
     })
     .join(" ");
-
-  const bridgeDenominator = totalInflow > totalOutflow ? totalInflow : totalOutflow;
-  const itemizedCharges = data.charges
-    .filter((charge) => BigInt(charge.amountMinor) > 0n)
-    .map((charge) => {
-      const desc = describeChargeItem(charge);
-      return {
-        key: `charge:${charge.typeId}:${charge.activityKind}`,
-        label: desc.name,
-        amount: BigInt(charge.amountMinor),
-        tone: "negative" as const,
-      };
-    });
-  const bridgeRows = [
-    { key: "inflow", label: "Kas masuk (Pemasukan + jual investasi)", amount: totalInflow, tone: "positive" },
-    { key: "principal", label: "Pokok belanja konsumsi", amount: expPrincipal, tone: "negative" },
-    ...(itemizedCharges.length > 0
-      ? itemizedCharges
-      : totalCharges > 0n
-        ? [{ key: "charges", label: "Biaya admin, transfer & pajak", amount: totalCharges, tone: "negative" }]
-        : []),
-    ...(invBuy + invFees > 0n
-      ? [{ key: "invest", label: "Alokasi beli & biaya investasi", amount: invBuy + invFees, tone: "neutral" }]
-      : []),
-    {
-      key: "surplus",
-      label: netCashFlow >= 0n ? "Surplus kas bersih" : "Defisit kas bersih",
-      amount: netCashFlow >= 0n ? netCashFlow : -netCashFlow,
-      tone: netCashFlow >= 0n ? "positive" : "negative",
-    },
-  ];
 
   const daysElapsed = elapsedDaysInPeriod(report);
   const dailyBurnMinor = opSpending / daysElapsed;
@@ -247,7 +214,7 @@ export function InsightsFinancialSuite({
           <section className="surface insight-panel insight-credit-bills-card" aria-label="PayLater dan Tagihan">
             <SectionHeading
               title="PayLater & Tagihan"
-              helper="Pemisahan belanja kas vs fasilitas kredit, pelunasan tagihan, dan kewajiban jatuh tempo."
+              helper="Pemakaian fasilitas kredit, pelunasan, dan kewajiban aktif."
             />
 
             <div className="insight-compact-kpis">
@@ -320,45 +287,49 @@ export function InsightsFinancialSuite({
               </div>
             )}
 
-            <dl className="insight-bill-summary-rows">
-              <div>
-                <dt>Pengeluaran rutin / otomatisasi</dt>
-                <dd>
-                  <FinancialAmount as="span" value={money(autoSpend)} />
-                  {BigInt(autoCount) > 0n && <small> · {autoCount}x</small>}
-                </dd>
-              </div>
-              {billCatSpend > 0n && (
-                <div>
-                  <dt>Kategori tagihan & utilitas</dt>
-                  <dd>
-                    <FinancialAmount as="span" value={money(billCatSpend)} />
-                    <small> · {billCatCount}x</small>
-                  </dd>
-                </div>
-              )}
-              {(openObs.length > 0 || currentCycleBills > 0n || nextCycleBills > 0n) && (
-                <div>
-                  <dt>Total kewajiban & tagihan aktif</dt>
-                  <dd className="insight-negative">
-                    <FinancialAmount as="span" value={money(totalCreditUnpaid + openObsTotal)} />
-                  </dd>
-                </div>
-              )}
-              {settledObsCount > 0 && (
-                <div>
-                  <dt>Kewajiban Planning dilunasi</dt>
-                  <dd className="insight-positive">
-                    <FinancialAmount as="span" value={money(settledObsTotal)} />
-                    <small> · {settledObsCount} selesai</small>
-                  </dd>
-                </div>
-              )}
-            </dl>
+            {(autoSpend > 0n || billCatSpend > 0n || openObs.length > 0 || currentCycleBills > 0n || nextCycleBills > 0n || settledObsCount > 0) && (
+              <dl className="insight-bill-summary-rows">
+                {autoSpend > 0n && (
+                  <div>
+                    <dt>Pengeluaran rutin / otomatisasi</dt>
+                    <dd>
+                      <FinancialAmount as="span" value={money(autoSpend)} />
+                      {BigInt(autoCount) > 0n && <small> · {autoCount}x</small>}
+                    </dd>
+                  </div>
+                )}
+                {billCatSpend > 0n && (
+                  <div>
+                    <dt>Kategori tagihan & utilitas</dt>
+                    <dd>
+                      <FinancialAmount as="span" value={money(billCatSpend)} />
+                      <small> · {billCatCount}x</small>
+                    </dd>
+                  </div>
+                )}
+                {(openObs.length > 0 || currentCycleBills > 0n || nextCycleBills > 0n) && (
+                  <div>
+                    <dt>Total kewajiban & tagihan aktif</dt>
+                    <dd className="insight-negative">
+                      <FinancialAmount as="span" value={money(totalCreditUnpaid + openObsTotal)} />
+                    </dd>
+                  </div>
+                )}
+                {settledObsCount > 0 && (
+                  <div>
+                    <dt>Kewajiban Planning dilunasi</dt>
+                    <dd className="insight-positive">
+                      <FinancialAmount as="span" value={money(settledObsTotal)} />
+                      <small> · {settledObsCount} selesai</small>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            )}
 
             {openObs.length > 0 && (
               <ul className="insight-mini-obligations">
-                {openObs.slice(0, mobile ? 3 : 5).map((ob) => (
+                {openObs.slice(0, 3).map((ob) => (
                   <li key={ob.id}>
                     <span>
                       <strong>{ob.title}</strong>
@@ -371,10 +342,6 @@ export function InsightsFinancialSuite({
                 ))}
               </ul>
             )}
-
-            <p className="insight-note">
-              Belanja baru dengan PayLater tercatat di pengeluaran saat transaksi terjadi; pelunasan tagihan tercatat sebagai Transfer masuk ke akun kredit agar tidak terhitung dua kali.
-            </p>
           </section>
         )}
 
@@ -620,29 +587,6 @@ export function InsightsFinancialSuite({
                         return <circle key={`${item.key}-pt`} cx={cx} cy={cy} r="3.5" className="insight-cumulative-point" />;
                       })}
                   </svg>
-                </div>
-              )}
-
-              {bridgeDenominator > 0n && (
-                <div className="insight-bridge-block">
-                  <h3>Alokasi arus kas</h3>
-                  <ul className="insight-bridge-bars">
-                    {bridgeRows.map((row) => (
-                      <li key={row.key}>
-                        <div className="insight-bridge-head">
-                          <span>{row.label}</span>
-                          <FinancialAmount
-                            as="span"
-                            value={money(row.amount)}
-                            className={`insight-money ${row.tone === "positive" ? "insight-positive" : row.tone === "negative" ? "insight-negative" : ""}`}
-                          />
-                        </div>
-                        <div className="insight-category-track" aria-hidden="true">
-                          <span data-tone={row.tone} style={{ width: `${plotPercent(row.amount, bridgeDenominator)}%` }} />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               )}
             </div>

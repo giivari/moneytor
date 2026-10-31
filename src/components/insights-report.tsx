@@ -104,12 +104,6 @@ export function InsightsReportView({
 
   return <div className="insight-report">
     <div className="insight-period-heading"><div><strong>{periodLabel(report.period)}</strong><span>{currency} · Kalender Asia/Jakarta</span></div><small>Dibaca {new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(report.generatedAt))} WIB</small></div>
-    {(report.period.partial || report.comparison.partialComparison) && (
-      <p className="insight-status-strip" role="note">
-        <span className="insight-status-dot" aria-hidden="true" />
-        {report.period.partial ? "Periode berjalan · Angka diperbarui otomatis mengikuti transaksi terbaru." : "Periode pembanding belum penuh."}
-      </p>
-    )}
     {!!(data.assets?.unpricedCount || data.investment?.unpricedCount) && <p className="insight-warning" role="note">Ada posisi investasi tanpa harga. Total aset diketahui dan nilai pasar belum mencakup semuanya; rincian ada di Aset & investasi.</p>}
     {report.context && !report.context.planningReady && <p className="insight-warning" role="note">Planning belum tersedia; konteks kewajiban belum lengkap.</p>}
 
@@ -124,14 +118,22 @@ export function InsightsReportView({
           <small>{comparison ? <>{signedMoney(comparison.differenceMinor, currency, summary.exponent)} <span>({percentageLabel(comparison.percentageChangeBps, true)})</span></> : "—"}<span className="insight-comparison-label"> · vs periode lalu</span></small>
         </div>;
       })}</div>
-      <p className="insight-note"><span className="insight-net-short">Net = pemasukan − belanja; bukan pertumbuhan aset.</span><span className="insight-net-full">Net = pemasukan − belanja, bukan pertumbuhan total aset. Transfer antar akun sendiri dicatat terpisah.</span></p>
-      <details className="insight-inline-detail insight-summary-detail"><summary>Rincian komponen & perbandingan</summary>
-      <dl className="insight-support-metrics">{line("Pokok pengeluaran", summary.expensePrincipalMinor)}{line("Biaya layanan & Transfer", summary.feesMinor)}{line("Pajak", summary.taxesMinor)}{line("Biaya lainnya", summary.otherChargesMinor)}</dl>
-      <dl className="insight-comparison-details">{([["Pemasukan", "income"], ["Belanja", "spending"], ["Net operasional", "net"]] as const).map(([label, key]) => <div key={key}><dt>Selisih {label}</dt><dd>{data.comparison ? `${signedMoney(data.comparison[key].differenceMinor, currency, summary.exponent)} (${percentageLabel(data.comparison[key].percentageChangeBps, true)})` : "—"}</dd></div>)}</dl>
-      <p className="insight-note">Pembanding: {periodLabel(report.comparison.period)}. {["custom", "last_7_days", "last_30_days"].includes(periodKind) ? "Interval sebelumnya dengan jumlah hari yang sama." : "Blok kalender sebelumnya secara penuh."} Persentase — berarti basis tidak positif atau tidak dapat dibandingkan.</p>
-      <p className="insight-note insight-activity-meta"><span>{summary.activityCount} transaksi P3 efektif: {summary.incomeCount} Pemasukan · {summary.expenseCount} Pengeluaran · {summary.transferCount} Transfer.</span>
-        <span className="insight-transfer-meta">Transfer: <Money value={summary.transferPrincipalMinor} currency={currency} exponent={summary.exponent} suffix="." /></span></p>
-      </details>
+      <div className="insight-overview-foot">
+        <details className="insight-inline-detail insight-summary-detail"><summary>Rincian komponen &amp; perbandingan</summary>
+          <dl className="insight-support-metrics">{line("Pokok pengeluaran", summary.expensePrincipalMinor)}{line("Biaya layanan & Transfer", summary.feesMinor)}{line("Pajak", summary.taxesMinor)}{line("Biaya lainnya", summary.otherChargesMinor)}</dl>
+          <dl className="insight-comparison-details">{([["Pemasukan", "income"], ["Belanja", "spending"], ["Net operasional", "net"]] as const).map(([label, key]) => <div key={key}><dt>Selisih {label}</dt><dd>{data.comparison ? `${signedMoney(data.comparison[key].differenceMinor, currency, summary.exponent)} (${percentageLabel(data.comparison[key].percentageChangeBps, true)})` : "—"}</dd></div>)}</dl>
+          <p className="insight-note">Pembanding: {periodLabel(report.comparison.period)}. {["custom", "last_7_days", "last_30_days"].includes(periodKind) ? "Interval sebelumnya dengan jumlah hari yang sama." : "Blok kalender sebelumnya secara penuh."} Persentase — berarti basis tidak positif atau tidak dapat dibandingkan.</p>
+          <p className="insight-note">Net = pemasukan − belanja, bukan pertumbuhan total aset. Pokok Transfer antar akun sendiri tidak dihitung sebagai pemasukan atau belanja.</p>
+          <p className="insight-note insight-activity-meta"><span>{summary.activityCount} transaksi P3 efektif: {summary.incomeCount} Pemasukan · {summary.expenseCount} Pengeluaran · {summary.transferCount} Transfer.</span>
+            <span className="insight-transfer-meta">Transfer: <Money value={summary.transferPrincipalMinor} currency={currency} exponent={summary.exponent} suffix="." /></span></p>
+        </details>
+        {(report.period.partial || report.comparison.partialComparison) && (
+          <span className="insight-live-pill" role="note">
+            <i className="insight-status-dot" aria-hidden="true" />
+            {report.period.partial ? "Periode berjalan" : "Pembanding parsial"}
+          </span>
+        )}
+      </div>
       {summary.activityCount === "0" && <p className="insight-empty">Belum ada transaksi P3 efektif pada periode ini. Konteks aset dan investasi tetap ditampilkan jika tersedia.</p>}
     </section>
 

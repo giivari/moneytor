@@ -139,15 +139,21 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
   );
 }
 
-function renderCompositionRow(row: CompositionEntry, color?: string) {
+function renderCompositionRow(
+  row: Pick<CompositionEntry, "key" | "name" | "archived" | "badge" | "subtitle" | "spendingMinor" | "currency" | "exponent" | "shareBps">,
+  color?: string,
+  detailed = false,
+) {
   return (
-    <li key={row.key}>
-      <span>
+    <li key={row.key} className={detailed ? "insight-comp-row--detailed" : "insight-comp-row--compact"}>
+      <span className="insight-comp-name">
         {color && <i style={{ background: color }} />}
-        {row.name}
-        {row.archived ? " · Diarsipkan" : ""}
-        {row.badge && <em className="insight-fee-badge" data-kind={row.badge.toLowerCase()}>{row.badge}</em>}
-        {row.subtitle && <small className="insight-entry-sub">{row.subtitle}</small>}
+        <span className="insight-comp-label">
+          {row.name}
+          {row.archived ? " · Diarsipkan" : ""}
+        </span>
+        {detailed && row.badge && <em className="insight-fee-badge" data-kind={row.badge.toLowerCase()}>{row.badge}</em>}
+        {detailed && row.subtitle && <small className="insight-entry-sub">{row.subtitle}</small>}
       </span>
       <strong>
         <FinancialAmount as="span" value={formatMinor(row.spendingMinor, row.currency, row.exponent)} />
@@ -157,23 +163,59 @@ function renderCompositionRow(row: CompositionEntry, color?: string) {
   );
 }
 
-export function InsightsComposition({ rows, charges, inlineDetails = true }: { rows: DimensionRow[]; charges?: ChargeReport[]; inlineDetails?: boolean }) {
+export function InsightsComposition({
+  rows,
+  charges,
+  inlineDetails = true,
+  dashboard = false,
+}: {
+  rows: DimensionRow[];
+  charges?: ChargeReport[];
+  inlineDetails?: boolean;
+  dashboard?: boolean;
+}) {
   const shares = compositionShares(rows, charges), id = useId();
   const sorted = shares.rows;
   const active = sorted.filter((row) => BigInt(row.spendingMinor) > 0n);
   const colorMap = new Map(active.map((row, index) => [row.key, colors[index % colors.length]]));
-  const visibleRows =
-    active.length <= 7
-      ? active
-      : [
-          ...active.slice(0, 6),
-          ...active.slice(6).filter((row) => row.kind === "charge"),
-        ];
-  const hasHiddenRows = sorted.length > visibleRows.length;
+  const maxLines = dashboard ? 4 : 5;
   const total = BigInt(shares.totalMinor), first = sorted[0];
-  const chargesTotal = BigInt(shares.chargesTotalMinor);
+
+  let displayRows: {
+    row: Pick<CompositionEntry, "key" | "name" | "archived" | "badge" | "subtitle" | "spendingMinor" | "currency" | "exponent" | "shareBps">;
+    color: string;
+  }[] = [];
+
+  if (first && active.length <= maxLines) {
+    displayRows = active.map((row) => ({ row, color: colorMap.get(row.key) ?? colors[0] }));
+  } else if (first && active.length > maxLines) {
+    const head = active.slice(0, maxLines - 1);
+    const tail = active.slice(maxLines - 1);
+    const tailMinor = tail.reduce((sum, item) => sum + BigInt(item.spendingMinor), 0n);
+    const tailBps = total > 0n ? ((tailMinor * 10000n) / total).toString() : null;
+    displayRows = [
+      ...head.map((row) => ({ row, color: colorMap.get(row.key) ?? colors[0] })),
+      {
+        row: {
+          key: "__others__",
+          name: `Lainnya (${tail.length} pos)`,
+          archived: false,
+          badge: null,
+          subtitle: null,
+          spendingMinor: tailMinor.toString(),
+          currency: first.currency,
+          exponent: first.exponent,
+          shareBps: tailBps,
+        },
+        color: "#94a3b1",
+      },
+    ];
+  }
+
+  const hasHiddenRows = sorted.length > active.length || active.length > maxLines;
+
   return <>
-    <SectionHeading title="Komposisi belanja" helper="Pengeluaran per kategori beserta rincian biaya admin, transfer & pajak." />
+    <SectionHeading title="Komposisi belanja" helper="Distribusi pengeluaran & biaya pada periode terpilih." />
     {!first || total === 0n ? <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p> : <>
       <div className="insight-composition"><svg viewBox="0 0 160 160" role="img" aria-labelledby={`${id}-title`}>
         <title id={`${id}-title`}>{`Komposisi belanja & biaya; total ${formatMinor(total, first.currency, first.exponent)}. Rincian nominal dan persentase tersedia di bawah.`}</title>
@@ -183,18 +225,28 @@ export function InsightsComposition({ rows, charges, inlineDetails = true }: { r
           const detail = row.subtitle ? ` — ${row.subtitle}` : "";
           return <circle key={row.key} cx="80" cy="80" r="60" pathLength="100" fill="none" stroke={colors[index % colors.length]} strokeWidth="24" strokeDasharray={`${row.percent} ${100 - row.percent}`} strokeDashoffset={-plotPercent(offset, total)} transform="rotate(-90 80 80)"><title>{`${row.name}${detail}: ${formatMinor(row.spendingMinor, row.currency, row.exponent)} (${percentageLabel(row.shareBps)})`}</title></circle>;
         })}
-        <text x="80" y="77" textAnchor="middle" className="insight-donut-label">{active.length}</text><text x="80" y="97" textAnchor="middle" className="insight-axis">pos belanja</text>
-      </svg><div><span className="insight-note">Total pengeluaran & biaya</span><FinancialAmount value={formatMinor(total, first.currency, first.exponent)} className="insight-money" />{chargesTotal > 0n && <small className="insight-composition-subnote">Pokok {formatMinor(shares.principalTotalMinor, first.currency, first.exponent)} + Biaya/pajak {formatMinor(chargesTotal, first.currency, first.exponent)}</small>}</div></div>
-      <ol className="insight-visual-ranking">{visibleRows.map((row) => renderCompositionRow(row, colorMap.get(row.key)))}</ol>
-      {inlineDetails && hasHiddenRows && <details className="insight-inline-detail"><summary>Lihat semua ({sorted.length})</summary><InsightsCategoryDetails rows={rows} charges={charges} /></details>}
+        <text x="80" y="78" textAnchor="middle" className="insight-donut-label">{active.length}</text><text x="80" y="96" textAnchor="middle" className="insight-axis">pos</text>
+      </svg><div><span className="insight-note">Total pengeluaran</span><FinancialAmount value={formatMinor(total, first.currency, first.exponent)} className="insight-money" /></div></div>
+      <ol className="insight-visual-ranking">{displayRows.map(({ row, color }) => renderCompositionRow(row, color, false))}</ol>
+      {inlineDetails && hasHiddenRows && <details className="insight-inline-detail"><summary>Lihat semua rincian ({sorted.length})</summary><InsightsCategoryDetails rows={rows} charges={charges} /></details>}
     </>}
   </>;
 }
 
 export function InsightsCategoryDetails({ rows, charges }: { rows: DimensionRow[]; charges?: ChargeReport[] }) {
   const shares = compositionShares(rows, charges), sorted = shares.rows;
-  if (BigInt(shares.totalMinor) === 0n) return <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p>;
-  return <><ol className="insight-visual-ranking">{sorted.map((row) => renderCompositionRow(row))}</ol><p className="insight-note">Persentase dihitung dari total seluruh pengeluaran efektif (pokok belanja per kategori + rincian biaya admin, biaya layanan, biaya transfer, dan pajak). Pokok Transfer antar akun sendiri tidak termasuk. Pembulatan dapat membuat jumlah persentase berbeda sedikit dari 100%.</p></>;
+  const first = sorted[0];
+  const chargesTotal = BigInt(shares.chargesTotalMinor);
+  if (!first || BigInt(shares.totalMinor) === 0n) return <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p>;
+  return <>
+    {chargesTotal > 0n && (
+      <p className="insight-note">
+        Pokok kategori {formatMinor(shares.principalTotalMinor, first.currency, first.exponent)} + Biaya &amp; pajak {formatMinor(chargesTotal, first.currency, first.exponent)}.
+      </p>
+    )}
+    <ol className="insight-visual-ranking">{sorted.map((row) => renderCompositionRow(row, undefined, true))}</ol>
+    <p className="insight-note">Persentase dihitung dari total seluruh pengeluaran efektif (pokok belanja per kategori + rincian biaya admin, biaya layanan, biaya transfer, dan pajak). Pokok Transfer antar akun sendiri tidak termasuk. Pembulatan dapat membuat jumlah persentase berbeda sedikit dari 100%.</p>
+  </>;
 }
 
 export function InsightsOrigins({ rows }: { rows: DimensionRow[] }) {

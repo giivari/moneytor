@@ -247,9 +247,19 @@
 .insights-page .insight-custom-dates .field { flex: 1 1 160px; max-width: 240px; margin: 0; }
 .insights-page .insight-custom-dates input { width: 100%; min-height: 38px; }
 
-.insights-page .insight-status-strip { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; border-radius: 10px; background: #f4f7fa; border: 1px solid #e2e8ee; color: #475867; font-size: 13px; line-height: 1.45; }
-.insights-page .insight-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #09836b; flex: 0 0 auto; }
+.insights-page .insight-overview-foot { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px 16px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #edf1f5; }
+.insights-page .insight-overview-foot .insight-summary-detail { margin-top: 0; flex: 1 1 260px; }
+.insights-page .insight-overview-foot .insight-summary-detail > summary { min-height: 28px; color: #1767aa; font-weight: 500; }
+.insights-page .insight-live-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #f2f7f5; color: #1c6b58; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.insights-page .insight-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #09836b; flex: 0 0 auto; font-style: normal; }
 .insights-page .insight-comparison-label { display: inline; color: #647483; }
+
+.insights-page .insight-visual-ranking li.insight-comp-row--compact { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-block: 7px; }
+.insights-page .insight-comp-row--compact .insight-comp-name { display: flex; align-items: center; min-width: 0; flex: 1 1 auto; }
+.insights-page .insight-comp-row--compact .insight-comp-name i { flex: 0 0 auto; margin-right: 8px; }
+.insights-page .insight-comp-row--compact .insight-comp-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insights-page .insight-comp-row--compact > strong { flex: 0 0 auto; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 6px; }
+.insights-page .insight-comp-row--compact > strong small { display: inline; margin: 0; font-size: 12.5px; min-width: 44px; text-align: right; }
 
 .insights-page .insight-account-values { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .insights-page .insight-zero-muted { color: #8c9aa6; font-weight: 500; }
@@ -291,14 +301,14 @@
 .insights-page .insight-top-row:last-child { border-bottom: 0; }
 .insights-page .insight-top-rank { width: 24px; height: 24px; border-radius: 50%; background: #eef3f7; color: #365068; font-size: 12px; font-weight: 700; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
 .insights-page .insight-top-info { min-width: 0; }
-.insights-page .insight-top-info strong { display: block; font-size: 14px; font-weight: 600; color: #17242d; overflow-wrap: anywhere; }
-.insights-page .insight-top-info small { display: block; font-size: 12px; color: #647483; margin-top: 2px; overflow-wrap: anywhere; }
+.insights-page .insight-top-info strong { display: block; font-size: 14px; font-weight: 600; color: #17242d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insights-page .insight-top-info small { display: block; font-size: 12px; color: #647483; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .insights-page .insight-top-amount { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .insights-page .insight-credit-chip { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-style: normal; font-size: 10.5px; font-weight: 600; background: #fff1ec; color: #b54324; vertical-align: middle; }
 .insights-page .insight-top-footer { padding-top: 10px; border-top: 1px solid #edf1f5; }
 
 /* Desktop Deep-Dive Segmented Tabs & Mobile Gatekeep */
-.insights-page .insight-mobile-gatekeep { margin: 0; padding: 12px 14px; border-radius: 12px; background: #f5f8fb; border: 1px solid #e2e8ee; color: #526372; font-size: 12.5px; line-height: 1.5; text-align: center; }
+.insights-page .insight-mobile-gatekeep { margin: 0; padding: 4px 8px; color: #647483; font-size: 12px; line-height: 1.5; text-align: center; }
 .insights-page .insight-deep-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e9ed; }
 .insights-page .insight-deep-header h2 { margin: 0; font-size: var(--type-section); }
 .insights-page .insight-deep-header .insight-note { margin-top: 4px; }

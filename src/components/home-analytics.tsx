@@ -12,7 +12,7 @@ export function HomeAnalytics({ report, currency, exponent }: { report: Analytic
     <div className="home-chart-range"><span>{periodLabel(report.period)} · {currency}{report.period.partial ? " · Periode berjalan" : ""}</span><AppLink className="text-link" href={href}>Lihat analisis lengkap</AppLink></div>
     <div className="home-chart-grid">
       <section className="surface home-trend" aria-label={`Tren ${currency}`}><InsightsVisualTrend report={report} currency={currency} exponent={exponent} dashboard /></section>
-      <section className="surface home-composition" aria-label={`Kategori ${currency}`}><InsightsComposition rows={data.categories.rows} charges={data.charges} inlineDetails={false} /></section>
+      <section className="surface home-composition" aria-label={`Kategori ${currency}`}><InsightsComposition rows={data.categories.rows} charges={data.charges} inlineDetails={false} dashboard /></section>
     </div>
   </div>;
 }
