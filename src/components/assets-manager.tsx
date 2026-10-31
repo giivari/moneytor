@@ -186,14 +186,14 @@ function AssetForm({
     >
       <div className="dialog-heading">
         <div>
-          <span className="eyebrow">{isCredit ? "FASILITAS KREDIT & PAYLATER" : "ASET TERCATAT"}</span>
+          <span className="eyebrow">{isCredit ? "FASILITAS KREDIT" : "ASET TERCATAT"}</span>
           <h2 id="asset-form-title">
             {initial
               ? isCredit
-                ? "Ubah Kredit / PayLater"
+                ? "Ubah Fasilitas Kredit"
                 : "Ubah aset"
               : isCredit
-                ? "Tambah Kredit / PayLater"
+                ? "Tambah Fasilitas Kredit"
                 : "Aset baru"}
           </h2>
         </div>
@@ -231,19 +231,19 @@ function AssetForm({
                     setSpendable(false);
                   }}
                 >
-                  Kredit & PayLater
+                  Fasilitas Kredit
                 </button>
               </div>
             </div>
 
             <label className="field">
-              <span>{isCredit ? "Nama PayLater / Kartu Kredit" : "Nama aset"}</span>
+              <span>{isCredit ? "Nama fasilitas kredit" : "Nama aset"}</span>
               <input
                 required
                 maxLength={120}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder={isCredit ? "Mis. SPayLater, GoPayLater, Kartu Kredit BCA" : "Mis. BNI Taplus Muda"}
+                placeholder={isCredit ? "Mis. Kartu Kredit BCA, SPayLater, Kredivo, KTA" : "Mis. BNI Taplus Muda"}
               />
             </label>
 
@@ -287,7 +287,7 @@ function AssetForm({
                     </label>
                   )}
                   <label className="field">
-                    <span>Limit Kredit / PayLater ({currency})</span>
+                    <span>Limit kredit ({currency})</span>
                     <input
                       inputMode="decimal"
                       value={creditLimit}
@@ -787,7 +787,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
   const creditSection = creditActive.length > 0 ? (
     <section className="surface credit-assets-section">
       <SectionHeading
-        title="Kredit & PayLater"
+        title="Fasilitas Kredit"
         eyebrow={creditFirst ? "PERLU PERHATIAN · ADA TAGIHAN" : "TAGIHAN BERJALAN & FASILITAS KREDIT"}
         action={<div className="section-heading-actions"><span className="count-pill">{creditActive.length} akun</span></div>}
       />
@@ -880,7 +880,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
         return <div className="asset-row data-list-row data-list-row--entity" key={asset.id}><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><strong>{asset.displayName}</strong><small>Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
       })}</div><details className="context-help"><summary>Tentang aset diarsipkan</summary><p className="finance-hint supporting-prose">Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk menggunakannya kembali.</p></details></section>}</>}
     {error && <p className="finance-error" role="alert">{error}</p>}
-    <details className="context-help"><summary>Cara membaca aset & PayLater</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Untuk menambahkan akun PayLater atau Kartu Kredit, klik Tambah aset lalu pilih tab Kredit & PayLater.</p></details>
+    <details className="context-help"><summary>Cara membaca aset &amp; fasilitas kredit</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Untuk menambahkan Kartu Kredit, PayLater, atau pinjaman lainnya, klik Tambah aset lalu pilih tab Fasilitas Kredit.</p></details>
     {editing && (
       <AssetForm
         key={editing === "new" ? "new" : editing.id}

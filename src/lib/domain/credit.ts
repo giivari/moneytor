@@ -2,7 +2,7 @@ import type { FinanceAsset } from "@/lib/finance/types";
 
 const CREDIT_TAG_RE = /^\[CREDIT(?::([^\]]*))?\]\s*/i;
 const CREDIT_NAME_RE =
-  /\b(spaylater|shopee\s*pay\s*later|gopay\s*later|pay\s*later|kredivo|akulaku|indodana|atome|home\s*credit|kartu\s+kredit|credit\s+card)\b/i;
+  /(?:spaylater|shopee\s*pay\s*later|gopay\s*later|pay\s*later|paylater|\b(?:kredivo|akulaku|indodana|atome|home\s*credit|kartu\s+kredit|credit\s+card|fasilitas\s+kredit|pinjaman|cicilan|kta|kredit)\b)/i;
 
 export type CreditMeta = Readonly<{
   isCreditFlagged: boolean;

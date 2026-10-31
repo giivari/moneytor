@@ -183,7 +183,7 @@ test('P6A analytics on strictly disposable PostgreSQL',{skip:!/^moneytor_composa
     });
     if(renderReport)await t.test('P4, Planning and Automation disposable report reaches real Insights without financial mutation',async()=>{
       const before=await fingerprint(),r=await readAnalytics(),output=renderReport(r);
-      for(const label of ['Automation','Penyesuaian alokasi','P/L terealisasi sepanjang riwayat','posisi belum memiliki harga','Biaya perdagangan P4'])assert.ok(output.includes(label));
+      for(const label of ['Automation','Penyesuaian alokasi','P/L terealisasi sepanjang riwayat','posisi belum memiliki harga','Biaya transaksi investasi'])assert.ok(output.includes(label));
       const page=renderPage(await Page({searchParams:Promise.resolve({period:'current_month',currency:'USD'})}));
       assert.match(page,/USD/);assert.doesNotMatch(page,/Rp107\.000|Rp993|Memuat laporan/);
       const invalid=renderPage(await Page({searchParams:Promise.resolve({period:'monthly_trend',months:'37'})}));assert.match(invalid,/Tren dibatasi/);assert.doesNotMatch(invalid,/Net operasional/);

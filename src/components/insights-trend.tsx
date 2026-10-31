@@ -45,7 +45,7 @@ export function InsightsTrend({ rows, report, selection, tableDisclosure = true 
     {maximum === 0n && <p className="insight-note">Pemasukan dan belanja bernilai nol dalam rentang ini. Aktivitas Transfer ditampilkan terpisah.</p>}
     <div ref={scrollRef} className={`insight-chart-scroll${compact ? " insight-chart-scroll--compact" : ""}`} tabIndex={0} role="region" aria-label="Grafik bulanan yang dapat digeser">
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="group" aria-labelledby={`${id}-title ${id}-desc`}>
-        <title id={`${id}-title`}>Pemasukan dan belanja bulanan</title><desc id={`${id}-desc`}>Skala dimulai dari nol. Belanja termasuk biaya P3. Net bukan pertumbuhan total aset. Tabel angka tersedia di bawah grafik.</desc>
+        <title id={`${id}-title`}>Pemasukan dan belanja bulanan</title><desc id={`${id}-desc`}>Skala dimulai dari nol. Belanja sudah termasuk biaya layanan dan pajak. Net bukan pertumbuhan total aset. Tabel angka tersedia di bawah grafik.</desc>
         {(maximum === 0n ? [0] : [0, 1, 2]).map((tick) => {
           const amount = maximum * BigInt(tick) / 2n, y = bottom - (bottom - top) * tick / 2;
           return <g key={tick}><line x1="106" x2={width - 10} y1={y} y2={y} className="insight-gridline" />

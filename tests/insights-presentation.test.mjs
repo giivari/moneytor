@@ -60,8 +60,9 @@ const desktopHtml=(r=fixture(),details={})=>{
  try{return html(r);}finally{delete globalThis.insightsMobileTest;delete globalThis.insightsDetailTest;}
 };
 
-test('overview renders canonical income/spending/net and transfer principal separately',()=>{
- const output=html();assert.match(output,/Rp1\.000\.000/);assert.match(output,/Rp109\.000/);assert.match(output,/Rp891\.000/);assert.match(output,/Transfer:.*Rp500\.000/);assert.match(output,/bukan pertumbuhan total aset/);
+test('overview renders canonical income/spending/net, savings rate, and transfer principal separately without internal jargon',()=>{
+ const output=html();assert.match(output,/Rp1\.000\.000/);assert.match(output,/Rp109\.000/);assert.match(output,/Rp891\.000/);assert.match(output,/Rasio tabungan/);assert.match(output,/\+89,10%/);assert.match(output,/Transfer:.*Rp500\.000/);assert.match(output,/bukan pertumbuhan total aset/);
+ assert.doesNotMatch(output,/\bP3\b|\bP4\b|denominator|Rincian angka bulanan|Asal belanja/);
  assert.equal(BigInt(fixture().summary[0].incomeMinor)-BigInt(fixture().summary[0].spendingMinor),BigInt(fixture().summary[0].netMinor));
 });
 test('category shares use Expense-attached costs, not summary spending including transfer fees',()=>{
@@ -75,11 +76,11 @@ test('transfer charges partition fee buckets without subtracting taxes or custom
  const r=fixture();r.charges.push({...r.charges[2],activityKind:'transfer',amountMinor:'20000'});
  assert.deepEqual(p.feePartition(r.charges),{serviceMinor:'1000',transferMinor:'1000'});assert.match(html(r),/bukan tambahan lagi/);assert.match(html(r),/Biaya lainnya/);
 });
-test('all three canonical origins retain meaning; assessment/proposal exclusion is explicit',()=>{
- const output=html();for(const label of ['Manual','Automation','Penyesuaian alokasi'])assert.match(output,new RegExp(label));assert.match(output,/proposal|Proposal/);assert.match(output,/Setiap hasil P3 dihitung sekali/);
+test('all three canonical origins retain meaning in audit summary; assessment/proposal exclusion is explicit',()=>{
+ const output=html();for(const label of ['Manual','Automation','Penyesuaian alokasi'])assert.match(output,new RegExp(label));assert.match(output,/proposal|Proposal/);assert.match(output,/Setiap transaksi dihitung sekali/);
 });
-test('P4 trades and lifetime realized P/L are separate; unknown prices are not valued at cost',()=>{
- const output=html();assert.match(output,/P\/L terealisasi sepanjang riwayat/);assert.match(output,/Rp993/);assert.match(output,/Biaya perdagangan P4/);assert.match(output,/Rp15/);assert.match(output,/1 posisi belum memiliki harga/);assert.match(output,/bukan nilai pada akhir periode/);
+test('investment trades and lifetime realized P/L are separate; unknown prices are not valued at cost',()=>{
+ const output=html();assert.match(output,/P\/L terealisasi sepanjang riwayat/);assert.match(output,/Rp993/);assert.match(output,/Biaya transaksi investasi/);assert.match(output,/Rp15/);assert.match(output,/1 posisi belum memiliki harga/);assert.match(output,/bukan nilai pada akhir periode/);
 });
 test('partial periods and comparison basis are explicit, null percentages do not become numeric growth',()=>{
  const output=html();assert.match(output,/Periode berjalan/);assert.match(output,/Blok kalender sebelumnya secara penuh/);assert.match(output,/Berjalan/);assert.doesNotMatch(output,/NaN|Infinity/);assert.equal(p.percentageLabel(null),'—');assert.equal(p.percentageLabel('-1234',true),'−12,34%');
@@ -98,14 +99,14 @@ test('large negative/positive amounts keep exact digits; geometry alone is bound
 });
 test('true empty reports have zero bars, useful empty states and no fictional values',()=>{
  const r=fixture();r.summary=[measures(Object.fromEntries(Object.keys(measures()).filter(k=>k.endsWith('Minor')||k.endsWith('Count')).map(k=>[k,'0'])))];r.byCategory=[];r.byAccount=[];r.byOrigin=[];r.charges=[];r.investmentFlows=[];r.monthly=[row('2026-10',r.summary[0])];r.daily=[];r.context=null;
- const output=html(r);assert.match(output,/Belum ada transaksi P3 efektif/);assert.match(output,/Belum ada belanja Expense/);assert.match(output,/height="0"/);assert.doesNotMatch(output,/Pratinjau|ilustrasi|39\.900\.000/);assert.equal(p.categoryShares([]).totalMinor,'0');
+ const output=html(r);assert.match(output,/Belum ada transaksi tercatat pada periode ini/);assert.match(output,/Belum ada belanja Expense/);assert.match(output,/height="0"/);assert.doesNotMatch(output,/Pratinjau|ilustrasi|39\.900\.000/);assert.equal(p.categoryShares([]).totalMinor,'0');
 });
-test('charts expose exact tooltips, keyboard targets, text table and month selection',()=>{
- const output=html();assert.match(output,/role="button" tabindex="0"/);assert.match(output,/aria-pressed=/);assert.match(output,/<title>Okt 2026, Berjalan: pemasukan Rp1\.000\.000/);assert.match(output,/<caption>/);assert.match(output,/scope="col"/);assert.match(output,/Rincian bulan/);assert.match(output,/<details/);
+test('charts expose exact tooltips, keyboard targets, aligned interval table and interval selection',()=>{
+ const output=html();assert.match(output,/role="button" tabindex="0"/);assert.match(output,/aria-pressed=/);assert.match(output,/<title>5 Okt 2026 – 11 Okt 2026, Berjalan: pemasukan Rp1\.000\.000/);assert.match(output,/<table class="insight-interval-table">/);assert.match(output,/<caption>/);assert.match(output,/scope="col"/);assert.match(output,/Rincian minggu/);assert.match(output,/<details/);
 });
-test('annual SSR selects current month with calendar descriptions and single disclosure indicators',()=>{
+test('annual SSR selects current interval with calendar descriptions and single disclosure indicators',()=>{
  const r=fixture();r.period=reportingPeriod({kind:'current_year'},now);r.monthly=Array.from({length:12},(_,i)=>row(`2026-${String(i+1).padStart(2,'0')}`,{incomeMinor:i===9?'1000000':'0',spendingMinor:i===9?'109000':'0',netMinor:i===9?'891000':'0',activityCount:i===9?'2':'0'}));
- const output=html(r);assert.match(output,/<option value="2026-10" selected="">Okt 2026 · Berjalan/);assert.match(output,/Nov 2026 · Belum dimulai/);assert.match(output,/Sep 2026 · Selesai/);assert.doesNotMatch(output,/Belum selesai/);
+ const output=desktopHtml(r);assert.match(output,/<option value="2026-10" selected="">Okt 2026 · Berjalan/);assert.match(output,/Nov 2026 · Belum dimulai/);assert.match(output,/Sep 2026 · Selesai/);assert.doesNotMatch(output,/Belum selesai/);
  const css=fs.readFileSync(new URL('../src/app/insights/insights.css',import.meta.url),'utf8');assert.doesNotMatch(css,/insight-disclosure[^\n]*::after/);assert.match(css,/summary::-webkit-details-marker \{ display: none/);
 });
 test('Transfer sentence punctuation stays inside the exact value instead of an orphan text node',()=>{
@@ -124,51 +125,56 @@ test('loading/error rendering cannot claim empty financial results and provides 
  const loading=renderToStaticMarkup(React.createElement(InsightsLoadState,{loading:true,error:'',retry:()=>{}}));assert.match(loading,/Memuat laporan/);assert.doesNotMatch(loading,/Belum ada/);
  const error=renderToStaticMarkup(React.createElement(InsightsLoadState,{loading:false,error:'Sesi berakhir',retry:()=>{}}));assert.match(error,/role="alert"/);assert.match(error,/Coba lagi/);assert.doesNotMatch(error,/Memuat|Belum ada/);
 });
-test('responsive CSS confines chart overflow and preserves global dock/navigation styles',()=>{
+test('responsive CSS confines chart overflow, prevents mid-number wrapping, and preserves global dock/navigation styles',()=>{
  const css=fs.readFileSync(new URL('../src/app/insights/insights.css',import.meta.url),'utf8');assert.match(css,/@media \(max-width: 700px\)/);assert.match(css,/grid-template-columns: minmax\(0, 1fr\)/);assert.match(css,/overflow-x: auto/);assert.match(css,/prefers-reduced-motion/);assert.match(css,/:focus-visible/);assert.doesNotMatch(css,/\.bottom-dock|\.app-header|\.main-content/);
+ assert.match(css,/\.insight-compact-kpis > div > span/);assert.match(css,/\.financial-amount\[data-wide="false"\] \{ white-space: nowrap; \}/);
  const page=fs.readFileSync(new URL('../src/app/insights/page.tsx',import.meta.url),'utf8');assert.match(page,/await requireOwnerSession\(\)/);assert.match(page,/force-dynamic/);assert.doesNotMatch(page,/demo-data|postActivity|reconcile/);
 });
 
-test('V2 SSR exposes essential metrics before one carousel and collapses filters/secondary details',()=>{
+test('V2 SSR exposes essential metrics before one carousel with 3 genuine financial slides and 2 clean secondary disclosures',()=>{
  const output=renderToStaticMarkup(React.createElement(InsightsWorkspace,{initial:fixture(),initialQuery:'period=current_month&currency=IDR',initialError:'',currencies:[{currency:'IDR',exponent:0}]}));
  assert.equal((output.match(/aria-label="Tiga analisis keuangan"/g)||[]).length,1);assert.equal((output.match(/class="surface insight-panel insight-slide"/g)||[]).length,3);
- assert.ok(output.indexOf('Ringkasan keuangan')<output.indexOf('Tiga analisis keuangan'));assert.match(output,/1 dari 3/);assert.match(output,/Analisis berikutnya/);assert.match(output,/Komposisi belanja/);assert.match(output,/Asal belanja/);assert.match(output,/Rincian minggu/);
- assert.doesNotMatch(output,/<details[^>]*\bopen(?:=|\s|>)/);for(const label of ['Biaya &amp; pajak','Aktivitas menurut akun','Aset &amp; investasi saat ini','Rincian angka bulanan'])assert.ok(output.includes(label));
+ assert.ok(output.indexOf('Ringkasan keuangan')<output.indexOf('Tiga analisis keuangan'));assert.match(output,/1 dari 3/);assert.match(output,/Analisis berikutnya/);assert.match(output,/Komposisi belanja/);assert.match(output,/Arus kas &amp; akumulasi/);assert.match(output,/Rincian minggu/);
+ assert.doesNotMatch(output,/<details[^>]*\bopen(?:=|\s|>)/);assert.doesNotMatch(output,/Asal belanja|Rincian angka bulanan/);
+ for(const label of ['Aktivitas menurut akun','Posisi aset &amp; investasi'])assert.ok(output.includes(label));
 });
-test('fresh secondary disclosures do not eagerly render complete tables; expanded monthly table has no nested toggle',()=>{
- const fresh=html(fixture(),'IDR','current_month',false);assert.equal((fresh.match(/class="surface insight-panel insight-disclosure"/g)||[]).length,4);assert.doesNotMatch(fresh,/insight-disclosure-content|insight-chart-scroll|Rekening lama|P\/L terealisasi sepanjang riwayat|Tabel angka bulanan/);assert.match(fresh,/Ada posisi investasi tanpa harga/);
- const opened=html();assert.match(opened,/insight-disclosure" open=""/);assert.match(opened,/Rekening lama/);assert.match(opened,/<div class="insight-table-disclosure"><div class="insight-chart-scroll"[^>]*>/);assert.doesNotMatch(opened,/<summary>Tabel angka bulanan<\/summary>/);
+test('fresh secondary disclosures do not eagerly render complete account/valuation lists',()=>{
+ const fresh=html(fixture(),'IDR','current_month',false);assert.equal((fresh.match(/class="surface insight-panel insight-disclosure"/g)||[]).length,2);assert.doesNotMatch(fresh,/insight-disclosure-content|Rekening lama|P\/L terealisasi sepanjang riwayat/);assert.match(fresh,/Ada posisi investasi tanpa harga/);
+ const opened=html();assert.match(opened,/insight-disclosure" open=""/);assert.match(opened,/Rekening lama/);assert.match(opened,/P\/L terealisasi sepanjang riwayat/);
 });
 test('rendering initial and expanded Insights emits no React title or markup warnings',()=>{
  const errors=[],previousError=console.error,previousWarn=console.warn;console.error=(...args)=>errors.push(args);console.warn=(...args)=>errors.push(args);
- try{html();html(fixture(),'IDR','current_month',false);desktopHtml();desktopHtml(fixture(),{'Biaya dan akun':'fees','Angka bulanan dan investasi':'investments'});}finally{console.error=previousError;console.warn=previousWarn;}
+ try{html();html(fixture(),'IDR','current_month',false);desktopHtml();desktopHtml(fixture(),{'Grafik pemasukan dan kategori':'categories','Mutasi akun dan posisi aset':'investments'});}finally{console.error=previousError;console.warn=previousWarn;}
  assert.deepEqual(errors,[]);
 });
-test('desktop renders three summary pairs plus standalone origin, without duplicate mobile controls or IDs',()=>{
- const output=desktopHtml();assert.equal((output.match(/class="insight-detail-pair"/g)||[]).length,3);assert.equal((output.match(/class="surface insight-panel insight-summary-card"/g)||[]).length,6);assert.equal((output.match(/class="surface insight-panel insight-origin-section"/g)||[]).length,1);
- assert.doesNotMatch(output,/insight-carousel-track|insight-carousel-controls|insight-secondary-grid|insight-disclosure-content|class="insight-detail-content"/);assert.match(output,/insight-fit-chart/);assert.match(output,/insight-composition/);assert.match(output,/insight-origin-bar/);
+test('desktop renders two clean summary pairs plus cashflow suite, without duplicate mobile controls or IDs',()=>{
+ const output=desktopHtml();assert.equal((output.match(/class="insight-detail-pair"/g)||[]).length,2);assert.equal((output.match(/class="surface insight-panel insight-summary-card"/g)||[]).length,4);assert.equal((output.match(/class="surface insight-panel insight-origin-section"/g)||[]).length,0);
+ assert.doesNotMatch(output,/insight-carousel-track|insight-carousel-controls|insight-secondary-grid|insight-disclosure-content|class="insight-detail-content"|insight-origin-bar/);assert.match(output,/insight-fit-chart/);assert.match(output,/insight-composition/);assert.match(output,/Arus Kas &amp; Pola Keuangan/);
  const ids=[...output.matchAll(/\sid="([^"]+)"/g)].map(match=>match[1]);assert.equal(ids.length,new Set(ids).size);
- const controls=[...output.matchAll(/aria-controls="([^"]+)"/g)].map(match=>match[1]);assert.equal(controls.length,6);assert.equal(new Set(controls).size,3);for(const id of controls)assert.ok(ids.includes(id));assert.equal((output.match(/aria-expanded="false"/g)||[]).length,6);
+ const controls=[...output.matchAll(/aria-controls="([^"]+)"/g)].map(match=>match[1]);assert.equal(controls.length,4);assert.equal(new Set(controls).size,2);for(const id of controls)assert.ok(ids.includes(id));assert.equal((output.match(/aria-expanded="false"/g)||[]).length,4);
 });
 
-test('P6C desktop previews show genuine cost, account-spending and P4 flow charts with exact scopes',()=>{
+test('desktop previews show genuine account-spending, live asset snapshot, and investment flow charts with exact scopes',()=>{
  const r=fixture(),before=JSON.stringify(r),output=desktopHtml(r);
- assert.equal((output.match(/class="insight-cost-bars"/g)||[]).length,3);
- assert.match(output,/Layanan \(termasuk Transfer\)/); assert.match(output,/Belanja per akun pembayar/);
- assert.match(output,/Rekening lama · Diarsipkan/); assert.match(output,/Pokok beli P4/); assert.match(output,/Hasil jual P4/);
- assert.match(output,/Arus perdagangan terpisah dari belanja P3/);
- assert.doesNotMatch(output,/<caption>|class="insight-detail-content"|class="insight-dimensions"/);
+ assert.equal((output.match(/class="insight-cost-bars"/g)||[]).length,2);
+ assert.match(output,/Belanja per akun pembayar/); assert.match(output,/insight-asset-snapshot-grid/);
+ assert.match(output,/Total aset diketahui/); assert.match(output,/Dana likuid/);
+ assert.match(output,/Rekening lama · Diarsipkan/); assert.match(output,/Pembelian investasi/); assert.match(output,/Penjualan investasi/);
+ assert.match(output,/Transaksi investasi terpisah dari pengeluaran konsumsi/);
+ assert.doesNotMatch(output,/<caption>|class="insight-detail-content"|class="insight-dimensions"|\bP3\b|\bP4\b/);
  assert.equal(JSON.stringify(r),before);
 });
 
-test('P6C zero secondary data stays concise rather than generating decorative bar charts',()=>{
+test('zero secondary data stays concise rather than generating decorative bar charts',()=>{
  const r=fixture(); r.summary[0]={...r.summary[0],feesMinor:'0',taxesMinor:'0',otherChargesMinor:'0',chargesMinor:'0'};
  r.charges=[];r.byAccount=[];r.investmentFlows=[];
  const output=desktopHtml(r);assert.doesNotMatch(output,/class="insight-cost-bars"/);
- assert.match(output,/Tidak ada biaya atau pajak P3/);assert.match(output,/Belum ada belanja pada akun/);assert.match(output,/Tidak ada perdagangan P4/);
+ assert.match(output,/Belum ada belanja pada akun/);
+ const openedInv=desktopHtml(r,{'Mutasi akun dan posisi aset':'investments'});
+ assert.match(openedInv,/Belum ada transaksi jual\/beli investasi pada periode ini/);
 });
 
-test('P6C money has visible grouping fallback; only charts/tables and carousel retain explicit horizontal scrolling',()=>{
+test('money has visible grouping fallback; only charts/tables and carousel retain explicit horizontal scrolling',()=>{
  const css=fs.readFileSync(new URL('../src/app/insights/insights.css',import.meta.url),'utf8');
  assert.match(css,/\.insight-money \{[^}]*overflow: visible; white-space: normal/);
  assert.doesNotMatch(css,/\.insight-(?:money|small-values dd)[^}]*overflow-x: auto/);
@@ -178,26 +184,26 @@ test('P6C money has visible grouping fallback; only charts/tables and carousel r
 test('primary expanded details are siblings; switching interval/category changes only their shared full-width content',()=>{
  const closed=desktopHtml(),intervals=desktopHtml(fixture(),{'Grafik pemasukan dan kategori':'intervals'}),categories=desktopHtml(fixture(),{'Grafik pemasukan dan kategori':'categories'});
  const summaries=output=>(output.match(/<section class="surface insight-panel insight-summary-card"[\s\S]*?<\/section>/g)||[]).map(card=>card.replaceAll('aria-expanded="true"','aria-expanded="false"'));
- assert.deepEqual(summaries(intervals),summaries(closed));assert.deepEqual(summaries(categories),summaries(closed));assert.equal((intervals.match(/class="insight-detail-content"/g)||[]).length,1);assert.match(intervals,/insight-interval-table/);assert.doesNotMatch(categories,/insight-interval-table/);assert.match(categories,/Persentase dihitung dari total seluruh pengeluaran efektif/);assert.match(categories,/Tanpa kategori/);assert.match(categories,/Kategori lama/);assert.match(categories,/Biaya admin pada transaksi Transfer/);assert.match(categories,/91,74%/);
+ assert.deepEqual(summaries(intervals),summaries(closed));assert.deepEqual(summaries(categories),summaries(closed));assert.equal((intervals.match(/class="insight-detail-content"/g)||[]).length,1);assert.match(intervals,/<table class="insight-interval-table">/);assert.doesNotMatch(categories,/insight-interval-table/);assert.match(categories,/Persentase dihitung dari total seluruh pengeluaran efektif/);assert.match(categories,/Tanpa kategori/);assert.match(categories,/Kategori lama/);assert.match(categories,/Biaya admin pada transaksi Transfer/);assert.match(categories,/Biaya layanan pada Transfer/);assert.match(categories,/91,74%/);
 });
-test('desktop fees/account/monthly/investment details preserve financial content with one active detail per pair',()=>{
+test('desktop account and investment details preserve financial content with one active detail per pair',()=>{
  const r=fixture(),before=JSON.stringify(r);
- const monthly=desktopHtml(r,{'Biaya dan akun':'accounts','Angka bulanan dan investasi':'monthly'});assert.match(monthly,/Rekening lama/);assert.match(monthly,/Pemasukan, belanja, dan net operasional \(IDR\)/);assert.match(monthly,/Rincian bulan/);assert.match(monthly,/Berjalan/);assert.equal((monthly.match(/<caption>/g)||[]).length,1);assert.doesNotMatch(monthly,/insight-disclosure-content|P\/L terealisasi sepanjang riwayat/);
- const investments=desktopHtml(r,{'Biaya dan akun':'fees','Angka bulanan dan investasi':'investments'});for(const label of ['Biaya khusus','Biaya layanan pada Transfer','P/L terealisasi sepanjang riwayat','Rp993','Biaya perdagangan P4','Rp15','Total aset diketahui','Dana likuid','Dapat digunakan','Setelah kewajiban','1 posisi belum memiliki harga'])assert.ok(investments.includes(label),label);
- assert.doesNotMatch(investments,/<caption>|class="insight-dimensions"/);assert.match(investments,/Rekening lama/);assert.equal((investments.match(/class="insight-detail-content"/g)||[]).length,2);assert.equal(JSON.stringify(r),before);
+ const accounts=desktopHtml(r,{'Mutasi akun dan posisi aset':'accounts'});assert.match(accounts,/Rekening lama/);assert.match(accounts,/Transfer masuk/);assert.doesNotMatch(accounts,/insight-disclosure-content|P\/L terealisasi sepanjang riwayat/);
+ const investments=desktopHtml(r,{'Grafik pemasukan dan kategori':'categories','Mutasi akun dan posisi aset':'investments'});for(const label of ['Biaya khusus','Biaya layanan pada Transfer','P/L terealisasi sepanjang riwayat','Rp993','Biaya transaksi investasi','Rp15','Total aset diketahui','Dana likuid','Dapat digunakan','Setelah kewajiban','1 posisi belum memiliki harga'])assert.ok(investments.includes(label),label);
+ assert.doesNotMatch(investments,/<caption>|class="insight-dimensions"|\bP3\b|\bP4\b/);assert.equal((investments.match(/class="insight-detail-content"/g)||[]).length,2);assert.equal(JSON.stringify(r),before);
 });
 test('responsive branches retain the accepted mobile carousel/disclosures without hidden desktop interactive content',()=>{
- const output=html(fixture(),'IDR','current_month',false);assert.equal((output.match(/class="surface insight-panel insight-slide"/g)||[]).length,3);assert.equal((output.match(/class="surface insight-panel insight-disclosure"/g)||[]).length,4);assert.doesNotMatch(output,/insight-detail-pair|insight-detail-panel|insight-detail-trigger/);assert.match(output,/Ada posisi investasi tanpa harga/);assert.match(output,/Rp1\.000\.000/);assert.match(output,/Rp109\.000/);assert.match(output,/Rp891\.000/);
+ const output=html(fixture(),'IDR','current_month',false);assert.equal((output.match(/class="surface insight-panel insight-slide"/g)||[]).length,3);assert.equal((output.match(/class="surface insight-panel insight-disclosure"/g)||[]).length,2);assert.doesNotMatch(output,/insight-detail-pair|insight-detail-panel|insight-detail-trigger/);assert.match(output,/Ada posisi investasi tanpa harga/);assert.match(output,/Rp1\.000\.000/);assert.match(output,/Rp109\.000/);assert.match(output,/Rp891\.000/);
 });
-test('V2 warnings remain visible outside collapsed detail and visual rendering never mutates report values',()=>{
+test('warnings remain visible outside collapsed detail and visual rendering never mutates report values',()=>{
  const r=fixture(),before=JSON.stringify(r),output=html(r);assert.equal(JSON.stringify(r),before);assert.ok(output.indexOf('Ada posisi investasi tanpa harga')<output.indexOf('Tiga analisis keuangan'));assert.ok(output.indexOf('Periode berjalan')<output.indexOf('Tiga analisis keuangan'));
- assert.equal(r.byOrigin.reduce((sum,row)=>sum+BigInt(row.spendingMinor),0n),BigInt(r.summary[0].spendingMinor));assert.match(output,/Pemasukan tidak masuk denominator/);assert.match(output,/P\/L terealisasi sepanjang riwayat/);
+ assert.equal(r.byOrigin.reduce((sum,row)=>sum+BigInt(row.spendingMinor),0n),BigInt(r.summary[0].spendingMinor));assert.match(output,/P\/L terealisasi sepanjang riwayat/);
 });
-test('V2 zero costs and no trades render concise text without empty cost charts or valuation history',()=>{
+test('zero costs and no trades render concise text without empty cost charts or valuation history',()=>{
  const r=fixture();r.charges=[];r.investmentFlows=[];r.summary[0]={...r.summary[0],feesMinor:'0',taxesMinor:'0',otherChargesMinor:'0',chargesMinor:'0'};const output=html(r);
- assert.doesNotMatch(output,/class="insight-cost-bars"/);assert.match(output,/Tidak ada biaya atau pajak P3/);assert.match(output,/Tidak ada perdagangan P4/);assert.doesNotMatch(output,/Riwayat pertumbuhan aset|demo-data/);
+ assert.doesNotMatch(output,/class="insight-cost-bars"/);assert.match(output,/Belum ada transaksi jual\/beli investasi pada periode ini/);assert.doesNotMatch(output,/Riwayat pertumbuhan aset|demo-data|\bP3\b|\bP4\b/);
 });
-test('m-banking refinements: 4+ categories visible, Transfer masuk in accounts, PayLater & Tagihan, read-only top expenses, and mobile gatekeeping',()=>{
+test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transfer masuk, read-only top expenses, and mobile gatekeeping',()=>{
  const r=fixture();
  r.byCategory=[
   row('food',{name:'Makanan',expensePrincipalMinor:'40000',spendingMinor:'40000'}),
@@ -213,9 +219,12 @@ test('m-banking refinements: 4+ categories visible, Transfer masuk in accounts, 
  ];
  r.creditAndBills=[{
   currency:'IDR',exponent:0,cashSpendingMinor:'48500',creditSpendingMinor:'60500',creditExpenseCount:'1',
-  creditRepaymentMinor:'300000',creditRepaymentCount:'1',currentCycleBillsMinor:'613632',nextCycleBillsMinor:'381992',
-  totalCreditUnpaidMinor:'995624',
-  facilities:[{id:'spaylater',name:'SPayLater',providerName:'ShopeePay',isActive:true,currentBillMinor:'613632',currentDueIso:'2026-11-01',nextBillMinor:'381992',nextDueIso:'2026-12-01',totalUnpaidMinor:'995624',limitMinor:'22500000',availableLimitMinor:'21504376',dueDay:1,cutoffDay:20,periodSpendingMinor:'60500',periodExpenseCount:'1',periodRepaymentMinor:'300000',periodRepaymentCount:'1'}],
+  creditRepaymentMinor:'300000',creditRepaymentCount:'1',currentCycleBillsMinor:'1613632',nextCycleBillsMinor:'381992',
+  totalCreditUnpaidMinor:'1995624',
+  facilities:[
+   {id:'spaylater',name:'SPayLater',providerName:'ShopeePay',isActive:true,currentBillMinor:'613632',currentDueIso:'2026-11-01',nextBillMinor:'381992',nextDueIso:'2026-12-01',totalUnpaidMinor:'995624',limitMinor:'22500000',availableLimitMinor:'21504376',dueDay:1,cutoffDay:20,periodSpendingMinor:'60500',periodExpenseCount:'1',periodRepaymentMinor:'300000',periodRepaymentCount:'1'},
+   {id:'bca-cc',name:'Kartu Kredit BCA',providerName:'BCA',isActive:true,currentBillMinor:'1000000',currentDueIso:'2026-11-15',nextBillMinor:'0',nextDueIso:'2026-12-15',totalUnpaidMinor:'1000000',limitMinor:'15000000',availableLimitMinor:'14000000',dueDay:15,cutoffDay:5,periodSpendingMinor:'0',periodExpenseCount:'0',periodRepaymentMinor:'0',periodRepaymentCount:'0'},
+  ],
   billCategorySpendingMinor:'10000',billCategoryCount:'1',automatedSpendingMinor:'100000',automatedExpenseCount:'2',
   openObligationsMinor:'250000',openObligationsUncoveredMinor:'250000',openObligationsCount:1,
   settledInPeriodMinor:'0',settledInPeriodCount:0,
@@ -226,20 +235,25 @@ test('m-banking refinements: 4+ categories visible, Transfer masuk in accounts, 
  for(const cat of ['Makanan','Transport','Wellbeing','Tagihan Listrik'])assert.match(mobOut,new RegExp(cat));
  assert.match(mobOut,/Transfer masuk/);
  assert.match(mobOut,/Rp200\.000/);
- assert.match(mobOut,/PayLater &amp; Tagihan/);
+ assert.match(mobOut,/Kredit &amp; Tagihan/);
+ assert.match(mobOut,/Belanja via Kredit/);
+ assert.match(mobOut,/Pelunasan Kredit/);
+ assert.match(mobOut,/Total 2 fasilitas kredit/);
  assert.match(mobOut,/SPayLater/);
+ assert.match(mobOut,/Kartu Kredit BCA/);
  assert.match(mobOut,/Rp613\.632/);
  assert.match(mobOut,/Rp381\.992/);
  assert.match(mobOut,/Internet Rumah/);
  assert.match(mobOut,/Pengeluaran terbesar/);
  assert.match(mobOut,/patungan padel/);
- assert.doesNotMatch(mobOut,/Simpan kategori/);
+ assert.match(mobOut,/insight-credit-chip">Kredit<\/em>/);
+ assert.doesNotMatch(mobOut,/PayLater &amp; Tagihan|Simpan kategori|\bP3\b|\bP4\b/);
  assert.match(mobOut,/insight-mobile-gatekeep/);
- assert.doesNotMatch(mobOut,/Analisis Mendalam/);
+ assert.doesNotMatch(mobOut,/Arus Kas &amp; Pola Keuangan/);
 
  const deskOut=desktopHtml(r);
- assert.match(deskOut,/Analisis Mendalam/);
- assert.match(deskOut,/Arus Kas/);
+ assert.match(deskOut,/Arus Kas &amp; Pola Keuangan/);
+ assert.match(deskOut,/Arus Kas Kumulatif/);
  assert.match(deskOut,/Rasio &amp; Burn Rate/);
  assert.doesNotMatch(deskOut,/insight-mobile-gatekeep/);
 

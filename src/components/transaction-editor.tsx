@@ -31,9 +31,9 @@ function formatAssetOptionLabel(item: FinanceAsset) {
   if (isCreditAsset(item)) {
     const bills = computeCreditBills(item);
     if (bills.availableLimitMinor !== null) {
-      return `${item.displayName} (PayLater/Kredit · Sisa limit ${formatMinor(bills.availableLimitMinor.toString(), item.currency, item.exponent)})`;
+      return `${item.displayName} (Kredit · Sisa limit ${formatMinor(bills.availableLimitMinor.toString(), item.currency, item.exponent)})`;
     }
-    return `${item.displayName} (PayLater/Kredit · Tagihan ${formatMinor(bills.totalUnpaidMinor.toString(), item.currency, item.exponent)})`;
+    return `${item.displayName} (Kredit · Tagihan ${formatMinor(bills.totalUnpaidMinor.toString(), item.currency, item.exponent)})`;
   }
   return `${item.displayName} · ${formatMinor(item.balanceMinor, item.currency, item.exponent)}`;
 }
@@ -267,7 +267,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
 
           <div className="field-grid">
             <label className="field">
-              <span>Bunga / biaya PayLater per bulan</span>
+              <span>Bunga / biaya kredit per bulan</span>
               <input
                 inputMode="decimal"
                 value={interestValue}

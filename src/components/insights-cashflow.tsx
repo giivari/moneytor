@@ -29,9 +29,9 @@ const weekdayNames: Record<string, string> = {
   "7": "Minggu",
 };
 
-type DeepTab = "cashflow" | "ratios" | "patterns";
+type DeepTab = "cashflow" | "patterns" | "ratios";
 
-function elapsedDaysInPeriod(report: AnalyticsReport): bigint {
+export function elapsedDaysInPeriod(report: AnalyticsReport): bigint {
   const dayMs = 86400000;
   const start = Date.parse(`${report.period.startDay}T00:00:00Z`);
   const end = Date.parse(`${report.period.endDayExclusive}T00:00:00Z`);
@@ -80,7 +80,7 @@ export function InsightsFinancialSuite({
   const totalOutflow = opSpending + invBuy + invFees;
   const netCashFlow = totalInflow - totalOutflow;
 
-  // Credit / PayLater & Bills
+  // Credit Facilities (Kartu Kredit, PayLater, Pinjaman, KTA) & Routine Bills
   const cb = data.creditAndBills;
   const facilities = cb?.facilities ?? [];
   const creditSpend = BigInt(cb?.creditSpendingMinor ?? "0");
@@ -108,7 +108,7 @@ export function InsightsFinancialSuite({
     billCatSpend > 0n ||
     opSpending > 0n;
 
-  // Top Expenses (Read-only sleek m-banking list)
+  // Top Expenses (Read-only sleek m-banking ranked list)
   const sortedExpenses = [...data.expenseItems].sort((a, b) => {
     const diff = BigInt(b.spendingMinor) - BigInt(a.spendingMinor);
     return diff !== 0n ? (diff > 0n ? 1 : -1) : b.occurredAt.localeCompare(a.occurredAt);
@@ -209,233 +209,14 @@ export function InsightsFinancialSuite({
 
   return (
     <div className="insight-suite">
-      <div className="insight-mid-grid">
-        {hasCreditOrBillsCard && (
-          <section className="surface insight-panel insight-credit-bills-card" aria-label="PayLater dan Tagihan">
-            <SectionHeading
-              title="PayLater & Tagihan"
-              helper="Pemakaian fasilitas kredit, pelunasan, dan kewajiban aktif."
-            />
-
-            <div className="insight-compact-kpis">
-              <div>
-                <span>Belanja Kas / Debit</span>
-                <strong>
-                  <FinancialAmount as="span" value={money(cashSpend)} className="insight-money" />
-                </strong>
-              </div>
-              <div>
-                <span>Belanja via PayLater</span>
-                <strong className={creditSpend > 0n ? "insight-negative" : ""}>
-                  <FinancialAmount as="span" value={money(creditSpend)} className="insight-money" />
-                </strong>
-                {cb && BigInt(cb.creditExpenseCount) > 0n && <small>{cb.creditExpenseCount}x transaksi</small>}
-              </div>
-              <div>
-                <span>Bayar Tagihan</span>
-                <strong className={creditRepay > 0n ? "insight-positive" : ""}>
-                  <FinancialAmount as="span" value={money(creditRepay)} className="insight-money" />
-                </strong>
-                {cb && BigInt(cb.creditRepaymentCount) > 0n && <small>{cb.creditRepaymentCount}x pelunasan</small>}
-              </div>
-            </div>
-
-            {facilities.length > 0 && (
-              <div className="insight-credit-facilities">
-                {facilities.map((fac) => {
-                  const curBill = BigInt(fac.currentBillMinor);
-                  const nextBill = BigInt(fac.nextBillMinor);
-                  const unpaid = BigInt(fac.totalUnpaidMinor);
-                  const limit = BigInt(fac.limitMinor);
-                  const usedPct = limit > 0n ? plotPercent(unpaid, limit) : 0;
-                  return (
-                    <div key={fac.id} className="insight-facility-box">
-                      <div className="insight-facility-head">
-                        <strong>
-                          {fac.name}
-                          {!fac.isActive && <small> · Diarsipkan</small>}
-                        </strong>
-                        {fac.availableLimitMinor !== null && limit > 0n && (
-                          <span>Sisa limit {money(fac.availableLimitMinor)}</span>
-                        )}
-                      </div>
-                      {limit > 0n && (
-                        <div className="insight-category-track" aria-hidden="true">
-                          <span
-                            data-tone={usedPct >= 75 ? "negative" : "neutral"}
-                            style={{ width: `${usedPct}%` }}
-                          />
-                        </div>
-                      )}
-                      <dl className="insight-facility-bills">
-                        <div>
-                          <dt>Tagihan {formatShortDueIso(fac.currentDueIso)}</dt>
-                          <dd className={curBill > 0n ? "insight-negative" : "insight-positive"}>
-                            {curBill > 0n ? <FinancialAmount as="span" value={money(curBill)} /> : "Lunas"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Periode {formatShortDueIso(fac.nextDueIso)}</dt>
-                          <dd>
-                            <FinancialAmount as="span" value={money(nextBill)} />
-                          </dd>
-                        </div>
-                      </dl>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {(autoSpend > 0n || billCatSpend > 0n || openObs.length > 0 || currentCycleBills > 0n || nextCycleBills > 0n || settledObsCount > 0) && (
-              <dl className="insight-bill-summary-rows">
-                {autoSpend > 0n && (
-                  <div>
-                    <dt>Pengeluaran rutin / otomatisasi</dt>
-                    <dd>
-                      <FinancialAmount as="span" value={money(autoSpend)} />
-                      {BigInt(autoCount) > 0n && <small> · {autoCount}x</small>}
-                    </dd>
-                  </div>
-                )}
-                {billCatSpend > 0n && (
-                  <div>
-                    <dt>Kategori tagihan & utilitas</dt>
-                    <dd>
-                      <FinancialAmount as="span" value={money(billCatSpend)} />
-                      <small> · {billCatCount}x</small>
-                    </dd>
-                  </div>
-                )}
-                {(openObs.length > 0 || currentCycleBills > 0n || nextCycleBills > 0n) && (
-                  <div>
-                    <dt>Total kewajiban & tagihan aktif</dt>
-                    <dd className="insight-negative">
-                      <FinancialAmount as="span" value={money(totalCreditUnpaid + openObsTotal)} />
-                    </dd>
-                  </div>
-                )}
-                {settledObsCount > 0 && (
-                  <div>
-                    <dt>Kewajiban Planning dilunasi</dt>
-                    <dd className="insight-positive">
-                      <FinancialAmount as="span" value={money(settledObsTotal)} />
-                      <small> · {settledObsCount} selesai</small>
-                    </dd>
-                  </div>
-                )}
-              </dl>
-            )}
-
-            {openObs.length > 0 && (
-              <ul className="insight-mini-obligations">
-                {openObs.slice(0, 3).map((ob) => (
-                  <li key={ob.id}>
-                    <span>
-                      <strong>{ob.title}</strong>
-                      <small>
-                        {ob.labelName} · Jatuh tempo {dayLabel(ob.dueOn)}
-                      </small>
-                    </span>
-                    <FinancialAmount as="span" value={money(ob.amountMinor)} className="insight-money" />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )}
-
-        {visibleTopExpenses.length > 0 && (
-          <section className="surface insight-panel insight-top-expenses-card" aria-label="Pengeluaran terbesar">
-            <SectionHeading
-              title="Pengeluaran terbesar"
-              helper={`Urutan transaksi pengeluaran tertinggi pada periode ini (${sortedExpenses.length} transaksi).`}
-            />
-            <ol className="insight-top-list">
-              {visibleTopExpenses.map((item, idx) => {
-                const shortDate = new Date(item.occurredAt).toLocaleDateString("id-ID", {
-                  timeZone: "Asia/Jakarta",
-                  day: "numeric",
-                  month: "short",
-                });
-                return (
-                  <li key={item.id} className="insight-top-row">
-                    <span className="insight-top-rank">{idx + 1}</span>
-                    <div className="insight-top-info">
-                      <strong>
-                        {item.note?.trim() || item.categoryName || "Pengeluaran"}
-                        {item.isCreditSource && <em className="insight-credit-chip">PayLater</em>}
-                      </strong>
-                      <small>
-                        {item.categoryName ?? "Tanpa kategori"} · {item.sourceName} · {shortDate}
-                      </small>
-                    </div>
-                    <FinancialAmount
-                      as="span"
-                      value={money(item.spendingMinor)}
-                      className="insight-top-amount insight-negative"
-                    />
-                  </li>
-                );
-              })}
-            </ol>
-
-            {extraTopExpenses.length > 0 && (
-              <details className="insight-inline-detail">
-                <summary>Lihat urutan {topLimit + 1}–{topLimit + extraTopExpenses.length}</summary>
-                <ol className="insight-top-list" start={topLimit + 1}>
-                  {extraTopExpenses.map((item, idx) => {
-                    const shortDate = new Date(item.occurredAt).toLocaleDateString("id-ID", {
-                      timeZone: "Asia/Jakarta",
-                      day: "numeric",
-                      month: "short",
-                    });
-                    return (
-                      <li key={item.id} className="insight-top-row">
-                        <span className="insight-top-rank">{topLimit + idx + 1}</span>
-                        <div className="insight-top-info">
-                          <strong>
-                            {item.note?.trim() || item.categoryName || "Pengeluaran"}
-                            {item.isCreditSource && <em className="insight-credit-chip">PayLater</em>}
-                          </strong>
-                          <small>
-                            {item.categoryName ?? "Tanpa kategori"} · {item.sourceName} · {shortDate}
-                          </small>
-                        </div>
-                        <FinancialAmount
-                          as="span"
-                          value={money(item.spendingMinor)}
-                          className="insight-top-amount insight-negative"
-                        />
-                      </li>
-                    );
-                  })}
-                </ol>
-              </details>
-            )}
-
-            {uncategorizedCount > 0 && (
-              <p className="insight-note insight-top-footer">
-                Ada {uncategorizedCount} pengeluaran tanpa kategori ·{" "}
-                <AppLink href="/transactions?kind=expense">Ubah detail di Transactions →</AppLink>
-              </p>
-            )}
-          </section>
-        )}
-      </div>
-
-      {mobile ? (
-        <p className="insight-mobile-gatekeep" role="note">
-          Tampilan mobile diringkas agar tetap rapi. Buka di layar desktop untuk melihat grafik arus kas kumulatif, rasio burn rate &amp; runway, serta pola hari belanja.
-        </p>
-      ) : (
-        <section className="surface insight-panel insight-deep-dive" aria-label="Analisis mendalam arus kas dan rasio">
+      {!mobile && (
+        <section className="surface insight-panel insight-deep-dive" aria-label="Analisis arus kas, pola, dan rasio">
           <div className="insight-deep-header">
             <div>
-              <h2>Analisis Mendalam</h2>
-              <p className="insight-note">Pilih fokus analisis untuk menjaga tampilan tetap ringkas.</p>
+              <h2>Arus Kas &amp; Pola Keuangan</h2>
+              <p className="insight-note">Pergerakan saldo kas kumulatif, distribusi hari belanja, dan rasio ketahanan dana.</p>
             </div>
-            <div className="insight-seg-tabs" role="tablist" aria-label="Modul analisis mendalam">
+            <div className="insight-seg-tabs" role="tablist" aria-label="Modul analisis keuangan">
               <button
                 type="button"
                 role="tab"
@@ -444,17 +225,7 @@ export function InsightsFinancialSuite({
                 data-active={activeTab === "cashflow" ? "true" : "false"}
                 onClick={() => setActiveTab("cashflow")}
               >
-                Arus Kas
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "ratios"}
-                className="insight-seg-tab"
-                data-active={activeTab === "ratios" ? "true" : "false"}
-                onClick={() => setActiveTab("ratios")}
-              >
-                Rasio &amp; Burn Rate
+                Arus Kas Kumulatif
               </button>
               <button
                 type="button"
@@ -465,6 +236,16 @@ export function InsightsFinancialSuite({
                 onClick={() => setActiveTab("patterns")}
               >
                 Pola Hari &amp; Pemasukan
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "ratios"}
+                className="insight-seg-tab"
+                data-active={activeTab === "ratios" ? "true" : "false"}
+                onClick={() => setActiveTab("ratios")}
+              >
+                Rasio &amp; Burn Rate
               </button>
             </div>
           </div>
@@ -479,7 +260,7 @@ export function InsightsFinancialSuite({
                   </strong>
                   <small>
                     Pemasukan {money(opIncome)}
-                    {invSell > 0n ? ` + Jual aset ${money(invSell)}` : ""}
+                    {invSell > 0n ? ` + Jual instrumen ${money(invSell)}` : ""}
                   </small>
                 </div>
                 <div className="insight-cashflow-kpi">
@@ -592,6 +373,65 @@ export function InsightsFinancialSuite({
             </div>
           )}
 
+          {activeTab === "patterns" && (
+            <div className="insight-tab-pane insight-subgrid">
+              <div>
+                <h3>Pola belanja menurut hari</h3>
+                <p className="insight-note">
+                  {peakWeekday
+                    ? `Puncak belanja pada hari ${peakWeekday.name} (${money(peakWeekday.spendingMinor)}).`
+                    : "Distribusi pengeluaran Senin–Minggu."}
+                </p>
+                {maxWeekdaySpend === 0n ? (
+                  <p className="insight-empty">Belum ada pengeluaran pada periode ini.</p>
+                ) : (
+                  <ul className="insight-bridge-bars" style={{ marginTop: 12 }}>
+                    {fullWeekdays.map((day) => (
+                      <li key={day.key}>
+                        <div className="insight-bridge-head">
+                          <span>
+                            {day.name} <small>({day.expenseCount}x)</small>
+                          </span>
+                          <FinancialAmount as="span" value={money(day.spendingMinor)} className="insight-money" />
+                        </div>
+                        <div className="insight-category-track" aria-hidden="true">
+                          <span
+                            data-tone={peakWeekday?.key === day.key ? "negative" : "neutral"}
+                            style={{ width: `${plotPercent(day.spendingMinor, maxWeekdaySpend)}%` }}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <h3>Sumber pemasukan</h3>
+                <p className="insight-note">Distribusi pemasukan berdasarkan kategori.</p>
+                {opIncome === 0n || incomeBreakdown.length === 0 ? (
+                  <p className="insight-empty">Belum ada pemasukan tercatat pada periode ini.</p>
+                ) : (
+                  <ul className="insight-visual-ranking">
+                    {incomeBreakdown.map((row) => (
+                      <li key={row.key}>
+                        <span>
+                          {row.name}
+                          {row.archived ? " · Diarsipkan" : ""}
+                          <small>{row.incomeCount}x pemasukan</small>
+                        </span>
+                        <strong>
+                          <FinancialAmount as="span" value={money(row.incomeMinor)} />
+                          <small>{percentageLabel(row.shareBps)}</small>
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+
           {activeTab === "ratios" && (
             <div className="insight-tab-pane">
               <div className="insight-health-grid">
@@ -671,7 +511,7 @@ export function InsightsFinancialSuite({
                   <small>
                     {totalAssetsMinor !== null
                       ? creditDebtMinor > 0n
-                        ? `Aset ${money(totalAssetsMinor)} − tagihan kredit ${money(creditDebtMinor)}`
+                        ? `Aset ${money(totalAssetsMinor)} − kewajiban kredit ${money(creditDebtMinor)}`
                         : `Total aset ${money(totalAssetsMinor)}`
                       : "Snapshot aset belum tersedia"}
                   </small>
@@ -679,66 +519,256 @@ export function InsightsFinancialSuite({
               </div>
             </div>
           )}
+        </section>
+      )}
 
-          {activeTab === "patterns" && (
-            <div className="insight-tab-pane insight-subgrid">
+      <div className="insight-mid-grid">
+        {hasCreditOrBillsCard && (
+          <section className="surface insight-panel insight-credit-bills-card" aria-label="Kredit dan Tagihan">
+            <SectionHeading
+              title="Kredit & Tagihan"
+              helper="Pemakaian fasilitas kredit, pelunasan, dan kewajiban jatuh tempo."
+            />
+
+            <div className="insight-compact-kpis">
               <div>
-                <h3>Pola belanja menurut hari</h3>
-                <p className="insight-note">
-                  {peakWeekday
-                    ? `Puncak belanja pada hari ${peakWeekday.name} (${money(peakWeekday.spendingMinor)}).`
-                    : "Distribusi pengeluaran Senin–Minggu."}
-                </p>
-                {maxWeekdaySpend === 0n ? (
-                  <p className="insight-empty">Belum ada pengeluaran pada periode ini.</p>
-                ) : (
-                  <ul className="insight-bridge-bars" style={{ marginTop: 12 }}>
-                    {fullWeekdays.map((day) => (
-                      <li key={day.key}>
-                        <div className="insight-bridge-head">
-                          <span>
-                            {day.name} <small>({day.expenseCount}x)</small>
-                          </span>
-                          <FinancialAmount as="span" value={money(day.spendingMinor)} className="insight-money" />
-                        </div>
-                        <div className="insight-category-track" aria-hidden="true">
-                          <span
-                            data-tone={peakWeekday?.key === day.key ? "negative" : "neutral"}
-                            style={{ width: `${plotPercent(day.spendingMinor, maxWeekdaySpend)}%` }}
-                          />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <span>Belanja Kas / Debit</span>
+                <strong>
+                  <FinancialAmount as="span" value={money(cashSpend)} className="insight-money" />
+                </strong>
               </div>
-
               <div>
-                <h3>Sumber pemasukan</h3>
-                <p className="insight-note">Distribusi pemasukan berdasarkan kategori.</p>
-                {opIncome === 0n || incomeBreakdown.length === 0 ? (
-                  <p className="insight-empty">Belum ada pemasukan tercatat pada periode ini.</p>
-                ) : (
-                  <ul className="insight-visual-ranking">
-                    {incomeBreakdown.map((row) => (
-                      <li key={row.key}>
-                        <span>
-                          {row.name}
-                          {row.archived ? " · Diarsipkan" : ""}
-                          <small>{row.incomeCount}x pemasukan</small>
-                        </span>
-                        <strong>
-                          <FinancialAmount as="span" value={money(row.incomeMinor)} />
-                          <small>{percentageLabel(row.shareBps)}</small>
-                        </strong>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <span>Belanja via Kredit</span>
+                <strong className={creditSpend > 0n ? "insight-negative" : ""}>
+                  <FinancialAmount as="span" value={money(creditSpend)} className="insight-money" />
+                </strong>
+                {cb && BigInt(cb.creditExpenseCount) > 0n && <small>{cb.creditExpenseCount}x transaksi</small>}
+              </div>
+              <div>
+                <span>Pelunasan Kredit</span>
+                <strong className={creditRepay > 0n ? "insight-positive" : ""}>
+                  <FinancialAmount as="span" value={money(creditRepay)} className="insight-money" />
+                </strong>
+                {cb && BigInt(cb.creditRepaymentCount) > 0n && <small>{cb.creditRepaymentCount}x pelunasan</small>}
               </div>
             </div>
-          )}
-        </section>
+
+            {facilities.length > 1 && (
+              <div className="insight-multi-credit-summary">
+                <div>
+                  <span>Total {facilities.length} fasilitas kredit</span>
+                  <strong className={totalCreditUnpaid > 0n ? "insight-negative" : ""}>
+                    <FinancialAmount as="span" value={money(totalCreditUnpaid)} className="insight-money" />
+                  </strong>
+                </div>
+                <div>
+                  <span>Jatuh tempo terdekat</span>
+                  <strong className={currentCycleBills > 0n ? "insight-negative" : "insight-positive"}>
+                    {currentCycleBills > 0n ? (
+                      <FinancialAmount as="span" value={money(currentCycleBills)} className="insight-money" />
+                    ) : (
+                      "Lunas"
+                    )}
+                  </strong>
+                </div>
+              </div>
+            )}
+
+            {facilities.length > 0 && (
+              <div className="insight-credit-facilities">
+                {facilities.map((fac) => {
+                  const curBill = BigInt(fac.currentBillMinor);
+                  const nextBill = BigInt(fac.nextBillMinor);
+                  const unpaid = BigInt(fac.totalUnpaidMinor);
+                  const limit = BigInt(fac.limitMinor);
+                  const usedPct = limit > 0n ? plotPercent(unpaid, limit) : 0;
+                  return (
+                    <div key={fac.id} className="insight-facility-box">
+                      <div className="insight-facility-head">
+                        <strong>
+                          {fac.name}
+                          {!fac.isActive && <small> · Diarsipkan</small>}
+                        </strong>
+                        {fac.availableLimitMinor !== null && limit > 0n && (
+                          <span>Sisa limit {money(fac.availableLimitMinor)}</span>
+                        )}
+                      </div>
+                      {limit > 0n && (
+                        <div className="insight-category-track" aria-hidden="true">
+                          <span
+                            data-tone={usedPct >= 75 ? "negative" : "neutral"}
+                            style={{ width: `${usedPct}%` }}
+                          />
+                        </div>
+                      )}
+                      <dl className="insight-facility-bills">
+                        <div>
+                          <dt>Tagihan {formatShortDueIso(fac.currentDueIso)}</dt>
+                          <dd className={curBill > 0n ? "insight-negative" : "insight-positive"}>
+                            {curBill > 0n ? <FinancialAmount as="span" value={money(curBill)} /> : "Lunas"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Periode {formatShortDueIso(fac.nextDueIso)}</dt>
+                          <dd>
+                            <FinancialAmount as="span" value={money(nextBill)} />
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {(autoSpend > 0n ||
+              billCatSpend > 0n ||
+              openObs.length > 0 ||
+              currentCycleBills > 0n ||
+              nextCycleBills > 0n ||
+              settledObsCount > 0) && (
+              <dl className="insight-bill-summary-rows">
+                {autoSpend > 0n && (
+                  <div>
+                    <dt>Pengeluaran rutin / terjadwal</dt>
+                    <dd>
+                      <FinancialAmount as="span" value={money(autoSpend)} />
+                      {BigInt(autoCount) > 0n && <small> · {autoCount}x</small>}
+                    </dd>
+                  </div>
+                )}
+                {billCatSpend > 0n && (
+                  <div>
+                    <dt>Kategori tagihan &amp; utilitas</dt>
+                    <dd>
+                      <FinancialAmount as="span" value={money(billCatSpend)} />
+                      <small> · {billCatCount}x</small>
+                    </dd>
+                  </div>
+                )}
+                {(openObs.length > 0 || currentCycleBills > 0n || nextCycleBills > 0n) && (
+                  <div>
+                    <dt>Total kewajiban &amp; tagihan aktif</dt>
+                    <dd className="insight-negative">
+                      <FinancialAmount as="span" value={money(totalCreditUnpaid + openObsTotal)} />
+                    </dd>
+                  </div>
+                )}
+                {settledObsCount > 0 && (
+                  <div>
+                    <dt>Kewajiban Planning dilunasi</dt>
+                    <dd className="insight-positive">
+                      <FinancialAmount as="span" value={money(settledObsTotal)} />
+                      <small> · {settledObsCount} selesai</small>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            )}
+
+            {openObs.length > 0 && (
+              <ul className="insight-mini-obligations">
+                {openObs.slice(0, 3).map((ob) => (
+                  <li key={ob.id}>
+                    <span>
+                      <strong>{ob.title}</strong>
+                      <small>
+                        {ob.labelName} · Jatuh tempo {dayLabel(ob.dueOn)}
+                      </small>
+                    </span>
+                    <FinancialAmount as="span" value={money(ob.amountMinor)} className="insight-money" />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {visibleTopExpenses.length > 0 && (
+          <section className="surface insight-panel insight-top-expenses-card" aria-label="Pengeluaran terbesar">
+            <SectionHeading
+              title="Pengeluaran terbesar"
+              helper={`Urutan transaksi pengeluaran tertinggi pada periode ini (${sortedExpenses.length} transaksi).`}
+            />
+            <ol className="insight-top-list">
+              {visibleTopExpenses.map((item, idx) => {
+                const shortDate = new Date(item.occurredAt).toLocaleDateString("id-ID", {
+                  timeZone: "Asia/Jakarta",
+                  day: "numeric",
+                  month: "short",
+                });
+                return (
+                  <li key={item.id} className="insight-top-row">
+                    <span className="insight-top-rank">{idx + 1}</span>
+                    <div className="insight-top-info">
+                      <strong>
+                        {item.note?.trim() || item.categoryName || "Pengeluaran"}
+                        {item.isCreditSource && <em className="insight-credit-chip">Kredit</em>}
+                      </strong>
+                      <small>
+                        {item.categoryName ?? "Tanpa kategori"} · {item.sourceName} · {shortDate}
+                      </small>
+                    </div>
+                    <FinancialAmount
+                      as="span"
+                      value={money(item.spendingMinor)}
+                      className="insight-top-amount insight-negative"
+                    />
+                  </li>
+                );
+              })}
+            </ol>
+
+            {extraTopExpenses.length > 0 && (
+              <details className="insight-inline-detail">
+                <summary>
+                  Lihat urutan {topLimit + 1}–{topLimit + extraTopExpenses.length}
+                </summary>
+                <ol className="insight-top-list" start={topLimit + 1}>
+                  {extraTopExpenses.map((item, idx) => {
+                    const shortDate = new Date(item.occurredAt).toLocaleDateString("id-ID", {
+                      timeZone: "Asia/Jakarta",
+                      day: "numeric",
+                      month: "short",
+                    });
+                    return (
+                      <li key={item.id} className="insight-top-row">
+                        <span className="insight-top-rank">{topLimit + idx + 1}</span>
+                        <div className="insight-top-info">
+                          <strong>
+                            {item.note?.trim() || item.categoryName || "Pengeluaran"}
+                            {item.isCreditSource && <em className="insight-credit-chip">Kredit</em>}
+                          </strong>
+                          <small>
+                            {item.categoryName ?? "Tanpa kategori"} · {item.sourceName} · {shortDate}
+                          </small>
+                        </div>
+                        <FinancialAmount
+                          as="span"
+                          value={money(item.spendingMinor)}
+                          className="insight-top-amount insight-negative"
+                        />
+                      </li>
+                    );
+                  })}
+                </ol>
+              </details>
+            )}
+
+            {uncategorizedCount > 0 && (
+              <p className="insight-note insight-top-footer">
+                Ada {uncategorizedCount} pengeluaran tanpa kategori ·{" "}
+                <AppLink href="/transactions?kind=expense">Ubah detail di Transactions →</AppLink>
+              </p>
+            )}
+          </section>
+        )}
+      </div>
+
+      {mobile && (
+        <p className="insight-mobile-gatekeep" role="note">
+          Tampilan mobile diringkas agar tetap rapi. Buka di layar desktop untuk melihat rincian pola belanja harian, rasio burn rate &amp; runway, serta perbandingan sumber pemasukan.
+        </p>
       )}
     </div>
   );
