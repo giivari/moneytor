@@ -3,8 +3,8 @@ import { requireOwnerSession } from "@/lib/auth/session";
 import { inDatabaseTransaction } from "@/lib/db/pool";
 import { financeSnapshot } from "@/lib/finance/summary";
 import { periodChange } from "./domain";
-import { monthKeys, previousPeriod, reportingPeriod, type PeriodInput } from "./periods";
-import { readAggregates, readCharges, readInvestmentFlows } from "./queries";
+import { monthKeys, previousPeriod, reportingPeriod, type AnalyticsGranularity, type PeriodInput } from "./periods";
+import { readAggregates, readCharges, readExpenseItems, readInvestmentFlows } from "./queries";
 import type { AnalyticsReport, DimensionRow, FinancialMeasures } from "./types";
 import type { PoolClient } from "pg";
 
@@ -27,11 +27,14 @@ export async function analyticsCurrencyOptions() {
   });
 }
 
-export type AnalyticsInput = { period?: PeriodInput; currency?: string; includeContext?: boolean };
+export type AnalyticsInput = { period?: PeriodInput; currency?: string; includeContext?: boolean; granularity?: AnalyticsGranularity };
 export class AnalyticsInputError extends Error {}
 export function validateAnalyticsInput(input: AnalyticsInput, now = new Date()) {
   if (!input || (input.currency !== undefined && (typeof input.currency !== "string" || !/^[A-Z]{3}$/.test(input.currency)))
-    || (input.includeContext !== undefined && typeof input.includeContext !== "boolean")) throw new AnalyticsInputError("Filter laporan tidak valid");
+    || (input.includeContext !== undefined && typeof input.includeContext !== "boolean")
+    || (input.granularity !== undefined && !["auto", "day", "week", "month", "year"].includes(input.granularity))) {
+    throw new AnalyticsInputError("Filter laporan tidak valid");
+  }
   try {
     const period = reportingPeriod(input.period, now);
     previousPeriod(input.period ?? { kind: "current_month" }, period, now);
@@ -55,6 +58,11 @@ function ranking(a: DimensionRow, b: DimensionRow) {
   const difference = BigInt(b.spendingMinor) - BigInt(a.spendingMinor);
   return difference !== 0n ? (difference > 0n ? 1 : -1) : a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 }
+function incomeRanking(a: DimensionRow, b: DimensionRow) {
+  if (a.currency !== b.currency) return a.currency < b.currency ? -1 : 1;
+  const difference = BigInt(b.incomeMinor) - BigInt(a.incomeMinor);
+  return difference !== 0n ? (difference > 0n ? 1 : -1) : a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+}
 /** Authenticated, bounded, read-only. Never invokes Automation reconciliation or posting. */
 export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()): Promise<AnalyticsReport> {
   await requireOwnerSession();
@@ -74,10 +82,14 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
     }));
     const charges = await readCharges(client, period, currency);
     const investmentFlows = await readInvestmentFlows(client, period, currency);
+    const expenseItems = input.includeContext === false ? [] : await readExpenseItems(client, period, currency);
     const snapshot = input.includeContext === false ? null : await financeSnapshot({ includeRecent: false }, client);
     return { version: "p6a.v1", generatedAt: now.toISOString(), period, summary,
-      byCategory: dimension("category").sort(ranking), byAccount: dimension("account").sort(ranking),
-      byOrigin: dimension("origin"), monthly, daily: dimension("day"), charges, investmentFlows,
+      byCategory: dimension("category").sort(ranking),
+      byIncomeCategory: dimension("income_category").sort(incomeRanking),
+      byWeekday: dimension("weekday"),
+      byAccount: dimension("account").sort(ranking),
+      byOrigin: dimension("origin"), monthly, daily: dimension("day"), charges, investmentFlows, expenseItems,
       comparison: { period: prior, partialComparison: period.partial || prior.partial, method: "full_previous_period",
         currencies: summary.map((row) => {
           const before = previous.find((r) => r.currency === row.currency) ?? empty(row.currency, row.exponent);

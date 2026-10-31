@@ -1,11 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AnalyticsGranularity } from "@/lib/analytics/periods";
 import type { AnalyticsReport } from "@/lib/analytics/types";
 import { insightsDraft, insightsQuery, periodLabel, type InsightsDraft } from "@/lib/analytics/presentation";
 import { useInsightsReport } from "./use-insights-report";
 import { InsightsReportView } from "./insights-report";
 import { useInsightsMonth } from "./use-insights-month";
+
+const QUICK_PERIODS = [
+  { kind: "last_7_days", label: "1 Minggu" },
+  { kind: "last_30_days", label: "1 Bulan" },
+  { kind: "current_month", label: "Bulan Ini" },
+  { kind: "previous_month", label: "Bulan Lalu" },
+  { kind: "last_3_months", label: "3 Bulan" },
+  { kind: "last_6_months", label: "6 Bulan" },
+  { kind: "last_1_year", label: "1 Tahun" },
+  { kind: "current_year", label: "Tahun Ini" },
+  { kind: "last_5_years", label: "5 Tahun" },
+] as const;
+
+const GRANULARITY_CHOICES: { value: AnalyticsGranularity; label: string }[] = [
+  { value: "auto", label: "Otomatis" },
+  { value: "day", label: "Per Hari" },
+  { value: "week", label: "Per Minggu" },
+  { value: "month", label: "Per Bulan" },
+  { value: "year", label: "Per Tahun" },
+];
 
 export function InsightsLoadState({ loading, error, retry }: { loading: boolean; error: string; retry: () => void }) {
   if (loading) return <div className="surface insight-state" role="status"><span className="insight-loading" aria-hidden="true" />Memuat laporan…</div>;
@@ -21,7 +42,12 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
   const [draft, setDraft] = useState(() => insightsDraft(initialQuery));
   const [inputError, setInputError] = useState("");
   const [slide, setSlide] = useState(0);
-  const selected = new URLSearchParams(state.query).get("currency") ?? state.report?.summary[0]?.currency ?? "";
+  const [filterOpen, setFilterOpen] = useState(false);
+  const queryParams = new URLSearchParams(state.query);
+  const selected = queryParams.get("currency") ?? state.report?.summary[0]?.currency ?? "";
+  const activePeriod = queryParams.get("period") ?? "current_month";
+  const activeGranularity: AnalyticsGranularity =
+    (["day", "week", "month", "year"] as const).find((item) => item === queryParams.get("granularity")) ?? "auto";
   const monthSelection = useInsightsMonth(state.report?.monthly?.filter((row) => row.currency === selected) ?? [], state.report);
   const defaultCurrency = currencies.find((row) => row.currency === "IDR")?.currency ?? currencies[0]?.currency ?? "";
   const choices = [...new Set([...currencies.map((row) => row.currency), ...(initial?.summary.map((row) => row.currency) ?? []), draft.currency].filter(Boolean))];
@@ -29,6 +55,21 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
   let dirty = true;
   try { dirty = insightsQuery(draft) !== state.query; } catch { /* Invalid drafts remain editable. */ }
   const apply = state.apply;
+
+  function applyImmediate(nextDraft: InsightsDraft) {
+    setDraft(nextDraft);
+    setInputError("");
+    try {
+      const query = insightsQuery(nextDraft);
+      if (typeof window !== "undefined") {
+        window.history.pushState(null, "", `${window.location.pathname}?${query}`);
+      }
+      apply(query);
+    } catch (cause) {
+      setInputError(cause instanceof Error ? cause.message : "Rentang tanggal tidak valid.");
+    }
+  }
+
   useEffect(() => {
     const pop = () => {
       const params = new URLSearchParams(window.location.search);
@@ -40,9 +81,60 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
   }, [apply, defaultCurrency]);
+
   return <div className="insight-workspace">
-    <details className="surface insight-filter-disclosure">
-      <summary><span><strong>{state.report ? periodLabel(state.report.period) : "Periode laporan"}</strong><small>{selected || "Pilih mata uang"} · Asia/Jakarta</small></span></summary>
+    <div className="surface insight-quick-bar" role="region" aria-label="Pengaturan cepat rentang dan kelompok waktu">
+      <div className="insight-quick-group">
+        <span className="insight-quick-label">Rentang waktu</span>
+        <div className="insight-pill-row">
+          {QUICK_PERIODS.map((preset) => (
+            <button
+              key={preset.kind}
+              type="button"
+              className="insight-pill"
+              data-active={activePeriod === preset.kind ? "true" : "false"}
+              onClick={() => applyImmediate({ ...draft, kind: preset.kind, currency: draft.currency || selected || defaultCurrency })}
+            >
+              {preset.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="insight-pill"
+            data-active={activePeriod === "custom" || draft.kind === "custom" ? "true" : "false"}
+            onClick={() => {
+              set("kind", "custom");
+              setFilterOpen(true);
+            }}
+          >
+            Kustom…
+          </button>
+        </div>
+      </div>
+      <div className="insight-quick-group">
+        <span className="insight-quick-label">Kelompok grafik</span>
+        <div className="insight-pill-row">
+          {GRANULARITY_CHOICES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className="insight-pill"
+              data-active={activeGranularity === option.value ? "true" : "false"}
+              onClick={() => applyImmediate({ ...draft, granularity: option.value, currency: draft.currency || selected || defaultCurrency })}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    <details
+      className="surface insight-filter-disclosure"
+      open={filterOpen ? true : undefined}
+      onToggle={(event) => setFilterOpen(event.currentTarget.open)}
+    >
+      <summary><span><strong>{state.report ? periodLabel(state.report.period) : "Periode laporan"}</strong><small>{selected || "Pilih mata uang"} · Asia/Jakarta · Klik untuk atur tanggal kustom & mata uang</small></span></summary>
     <form className="surface insight-controls" onSubmit={(event) => {
       event.preventDefault();
       try {
@@ -53,12 +145,24 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
     }}>
       <div className="insight-control-fields">
         <label className="field"><span>Periode</span><select value={draft.kind} onChange={(e) => set("kind", e.target.value)}>
-          <option value="current_month">Bulan ini</option><option value="previous_month">Bulan lalu</option>
-          <option value="current_year">Tahun ini</option><option value="monthly_trend">Tren bulanan</option><option value="custom">Rentang tanggal</option>
+          <option value="current_month">Bulan ini</option>
+          <option value="previous_month">Bulan lalu</option>
+          <option value="last_7_days">1 minggu terakhir (7 hari)</option>
+          <option value="last_30_days">1 bulan terakhir (30 hari)</option>
+          <option value="last_3_months">3 bulan terakhir</option>
+          <option value="last_6_months">6 bulan terakhir</option>
+          <option value="last_1_year">1 tahun terakhir (12 bulan)</option>
+          <option value="current_year">Tahun ini</option>
+          <option value="last_5_years">5 tahun terakhir</option>
+          <option value="monthly_trend">Tren bulanan</option>
+          <option value="custom">Rentang tanggal kustom</option>
         </select></label>
         {choices.length > 0 && <label className="field"><span>Mata uang</span><select value={draft.currency} required onChange={(e) => set("currency", e.target.value)}>
           {!draft.currency && <option value="" disabled>Pilih mata uang</option>}{choices.map((code) => <option key={code}>{code}</option>)}
         </select></label>}
+        <label className="field"><span>Kelompok waktu</span><select value={draft.granularity ?? "auto"} onChange={(e) => set("granularity", e.target.value)}>
+          {GRANULARITY_CHOICES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select></label>
         {draft.kind === "monthly_trend" && <label className="field"><span>Jumlah bulan</span><input type="number" min="1" max="36" step="1" required value={draft.months} onChange={(e) => set("months", e.target.value)} /></label>}
         {draft.kind === "custom" && <><label className="field"><span>Dari tanggal</span><input type="date" required value={draft.start} onChange={(e) => set("start", e.target.value)} /></label>
           <label className="field"><span>Sampai tanggal</span><input type="date" required value={draft.end} onChange={(e) => set("end", e.target.value)} /></label></>}
@@ -70,7 +174,7 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
     </details>
     <div aria-busy={state.loading}>
       <InsightsLoadState loading={state.loading} error={state.error} retry={state.retry} />
-      {state.report && <InsightsReportView key={state.query} report={state.report} currency={selected} monthSelection={monthSelection} slideSelection={{ index: slide, select: setSlide }} periodKind={new URLSearchParams(state.query).get("period") ?? "current_month"} />}
+      {state.report && <InsightsReportView key={state.query} report={state.report} currency={selected} granularity={activeGranularity} monthSelection={monthSelection} slideSelection={{ index: slide, select: setSlide }} periodKind={activePeriod} onRefreshReport={state.retry} />}
     </div>
   </div>;
 }

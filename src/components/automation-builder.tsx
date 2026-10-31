@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { CompactChoice } from "./compact-choice";
+import { InlineCatalogSelect } from "./inline-catalog-select";
 import { ResponsiveDisclosure } from "./responsive-disclosure";
 import { actionRegistry, amountRegistry, bpsToPercent, capabilities, conditionRegistry, normalizeGeneralRule, percentToBps,
   type AmountStrategy, type AssetReference, type Condition, type ConditionField, type FinancialAction, type GeneralRuleInput, type Operator, type Trigger } from "@/lib/automation/composable-domain";
@@ -44,14 +44,13 @@ function AssetField({ label, value, onChange, allowed, options, disabled }: { la
   </div>;
 }
 export function AutomationBuilder({ editing, categories }: { editing?: { id: string; input: GeneralRuleInput; storage: Storage }; categories: GeneralView["categories"] }) {
-  const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
-  const categoryCreation = useRef<HTMLDetailsElement>(null);
+  const [creatingRuleGroup, setCreatingRuleGroup] = useState(false);
   const [dirty, setDirty] = useState(false);
   const leaving = useRef(false);
   const [optionalVisited, setOptionalVisited] = useState(false);
-  const { options, optionsError, retry } = useFinanceOptions();
-  const { refresh, notify } = useFinanceFeedback();
+  const { options, optionsError, retry, reload } = useFinanceOptions();
+  const { refresh, notify, navigate, navigating } = useFinanceFeedback();
   const { pending, begin, finish } = useMutationPending();
   const [draft, setDraft] = useState<GeneralRuleInput>(() => editing ? structuredClone(editing.input) : initialRule());
   const originalDraft = useRef(JSON.stringify(draft));
@@ -104,11 +103,10 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
       : `Transaksi terjadi · ${draft.trigger.namespace === "transaction_posted" && draft.trigger.activityKind ? actionRegistry[draft.trigger.activityKind].label : "Semua jenis"}`,
     conditions: draft.conditions.length ? `${draft.conditions.length} kondisi · ${draft.conditionMode === "ALL" ? "Semua harus cocok" : "Salah satu cukup"}` : "Tanpa kondisi",
     action: !actionChosen ? "Pilih tindakan" : `${actionRegistry[action.kind].label} · ${action.kind === "income" ? assetSummary(action.destination)
-      : action.kind === "transfer" ? `${assetSummary(action.source)} → ${assetSummary(action.destination)}` : assetSummary(action.source)}`,
+      : action.kind === "transfer" ? `${assetSummary(action.source)} → ${assetSummary(action.destination)}` : assetSummary(action.source)}${action.kind !== "transfer" ? ` · ${categoryName ?? "Tanpa kategori"}` : ""}`,
     amount: amountSummary,
     execution: meta.executions.length === 1 ? "Konfirmasi diperlukan" : draft.execution === "automatic" ? "Jalankan otomatis" : "Minta konfirmasi",
-    optional: [categoryName ? `Kategori: ${categoryName}` : action.kind !== "transfer" ? "Tanpa kategori" : "",
-      chargeCount ? `${chargeCount} biaya tambahan` : action.kind === "transfer" && feeEnabled ? "Dengan biaya transfer" : "Tanpa biaya", action.note?.trim() ? "Dengan catatan" : ""].filter(Boolean).join(" · "),
+    optional: [chargeCount ? `${chargeCount} biaya tambahan` : action.kind === "transfer" && feeEnabled ? "Dengan biaya transfer" : "Tanpa biaya", action.note?.trim() ? "Dengan catatan" : ""].filter(Boolean).join(" · "),
   };
   function completeSection(id: BuilderSection) {
     if (id === "basics" && !draft.title.trim() || id === "trigger" && !triggerChosen || id === "action" && !actionChosen) return false;
@@ -158,7 +156,7 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
     try {
       const result = await automationMutation("category-save", { name: newCategory });
       setLocalCategories((items) => [...items.filter((item) => item.id !== result.id), { id: result.id!, name: newCategory.trim(), status: "active" }]);
-      setDraft((value) => ({ ...value, automationCategoryId: result.id })); setNewCategory(""); if (categoryCreation.current) categoryCreation.current.open = false; refresh();
+      setDraft((value) => ({ ...value, automationCategoryId: result.id })); setNewCategory(""); setCreatingRuleGroup(false); refresh();
     } catch (cause) { revealError("basics"); setError(cause instanceof Error ? cause.message : "Kategori gagal disimpan."); } finally { finish(); }
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -178,7 +176,7 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
       conversionSection = undefined;
       await automationMutation(storage==="general"?"general-save":storage==="schedule"?"save":"event-save", {
         id: editing?.id, rule: storage==="general"?normalizeGeneralRule(submitted):legacyRulePayload(storage,submitted), idempotencyKey: requestKey.current });
-      notify("Otomatisasi disimpan."); leaving.current = true; router.replace("/transactions/automation"); refresh();
+      notify("Otomatisasi disimpan."); leaving.current = true; navigate("/transactions/automation", "replace"); refresh();
     } catch (cause) { if (conversionSection) revealError(conversionSection); setError(cause instanceof Error ? cause.message : "Otomatisasi gagal disimpan."); } finally { finish(); }
   }
   useEffect(() => {
@@ -188,16 +186,16 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, [dirty]);
   function leave() {
-    if (pending || dirty && !window.confirm("Perubahan belum disimpan. Kembali ke Otomatisasi?")) return;
-    leaving.current = true; router.push("/transactions/automation");
+    if (pending || navigating || dirty && !window.confirm("Perubahan belum disimpan. Kembali ke Otomatisasi?")) return;
+    leaving.current = true; navigate("/transactions/automation");
   }
   const summary = <RuleSummary summaries={summaries} conditions={draft.conditions} options={options} />;
   return <div className="page automation-editor">
     <div className="automation-editor-toolbar">
-      <button type="button" className="row-action automation-editor-back" disabled={pending} onClick={leave}><ArrowLeft size={18} aria-hidden="true" /> <span>Otomatisasi</span></button>
+      <button type="button" className="row-action automation-editor-back" disabled={pending || navigating} onClick={leave}>{navigating ? <LoadingIndicator>Menyiapkan halaman…</LoadingIndicator> : <><ArrowLeft size={18} aria-hidden="true" /> <span>Otomatisasi</span></>}</button>
       <aside className="automation-editor-context" aria-label="Kontrol dan ringkasan otomatisasi">
       <div className="automation-editor-actions">
-        <button type="button" className="finance-secondary automation-editor-cancel" disabled={pending} onClick={leave}>Batal</button>
+        <button type="button" className="finance-secondary automation-editor-cancel" disabled={pending || navigating} onClick={leave}>{navigating ? <LoadingIndicator>Membuka…</LoadingIndicator> : "Batal"}</button>
         <button type="submit" form="automation-editor-form" className="button-primary" disabled={pending || !options}>
           {pending ? <LoadingIndicator>Menyimpan…</LoadingIndicator> : <><span className="automation-editor-save-long">Simpan otomatisasi</span><span className="automation-editor-save-short">Simpan</span></>}
         </button>
@@ -232,11 +230,16 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
       <div className="automation-builder-body">
       <CompactFormSection {...sectionProps("basics", "Dasar")}>
         <label className="field"><span>Nama otomatisasi</span><input autoFocus required maxLength={120} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
-        {storage==="general" && <><label className="field"><span>Kategori otomatisasi (opsional)</span><select value={draft.automationCategoryId ?? ""} onChange={(event) => { setDraft({ ...draft, automationCategoryId: event.target.value || undefined }); if (categoryCreation.current) categoryCreation.current.open = false; }}>
-          <option value="">Tanpa kategori</option>{localCategories.filter((item) => item.status === "active" || item.id === draft.automationCategoryId).map((item) => <option key={item.id} value={item.id}>{item.name}{item.status === "archived" ? " (diarsipkan)" : ""}</option>)}</select></label>
-        <details ref={categoryCreation} className="history-detail"><summary>Buat kategori</summary><div className="inline-field-action">
-          <label className="field"><span>Nama kategori</span><input maxLength={80} value={newCategory} onChange={(event) => setNewCategory(event.target.value)} /></label>
-          <button type="button" className="finance-secondary" disabled={pending || !newCategory.trim()} onClick={createCategory}>Tambah kategori</button></div></details></>}
+        {storage==="general" && <div className="inline-catalog-select"><label className="field"><span>Grup aturan otomatisasi (opsional)</span><select value={draft.automationCategoryId ?? ""} onChange={(event) => {
+          if (event.target.value === "__create_new__") { setCreatingRuleGroup(true); return; }
+          setDraft({ ...draft, automationCategoryId: event.target.value || undefined });
+        }}>
+          <option value="">Tanpa grup aturan</option>{localCategories.filter((item) => item.status === "active" || item.id === draft.automationCategoryId).map((item) => <option key={item.id} value={item.id}>{item.name}{item.status === "archived" ? " (diarsipkan)" : ""}</option>)}
+          <option value="__create_new__">+ Buat grup aturan baru…</option></select></label>
+        {creatingRuleGroup && <div className="inline-catalog-creator"><div className="inline-field-action">
+          <label className="field"><span>Nama grup aturan baru</span><input autoFocus maxLength={80} value={newCategory} onChange={(event) => setNewCategory(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); if (newCategory.trim()) void createCategory(); } }} /></label>
+          <button type="button" className="button-primary" disabled={pending || !newCategory.trim()} onClick={() => void createCategory()}>Tambah</button>
+          <button type="button" className="finance-secondary" disabled={pending} onClick={() => { setCreatingRuleGroup(false); setNewCategory(""); }}>Batal</button></div></div>}</div>}
       </CompactFormSection>
       <CompactFormSection {...sectionProps("trigger", "Kapan")}>
         {meta.triggers.length===1 ? <p className="finance-hint">{draft.trigger.namespace==="time"?"Waktu tertentu":"Transaksi pemasukan dicatat"}</p> : <CompactChoice label="Pemicu" required value={triggerChosen ? draft.trigger.namespace : undefined} options={meta.triggers.map((value) => ({ value, label: value === "time" ? "Waktu tertentu" : "Transaksi terjadi" }))} onChange={(value) => resetTrigger(value)} />}
@@ -257,7 +260,7 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
             {meta.conditionFields.map((field) => <option key={field} value={field}>{conditionRegistry[field].label}</option>)}</select></label>
           <label className="field"><span>Perbandingan</span><select value={condition.operator} onChange={(event) => updateCondition(index, { operator: event.target.value as Operator, upperValue: event.target.value === "between" ? "" : undefined })}>
             {conditionRegistry[condition.field].operators.map((operator) => <option key={operator} value={operator}>{operatorLabels[operator]}</option>)}</select></label>
-          <div className="automation-condition-value"><ConditionValue condition={condition} options={options} onChange={(patch) => updateCondition(index, patch)} /></div>
+          <div className="automation-condition-value"><ConditionValue condition={condition} options={options} onCategoryCreated={() => void reload()} onChange={(patch) => updateCondition(index, patch)} /></div>
           <button type="button" className="row-action automation-condition-remove" data-tone="warning" aria-label={`Hapus kondisi ${index + 1}`} onClick={() => {
             const next = { ...draft, conditions: draft.conditions.filter((_, i) => i !== index) };
             const allowed = capabilities(next).references;
@@ -272,10 +275,23 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
           changeAction({ kind, source: actionRegistry[kind].source ? storage==="income_event"?{strategy:"trigger_destination_asset"}:{ strategy: "configured_asset", assetId: "" } : undefined,
             destination: actionRegistry[kind].destination ? { strategy: "configured_asset", assetId: "" } : undefined, categoryId: undefined, charges: [], transferFeeMinor: undefined });
         }} />
-        {triggerChosen && actionChosen && <div className="automation-form-pair">
-          {actionRegistry[action.kind].source && <AssetField label="Aset sumber" value={action.source} onChange={(source) => changeAction({ source })} allowed={meta.sourceReferences} options={options} disabled={pending} />}
-          {actionRegistry[action.kind].destination && <AssetField label="Aset tujuan" value={action.destination} onChange={(destination) => changeAction({ destination })} allowed={meta.destinationReferences} options={options} disabled={pending} />}
-        </div>}
+        {triggerChosen && actionChosen && <>
+          <div className="automation-form-pair">
+            {actionRegistry[action.kind].source && <AssetField label="Aset sumber" value={action.source} onChange={(source) => changeAction({ source })} allowed={meta.sourceReferences} options={options} disabled={pending} />}
+            {actionRegistry[action.kind].destination && <AssetField label="Aset tujuan" value={action.destination} onChange={(destination) => changeAction({ destination })} allowed={meta.destinationReferences} options={options} disabled={pending} />}
+          </div>
+          {action.kind !== "transfer" && <InlineCatalogSelect
+            label="Kategori transaksi"
+            catalog="transactionCategories"
+            appliesTo={action.kind}
+            disabled={pending}
+            value={action.categoryId ?? ""}
+            emptyLabel="Tanpa kategori"
+            items={options.catalogs.transactionCategories.filter((item) => item.isActive && item.appliesTo === action.kind)}
+            onCreated={() => void reload()}
+            onChange={(nextCategoryId) => changeAction({ categoryId: nextCategoryId || undefined })}
+          />}
+        </>}
       </CompactFormSection>}
       {triggerChosen && actionChosen && <CompactFormSection {...sectionProps("amount", "Nominal")}>
         {meta.amountStrategies.length===1 ? <p className="finance-hint">{amountRegistry[action.amount.strategy].label}</p> : <label className="field"><span>Cara menentukan nominal</span><select value={action.amount.strategy} onChange={(event) => {
@@ -295,11 +311,9 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
       </CompactFormSection>}
       {actionChosen && (!mobile || triggerChosen) && <CompactFormSection {...sectionProps("optional", "Opsional")}>
         {optionalVisited && <>
-        {action.kind !== "transfer" && <label className="field"><span>Kategori transaksi (opsional)</span><select disabled={pending} value={action.categoryId ?? ""} onChange={(event) => changeAction({ categoryId: event.target.value || undefined })}>
-          <option value="">Tanpa kategori</option>{options.catalogs.transactionCategories.filter((item) => item.isActive && item.appliesTo === action.kind).map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>}
         {currency && action.kind === "expense" && <OptionalChargesEditor enabled={chargesEnabled} onEnabledChange={setChargesEnabled} disabled={pending}
           rows={chargeRows??action.charges.map((item) => ({ typeId: item.typeId, amount: minorToInput(item.amountMinor, exponent) }))} inputMode="decimal"
-          chargeTypes={options.catalogs.chargeTypes.filter((item) => item.isActive)} onChange={setChargeRows} />}
+          chargeTypes={options.catalogs.chargeTypes.filter((item) => item.isActive)} onChargeTypeCreated={() => void reload()} onChange={setChargeRows} />}
         {currency && action.kind === "transfer" && <OptionalFormSection label="Ada biaya transfer" enabled={feeEnabled} onChange={setFeeEnabled} disabled={pending}>
           <label className="field"><span>Biaya transfer ({currency})</span><input required disabled={pending} inputMode="decimal" value={feeInput ?? (action.transferFeeMinor ? minorToInput(action.transferFeeMinor, exponent) : "")} onChange={(event) => setFeeInput(event.target.value)} /></label></OptionalFormSection>}
         <label className="field"><span>Catatan (opsional)</span><textarea disabled={pending} maxLength={1000} value={action.note ?? ""} onChange={(event) => changeAction({ note: event.target.value })} /></label>
@@ -353,11 +367,23 @@ function TimeFields({ trigger, onChange,frequencies }: { trigger: Extract<Trigge
     {schedule.frequency !== "once" && <label className="field automation-time-end"><span>Berakhir (opsional)</span><input type="date" min={schedule.startOn} value={schedule.endOn ?? ""} onChange={(event) => change({ endOn: event.target.value || undefined })} /></label>}
   </div>;
 }
-function ConditionValue({ condition, options, onChange }: { condition: Condition; options: FinanceOptions; onChange: (patch: Partial<Condition>) => void }) {
+function ConditionValue({ condition, options, onCategoryCreated, onChange }: { condition: Condition; options: FinanceOptions; onCategoryCreated?: () => void; onChange: (patch: Partial<Condition>) => void }) {
+  if (condition.field === "transaction_category") {
+    return <InlineCatalogSelect
+      label="Nilai"
+      catalog="transactionCategories"
+      appliesTo="expense"
+      required
+      value={condition.value}
+      emptyLabel="Pilih kategori"
+      items={options.catalogs.transactionCategories.map((item) => ({ id: item.id, displayName: item.displayName }))}
+      onCreated={onCategoryCreated}
+      onChange={(nextValue) => onChange({ value: nextValue })}
+    />;
+  }
   let values: { id: string; label: string }[] | undefined;
   if (condition.field === "transaction_type") values = Object.entries(actionRegistry).map(([id, item]) => ({ id, label: item.label }));
   if (["source_asset", "destination_asset"].includes(condition.field)) values = options.assets.map((item) => ({ id: item.id, label: item.displayName }));
-  if (condition.field === "transaction_category") values = options.catalogs.transactionCategories.map((item) => ({ id: item.id, label: item.displayName }));
   if (condition.field === "currency") values = options.currencies.map((item) => ({ id: item.code, label: item.code }));
   if (values) return <label className="field"><span>Nilai</span><select required value={condition.value} onChange={(event) => onChange({ value: event.target.value })}><option value="">Pilih nilai</option>
     {values.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>;

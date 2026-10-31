@@ -1,24 +1,35 @@
 import type { AnalyticsReport, DimensionRow } from "./types";
 import { analyticsFilters } from "./filters.ts";
-import { jakartaDay, previousPeriod, reportingPeriod } from "./periods.ts";
+import { jakartaDay, previousPeriod, reportingPeriod, type AnalyticsGranularity } from "./periods.ts";
 import { formatMinor } from "../finance/format.ts";
 
-export type InsightsDraft = { kind: string; currency: string; months: string; start: string; end: string };
+export type InsightsDraft = {
+  kind: string;
+  currency: string;
+  months: string;
+  start: string;
+  end: string;
+  granularity?: AnalyticsGranularity;
+};
 export function inclusiveEndDay(day: string) {
   const date = new Date(`${day}T00:00:00Z`); date.setUTCDate(date.getUTCDate() - 1);
   return date.toISOString().slice(0, 10);
 }
 export function insightsDraft(query: string, currency = "", now = new Date()): InsightsDraft {
   const params = new URLSearchParams(query), current = reportingPeriod({ kind: "current_month" }, now);
+  const rawGran = params.get("granularity");
+  const granularity: AnalyticsGranularity =
+    rawGran === "day" || rawGran === "week" || rawGran === "month" || rawGran === "year" ? rawGran : "auto";
   return { kind: params.get("period") ?? "current_month", currency: params.get("currency") ?? currency,
     months: params.get("months") ?? "6", start: params.get("start") ?? current.startDay,
-    end: params.get("end") ?? inclusiveEndDay(current.endDayExclusive) };
+    end: params.get("end") ?? inclusiveEndDay(current.endDayExclusive), granularity };
 }
 export function insightsQuery(draft: InsightsDraft): string {
   const params = new URLSearchParams({ period: draft.kind });
   if (draft.currency) params.set("currency", draft.currency);
   if (draft.kind === "monthly_trend") params.set("months", draft.months);
   if (draft.kind === "custom") { params.set("start", draft.start); params.set("end", draft.end); }
+  if (draft.granularity && draft.granularity !== "auto") params.set("granularity", draft.granularity);
   const filters = analyticsFilters(params), now = new Date(), period = reportingPeriod(filters.period, now);
   previousPeriod(filters.period, period, now);
   return params.toString();
@@ -105,6 +116,9 @@ export function insightsMonthScroll(scroll: number, viewport: number, left: numb
 export function insightsCurrency(report: AnalyticsReport, currency: string) {
   return { summary: report.summary.find((row) => row.currency === currency),
     categories: categoryShares(report.byCategory.filter((row) => row.currency === currency)),
+    incomeCategories: (report.byIncomeCategory ?? []).filter((row) => row.currency === currency),
+    weekdays: (report.byWeekday ?? []).filter((row) => row.currency === currency),
+    expenseItems: (report.expenseItems ?? []).filter((row) => row.currency === currency),
     monthly: report.monthly.filter((row) => row.currency === currency), charges: report.charges.filter((row) => row.currency === currency),
     accounts: report.byAccount.filter((row) => row.currency === currency), origins: report.byOrigin.filter((row) => row.currency === currency),
     comparison: report.comparison.currencies.find((row) => row.currency === currency),

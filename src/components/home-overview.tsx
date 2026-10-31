@@ -7,6 +7,7 @@ import { sortNamed } from "@/lib/list-order";
 import { SectionHeading } from "./section-heading";
 import { FinancialAmount } from "./financial-amount";
 import { HomeAnalytics } from "./home-analytics";
+import { HomeAutomationConfirmations } from "./home-automation-confirmations";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
 import { ProviderBrandMark } from "./provider-brand-mark";
 
@@ -26,6 +27,7 @@ export function HomeOverview({ snapshot, date, analytics = null }: { snapshot: S
     {empty ? <section className="surface finance-empty"><h2>Mulai dari aset pertama</h2>
       <p>Catat akun atau aset dan saldo awalnya untuk melihat posisi keuangan yang nyata di sini.</p>
       <Link href="/assets" className="button-primary">Tambah aset <ArrowRight size={17} aria-hidden="true" /></Link></section> : <>
+      <HomeAutomationConfirmations items={snapshot.pendingAutomations ?? []} />
       <div className="home-currencies">{sortNamed(currencies, entry => entry.currency, entry => entry.currency).map(entry => {
         const obligationsRelevant = planningReady && (BigInt(entry.dueMinor) > 0n || BigInt(entry.uncoveredMinor) > 0n || BigInt(entry.availableMinor) < 0n);
         const money = (value: string) => formatMinor(value, entry.currency, entry.exponent);

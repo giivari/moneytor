@@ -1,17 +1,29 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle } from "@phosphor-icons/react";
 import { LoadingIndicator } from "./loading-indicator";
 
-const FeedbackContext = createContext<{ notify: (text: string) => void; refresh: () => void; refreshing: boolean; loading: boolean; reportNavigation: (id: string, pending: boolean) => void } | null>(null);
+const FeedbackContext = createContext<{
+  notify: (text: string) => void;
+  refresh: () => void;
+  refreshing: boolean;
+  navigating: boolean;
+  routeSkeleton: boolean;
+  loading: boolean;
+  reportNavigation: (id: string, pending: boolean) => void;
+  reportRouteSkeleton: (id: string, active: boolean) => void;
+  navigate: (href: string, mode?: "push" | "replace") => void;
+} | null>(null);
 
-export function FinanceFeedbackProvider({ children }: { children: React.ReactNode }) {
+export function FinanceFeedbackProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [refreshing, startTransition] = useTransition();
+  const [routerNavigating, startNavTransition] = useTransition();
   const [notice, setNotice] = useState<{ text: string } | null>(null);
   const [navigation, setNavigation] = useState<Set<string>>(() => new Set());
+  const [skeletons, setSkeletons] = useState<Set<string>>(() => new Set());
   const reportNavigation = useCallback((id: string, pending: boolean) => {
     setNavigation((previous) => {
       if (previous.has(id) === pending) return previous;
@@ -20,22 +32,58 @@ export function FinanceFeedbackProvider({ children }: { children: React.ReactNod
       return next;
     });
   }, []);
+  const reportRouteSkeleton = useCallback((id: string, active: boolean) => {
+    setSkeletons((previous) => {
+      if (previous.has(id) === active) return previous;
+      const next = new Set(previous);
+      if (active) next.add(id); else next.delete(id);
+      return next;
+    });
+  }, []);
+  const navigate = useCallback((href: string, mode: "push" | "replace" = "push") => {
+    startNavTransition(() => {
+      if (mode === "replace") router.replace(href);
+      else router.push(href);
+    });
+  }, [router]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), 5000);
     return () => clearTimeout(timer);
   }, [notice]);
-  return <FeedbackContext.Provider value={{ notify: (text) => setNotice({ text }), refresh: () => startTransition(() => router.refresh()), refreshing, loading: navigation.size > 0 || refreshing, reportNavigation }}>
-    {(navigation.size > 0 || refreshing) && <div className="navigation-progress" role="status"><span className="navigation-progress-track" aria-hidden="true" /><span className="navigation-progress-label"><LoadingIndicator>{refreshing ? "Memperbarui data…" : "Membuka halaman…"}</LoadingIndicator></span></div>}
+  const navigating = navigation.size > 0 || routerNavigating;
+  const routeSkeleton = skeletons.size > 0;
+  return <FeedbackContext.Provider value={{
+    notify: (text) => setNotice({ text }),
+    refresh: () => startTransition(() => router.refresh()),
+    refreshing,
+    navigating,
+    routeSkeleton,
+    loading: navigating || refreshing,
+    reportNavigation,
+    reportRouteSkeleton,
+    navigate,
+  }}>
+    {(navigating || refreshing) && <div className="navigation-progress" role="status"><span className="navigation-progress-track" aria-hidden="true" /><span className="navigation-progress-label"><LoadingIndicator>{refreshing ? "Memperbarui data…" : "Menyiapkan halaman…"}</LoadingIndicator></span></div>}
     {children}
     {notice && <div className="security-notice" data-success="true" role="status"><CheckCircle size={20} weight="fill" aria-hidden="true" /><span>{notice.text}</span></div>}
   </FeedbackContext.Provider>;
 }
 
+const fallbackFeedback = {
+  notify: () => {},
+  refresh: () => {},
+  refreshing: false,
+  navigating: false,
+  routeSkeleton: false,
+  loading: false,
+  reportNavigation: () => {},
+  reportRouteSkeleton: () => {},
+  navigate: () => {},
+};
+
 export function useFinanceFeedback() {
-  const context = useContext(FeedbackContext);
-  if (!context) throw new Error("FinanceFeedbackProvider is required");
-  return context;
+  return useContext(FeedbackContext) ?? fallbackFeedback;
 }
 
 /** A synchronous guard covers repeated events before React commits disabled. */

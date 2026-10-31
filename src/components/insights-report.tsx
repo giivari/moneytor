@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { AnalyticsGranularity } from "@/lib/analytics/periods";
 import type { AnalyticsReport, DimensionRow } from "@/lib/analytics/types";
 import { dayLabel, feePartition, insightsCurrency, originLabel, percentageLabel, periodLabel, signedMoney } from "@/lib/analytics/presentation";
 import { formatMinor } from "@/lib/finance/format";
@@ -8,6 +9,7 @@ import type { InsightsSlideSelection } from "./insights-carousel";
 import { InsightsCostBars } from "./insights-visuals";
 import { InsightsPrimary } from "./insights-primary";
 import { InsightsSecondary } from "./insights-secondary";
+import { InsightsFinancialSuite } from "./insights-cashflow";
 import { FinancialAmount } from "./financial-amount";
 import { SectionHeading } from "./section-heading";
 
@@ -24,7 +26,7 @@ function Dimensions({ rows, origin = false }: { rows: DimensionRow[]; origin?: b
   </li>)}</ul>;
 }
 
-export function InsightsReportView({ report, currency, periodKind = "current_month", monthSelection, slideSelection = { index: 0, select: () => {} } }: { report: AnalyticsReport; currency: string; periodKind?: string; monthSelection?: InsightsMonthSelection; slideSelection?: InsightsSlideSelection }) {
+export function InsightsReportView({ report, currency, periodKind = "current_month", granularity = "auto", monthSelection, slideSelection = { index: 0, select: () => {} }, onRefreshReport }: { report: AnalyticsReport; currency: string; periodKind?: string; granularity?: AnalyticsGranularity; monthSelection?: InsightsMonthSelection; slideSelection?: InsightsSlideSelection; onRefreshReport?: () => void }) {
   const data = insightsCurrency(report, currency), summary = data.summary;
   if (!summary) return <div className="surface insight-state" role="status">Belum ada akun atau portofolio dengan mata uang yang dapat dilaporkan.</div>;
   const money = (value: string, className = "") => <Money value={value} currency={currency} exponent={summary.exponent} className={className} />;
@@ -51,14 +53,15 @@ export function InsightsReportView({ report, currency, periodKind = "current_mon
       <details className="insight-inline-detail insight-summary-detail"><summary>Komponen & perbandingan</summary>
       <dl className="insight-support-metrics">{line("Pokok Expense", summary.expensePrincipalMinor)}{line("Biaya layanan & Transfer", summary.feesMinor)}{line("Pajak", summary.taxesMinor)}{line("Biaya lainnya", summary.otherChargesMinor)}</dl>
       <dl className="insight-comparison-details">{([['Pemasukan', 'income'], ['Belanja', 'spending'], ['Net operasional', 'net']] as const).map(([label, key]) => <div key={key}><dt>Selisih {label}</dt><dd>{data.comparison ? `${signedMoney(data.comparison[key].differenceMinor, currency, summary.exponent)} (${percentageLabel(data.comparison[key].percentageChangeBps, true)})` : '—'}</dd></div>)}</dl>
-      <p className="insight-note">Pembanding: {periodLabel(report.comparison.period)}. {periodKind === "custom" ? "Interval sebelumnya dengan jumlah hari yang sama." : "Blok kalender sebelumnya secara penuh."} Persentase — berarti basis tidak positif atau tidak dapat dibandingkan.</p>
+      <p className="insight-note">Pembanding: {periodLabel(report.comparison.period)}. {["custom", "last_7_days", "last_30_days"].includes(periodKind) ? "Interval sebelumnya dengan jumlah hari yang sama." : "Blok kalender sebelumnya secara penuh."} Persentase — berarti basis tidak positif atau tidak dapat dibandingkan.</p>
       <p className="insight-note">Pokok Transfer internal tidak dihitung sebagai pemasukan atau belanja.</p>
       <p className="insight-note insight-activity-meta"><span>{summary.activityCount} transaksi P3 efektif: {summary.incomeCount} Income · {summary.expenseCount} Expense · {summary.transferCount} Transfer.</span>
         <span className="insight-transfer-meta">Transfer: <Money value={summary.transferPrincipalMinor} currency={currency} exponent={summary.exponent} suffix="." /></span></p>
       </details>
       {summary.activityCount === "0" && <p className="insight-empty">Belum ada transaksi P3 efektif pada periode ini. Konteks aset dan investasi tetap ditampilkan jika tersedia.</p>}
     </section>
-    <InsightsPrimary report={report} currency={currency} exponent={summary.exponent} selection={monthSelection} slides={slideSelection} categories={data.categories.rows} origins={data.origins} />
+    <InsightsPrimary report={report} currency={currency} exponent={summary.exponent} selection={monthSelection} slides={slideSelection} categories={data.categories.rows} origins={data.origins} granularity={granularity} />
+    <InsightsFinancialSuite report={report} currency={currency} exponent={summary.exponent} granularity={granularity} onRefreshReport={onRefreshReport} />
     <InsightsSecondary items={[
       { key: "fees", title: "Biaya & pajak", summary: `${formatMinor(summary.chargesMinor, currency, summary.exponent)} · Sudah termasuk dalam belanja`, action: "Rincian biaya & pajak", content: <>
         <SectionHeading title="Biaya & pajak" helper="Sudah termasuk dalam belanja P3." />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { loadFinanceOptions, type FinanceOptions } from "@/lib/finance/client";
 import { connectFinanceDialog } from "@/lib/finance/dialog-lifecycle";
 import { LoadingIndicator } from "./loading-indicator";
@@ -26,12 +26,17 @@ export function useFinanceOptions() {
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Pilihan belum dapat dimuat."); });
     return () => { active = false; };
   }, [attempt]);
-  return { options, optionsError: error, retry: () => { setError(""); setAttempt((value) => value + 1); } };
+  const reload = useCallback(async () => {
+    const fresh = await loadFinanceOptions();
+    setOptions(fresh);
+    return fresh;
+  }, []);
+  return { options, optionsError: error, retry: () => { setError(""); setAttempt((value) => value + 1); }, reload };
 }
 
 export function FinanceOptionsStatus({ error, retry }: { error: string; retry: () => void }) {
   return <div className="finance-options-status" aria-busy={!error}>
     {error ? <><p className="finance-error" role="alert">{error}</p><button type="button" className="finance-secondary" onClick={retry}>Coba lagi</button></>
-      : <p role="status"><LoadingIndicator>Memuat pilihan…</LoadingIndicator></p>}
+      : <div className="route-loading-status" role="status"><LoadingIndicator>Menyiapkan formulir…</LoadingIndicator><span>Memuat pilihan data.</span></div>}
   </div>;
 }

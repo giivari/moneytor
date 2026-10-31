@@ -1,16 +1,17 @@
 "use client";
 
+import type { AnalyticsGranularity } from "@/lib/analytics/periods";
 import type { AnalyticsReport, DimensionRow } from "@/lib/analytics/types";
 import type { InsightsMonthSelection } from "./use-insights-month";
 import { InsightsCarousel, type InsightsSlideSelection } from "./insights-carousel";
 import { InsightsDetailPair } from "./insights-detail-pair";
 import { InsightsCategoryDetails, InsightsComposition, InsightsIntervalDetails, InsightsOrigins, InsightsTrendSummary, useInsightsVisualTrend } from "./insights-visuals";
 
-export function InsightsPrimary({ report, currency, exponent, selection, slides, categories, origins }: {
+export function InsightsPrimary({ report, currency, exponent, selection, slides, categories, origins, granularity = "auto" }: {
   report: AnalyticsReport; currency: string; exponent: number; selection?: InsightsMonthSelection;
-  slides: InsightsSlideSelection; categories: DimensionRow[]; origins: DimensionRow[];
+  slides: InsightsSlideSelection; categories: DimensionRow[]; origins: DimensionRow[]; granularity?: AnalyticsGranularity;
 }) {
-  const model = useInsightsVisualTrend({ report, currency, exponent, selection });
+  const model = useInsightsVisualTrend({ report, currency, exponent, selection, granularity });
   if (model.mobile) return <InsightsCarousel selection={slides}>{[
     <InsightsTrendSummary key="trend" model={model} inlineDetails />,
     <InsightsComposition key="categories" rows={categories} />,

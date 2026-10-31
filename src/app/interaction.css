@@ -42,7 +42,17 @@ button .loading-indicator { color: inherit; }
 .route-loading .loading-row-list .loading-content-placeholder { min-height: 76px; }
 .loading-content-placeholder span { display: block; width: 45%; height: 10px; border-radius: 5px; background: #cfd9df; }
 .loading-content-placeholder span + span { width: 65%; height: 18px; }
-.finance-refresh-status { color: #194f87; background: var(--data-blue-soft); border: 1px solid #bdd4e8; border-radius: var(--radius-control); padding: 10px 13px; }
+.finance-status-shell { margin-bottom: 18px; }
+.finance-status-shell > .route-loading-status { margin-bottom: 0; }
+.finance-refresh-status { color: #194f87; background: var(--data-blue-soft); border: 1px solid #bdd4e8; border-radius: var(--radius-control); padding: 16px 18px; }
+.finance-options-status { margin-block: 10px 14px; }
+.finance-options-status > .route-loading-status { margin-bottom: 0; }
+.inline-catalog-select { display: grid; gap: 8px; min-width: 0; }
+.inline-catalog-creator { padding: 10px 12px; border: 1px solid #c5d9ec; border-radius: var(--radius-control); background: #f5f9fd; display: grid; gap: 6px; }
+.inline-catalog-creator .inline-field-action { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.inline-catalog-creator .inline-field-action > .field { flex: 1 1 180px; margin: 0; }
+.app-link-pending-spinner { display: inline-flex; align-items: center; margin-inline-start: 6px; vertical-align: middle; }
+a:has(.navigation-pending, .settings-nav-status) .app-link-pending-spinner { display: none; }
 [data-area] { --nav-accent: var(--data-blue); }
 [data-area="transactions"] { --nav-accent: var(--data-cyan); }
 [data-area="assets"] { --nav-accent: var(--data-violet); }

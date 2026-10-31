@@ -7,6 +7,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {readableMoneyMarkup} from './rendered-money.mjs';
 registerHooks({resolve(specifier,context,next){
+  if(specifier==='next/link' || specifier==='next/navigation') return next(specifier+'.js',context);
   if(specifier.startsWith('@/')) {
     const base=new URL('../src/'+specifier.slice(2),import.meta.url);
     return next(base.href+(fs.existsSync(new URL(base.href+'.tsx'))?'.tsx':'.ts'),context);

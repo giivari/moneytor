@@ -1,6 +1,30 @@
 export const ANALYTICS_TIME_ZONE = "Asia/Jakarta";
+export type AnalyticsGranularity = "auto" | "day" | "week" | "month" | "year";
+export type PeriodPresetKind =
+  | "current_month"
+  | "previous_month"
+  | "current_year"
+  | "last_7_days"
+  | "last_30_days"
+  | "last_3_months"
+  | "last_6_months"
+  | "last_1_year"
+  | "last_5_years";
+
+export const PERIOD_PRESET_KINDS: readonly PeriodPresetKind[] = [
+  "current_month",
+  "previous_month",
+  "current_year",
+  "last_7_days",
+  "last_30_days",
+  "last_3_months",
+  "last_6_months",
+  "last_1_year",
+  "last_5_years",
+];
+
 export type PeriodInput =
-  | { kind: "current_month" | "previous_month" | "current_year" }
+  | { kind: PeriodPresetKind }
   | { kind: "monthly_trend"; months?: number }
   | { kind: "custom"; startDay: string; endDay: string };
 export type ReportingPeriod = {
@@ -30,7 +54,7 @@ function monthStart(day: string, offset = 0) {
 export function periodBetween(startDay: string, endDayExclusive: string, now: Date): ReportingPeriod {
   const start = dayDate(startDay), end = dayDate(endDayExclusive);
   const days = (end.getTime() - start.getTime()) / 86400000;
-  if (days <= 0 || days > 1096) throw Error("Rentang laporan harus 1–1096 hari");
+  if (days <= 0 || days > 2000) throw Error("Rentang laporan harus 1–2000 hari");
   const startAt = new Date(`${startDay}T00:00:00+07:00`).toISOString();
   const endAt = new Date(`${endDayExclusive}T00:00:00+07:00`).toISOString();
   return { startDay, endDayExclusive, startAt, endAt, timeZone: ANALYTICS_TIME_ZONE, partial: endAt > now.toISOString() };
@@ -41,6 +65,12 @@ export function reportingPeriod(input: PeriodInput = { kind: "current_month" }, 
     case "current_month": return periodBetween(monthStart(today), monthStart(today, 1), now);
     case "previous_month": return periodBetween(monthStart(today, -1), monthStart(today), now);
     case "current_year": return periodBetween(`${today.slice(0, 4)}-01-01`, `${Number(today.slice(0, 4)) + 1}-01-01`, now);
+    case "last_7_days": return periodBetween(shiftDay(today, -6), shiftDay(today, 1), now);
+    case "last_30_days": return periodBetween(shiftDay(today, -29), shiftDay(today, 1), now);
+    case "last_3_months": return periodBetween(monthStart(today, -2), monthStart(today, 1), now);
+    case "last_6_months": return periodBetween(monthStart(today, -5), monthStart(today, 1), now);
+    case "last_1_year": return periodBetween(monthStart(today, -11), monthStart(today, 1), now);
+    case "last_5_years": return periodBetween(monthStart(today, -59), monthStart(today, 1), now);
     case "monthly_trend": {
       const months = input.months ?? 6;
       if (!Number.isInteger(months) || months < 1 || months > 36) throw Error("Tren dibatasi 1–36 bulan");
@@ -50,10 +80,14 @@ export function reportingPeriod(input: PeriodInput = { kind: "current_month" }, 
     default: throw Error("Periode laporan tidak valid");
   }
 }
-/** Full prior calendar period for calendar reports; equal day count for custom ranges. */
+/** Full prior calendar period for calendar reports; equal day count for custom/day ranges. */
 export function previousPeriod(input: PeriodInput, current: ReportingPeriod, now: Date): ReportingPeriod {
   if (input.kind === "current_month" || input.kind === "previous_month") return periodBetween(monthStart(current.startDay, -1), current.startDay, now);
   if (input.kind === "current_year") return periodBetween(`${Number(current.startDay.slice(0, 4)) - 1}-01-01`, current.startDay, now);
+  if (input.kind === "last_3_months") return periodBetween(monthStart(current.startDay, -3), current.startDay, now);
+  if (input.kind === "last_6_months") return periodBetween(monthStart(current.startDay, -6), current.startDay, now);
+  if (input.kind === "last_1_year") return periodBetween(monthStart(current.startDay, -12), current.startDay, now);
+  if (input.kind === "last_5_years") return periodBetween(monthStart(current.startDay, -60), current.startDay, now);
   if (input.kind === "monthly_trend") return periodBetween(monthStart(current.startDay, -(input.months ?? 6)), current.startDay, now);
   const days = (dayDate(current.endDayExclusive).getTime() - dayDate(current.startDay).getTime()) / 86400000;
   return periodBetween(shiftDay(current.startDay, -days), current.startDay, now);

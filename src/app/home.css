@@ -45,7 +45,7 @@
 .home-page dd { margin: var(--space-xs) 0 0; }
 .home-investment-currency > small { display: block; margin-top: var(--space-sm); }
 .home-account-list, .home-recent-list { list-style: none; margin: 0; padding: 0; }
-.home-account-list > li, .home-recent-list > li { display: grid; grid-template-columns: var(--row-icon-size) minmax(0,1fr) fit-content(48%); align-items: center; gap: var(--space-sm); padding-block: 6px; min-width: 0; }
+.home-account-list > li, .home-recent-list > li { display: grid; grid-template-columns: var(--row-icon-size) minmax(0,1fr) max-content; align-items: center; gap: var(--space-sm); padding-block: 6px; min-width: 0; }
 .home-account-list > li + li, .home-recent-list > li + li { border-top: 1px solid var(--line); }
 .home-account-list .finance-asset-mark, .home-recent-list .transaction-icon { width: var(--row-icon-size); height: var(--row-icon-size); }
 .home-account-copy, .home-recent-copy { display: grid; gap: 3px; min-width: 0; }
@@ -70,13 +70,14 @@
 }
 @media (max-width: 767px) {
   .home-page .home-desktop-only { display: none; }
-  .home-kpis { gap: 0 var(--space-sm); }
-  .home-page .home-kpi { padding: var(--kpi-padding); }
+  .home-kpis { gap: 0; border-radius: var(--radius-surface); box-shadow: 0 4px 22px rgba(24, 29, 32, .045); }
+  .home-page .home-kpi { padding: var(--kpi-padding); box-shadow: none; }
   .home-kpis .home-hero { grid-column: 1 / -1; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
   .home-hero .financial-value--summary { font-size: var(--type-hero); }
-  .home-kpis .home-expense, .home-kpis .home-liquid { border-top: 0; border-radius: 0 0 var(--radius-surface) var(--radius-surface); }
+  .home-kpis .home-expense { border-top: 0; border-radius: 0 0 0 var(--radius-surface); }
+  .home-kpis .home-liquid { border-top: 0; border-left: 0; border-radius: 0 0 var(--radius-surface) 0; }
   .home-expense .financial-value--summary, .home-liquid .financial-value--summary { font-size: var(--type-value-entity); }
-  .home-kpis .home-obligations { grid-column: 1 / -1; margin-top: var(--space-sm); }
+  .home-kpis .home-obligations { grid-column: 1 / -1; margin-top: var(--space-sm); box-shadow: 0 4px 22px rgba(24, 29, 32, .045); }
   .home-obligations[data-mobile-relevant="false"] { display: none; }
   .home-support-grid { display: block; margin-top: var(--space-md); }
   .home-warning { margin-top: var(--space-xs); }
@@ -85,6 +86,15 @@
   .home-kpi > small { font-size: var(--type-meta); }
   @container home (max-width: 23em) {
     .home-kpis { grid-template-columns: minmax(0,1fr); }
+    .home-kpis .home-expense { border-radius: 0; }
+    .home-kpis .home-liquid { border-left: 1px solid var(--line); border-radius: 0 0 var(--radius-surface) var(--radius-surface); }
     .home-kpi h2 { line-height: 1.4; }
   }
 }
+
+.home-automation-alert { margin-bottom: var(--dashboard-gap); border-color: #c5d9ec; background: #fff; }
+.home-automation-alert .eyebrow { color: var(--data-blue); }
+.home-automation-list { display: grid; gap: 0; margin-top: var(--space-xs); }
+.home-automation-item { padding-block: 10px; border-top: 1px solid var(--line); }
+.home-automation-item:first-child { border-top: 0; padding-top: 2px; }
+.home-automation-item:last-child { padding-bottom: 0; }

@@ -2,11 +2,12 @@
 
 import { Plus } from "@phosphor-icons/react";
 import { OptionalFormSection } from "./optional-form-section";
+import { InlineCatalogSelect } from "./inline-catalog-select";
 
 export type ChargeEditorRow = { id?: string; typeId: string; amount: string };
 
 export function OptionalChargesEditor({ enabled, onEnabledChange, rows, onChange, chargeTypes,
-  inputMode = "decimal", pattern, maxRows, disabled = false }: {
+  inputMode = "decimal", pattern, maxRows, disabled = false, onChargeTypeCreated }: {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
   rows: ChargeEditorRow[];
@@ -16,6 +17,7 @@ export function OptionalChargesEditor({ enabled, onEnabledChange, rows, onChange
   pattern?: string;
   maxRows?: number;
   disabled?: boolean;
+  onChargeTypeCreated?: () => void;
 }) {
   function addRow() {
     onChange([...rows, { id: crypto.randomUUID(), typeId: "", amount: "" }]);
@@ -26,13 +28,19 @@ export function OptionalChargesEditor({ enabled, onEnabledChange, rows, onChange
       onEnabledChange(checked);
     }}>
     <div className="optional-charges-editor">
-      {!chargeTypes.length && <p className="finance-hint">Tambahkan jenis biaya di Settings untuk mencatat biaya tambahan.</p>}
       {rows.map((row, index) => <div className="charge-editor-row" key={row.id ?? index}>
-        <label className="field"><span>Jenis biaya</span><select required disabled={disabled} value={row.typeId}
-          onChange={(event) => onChange(rows.map((entry, i) => i === index ? { ...entry, typeId: event.target.value } : entry))}>
-          <option value="">Pilih jenis biaya</option>
-          {chargeTypes.map((type) => <option value={type.id} key={type.id}>{type.displayName}</option>)}
-        </select></label>
+        <InlineCatalogSelect
+          label="Jenis biaya"
+          catalog="chargeTypes"
+          createLabel="jenis biaya"
+          required
+          disabled={disabled}
+          value={row.typeId}
+          emptyLabel="Pilih jenis biaya"
+          items={chargeTypes}
+          onCreated={onChargeTypeCreated}
+          onChange={(nextTypeId) => onChange(rows.map((entry, i) => i === index ? { ...entry, typeId: nextTypeId } : entry))}
+        />
         <label className="field"><span>Nominal</span><input required disabled={disabled} inputMode={inputMode} pattern={pattern} value={row.amount}
           onChange={(event) => onChange(rows.map((entry, i) => i === index ? { ...entry, amount: event.target.value } : entry))} /></label>
         <button type="button" className="row-action" data-tone="danger" disabled={disabled} aria-label={`Hapus biaya ${index + 1}`}
@@ -43,7 +51,7 @@ export function OptionalChargesEditor({ enabled, onEnabledChange, rows, onChange
           }}>Hapus</button>
       </div>)}
       {rows.length > 0 && <button type="button" className="text-link form-row-add" onClick={addRow}
-        disabled={disabled || !chargeTypes.length || (maxRows !== undefined && rows.length >= maxRows)}>
+        disabled={disabled || (maxRows !== undefined && rows.length >= maxRows)}>
         <Plus size={16} aria-hidden="true" /> Tambah biaya lain
       </button>}
     </div>

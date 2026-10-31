@@ -10,6 +10,7 @@ import { useRef, useState } from "react";
 import { ExportMenuButton } from "./export-menu-button";
 import { SectionHeading } from "./section-heading";
 import { ResponsiveDisclosure } from "./responsive-disclosure";
+import { InlineCatalogSelect } from "./inline-catalog-select";
 import { Archive, ArrowCounterClockwise, CalendarBlank, PencilSimple, PiggyBank, Plus, ShieldCheck, Target } from "@phosphor-icons/react";
 import { useFinanceDialog } from "./finance-form-hooks";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
@@ -60,6 +61,10 @@ function PlanningForm({ kind, initial, data, sources, positions, today, onClose 
   const [currency, setCurrency] = useState(initial?.currency ?? data.currencies[0]?.code ?? "IDR");
   const exponent = data.currencies.find((row) => row.code === currency)?.exponent ?? 0;
   const [labelId, setLabelId] = useState(initial?.labelId ?? data.labels.find((row) => row.kind === kind && row.isActive)?.id ?? "");
+  const [creatingLabel, setCreatingLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState("");
+  const [savingLabel, setSavingLabel] = useState(false);
+  const [localLabels, setLocalLabels] = useState<{ id: string; displayName: string }[]>([]);
   const [number, setNumber] = useState(initial ? minorToInput(initial.kind === "budget" ? initial.limitMinor : initial.kind === "goal" ? initial.targetMinor : initial.amountMinor, initial.exponent) : "");
   const [note, setNote] = useState(initial?.note ?? "");
   const [categoryId, setCategoryId] = useState(initial?.kind === "budget" ? initial.categoryId ?? "" : "");
@@ -108,18 +113,37 @@ function PlanningForm({ kind, initial, data, sources, positions, today, onClose 
       <button type="button" className="finance-secondary" aria-label="Tutup" disabled={pending} onClick={() => dialog.current?.close()}>×</button></div>
     <form onSubmit={(event) => void save(event)}>
       <label className="field"><span>Nama</span><input autoFocus required maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <div className="planning-form-grid"><label className="field"><span>Jenis</span><select value={labelId} onChange={(event) => setLabelId(event.target.value)} required>
-        {data.labels.filter((row) => row.kind === kind && (row.isActive || row.id === initial?.labelId)).map((row) => <option value={row.id} key={row.id}>{row.displayName}</option>)}</select></label>
+      <div className="planning-form-grid"><div className="inline-catalog-select"><label className="field"><span>Jenis</span><select value={labelId} onChange={(event) => {
+        if (event.target.value === "__create_new__") { setCreatingLabel(true); return; }
+        setLabelId(event.target.value);
+      }} required>
+        {data.labels.filter((row) => row.kind === kind && (row.isActive || row.id === initial?.labelId)).map((row) => <option value={row.id} key={row.id}>{row.displayName}</option>)}
+        {localLabels.filter((created) => !data.labels.some((row) => row.id === created.id)).map((row) => <option value={row.id} key={row.id}>{row.displayName}</option>)}
+        <option value="__create_new__">+ Tambah jenis rencana baru…</option></select></label>
+        {creatingLabel && <div className="inline-catalog-creator"><div className="inline-field-action"><label className="field"><span>Jenis rencana baru</span><input autoFocus maxLength={120} disabled={savingLabel} value={newLabelName} onChange={(e) => setNewLabelName(e.target.value)} onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (newLabelName.trim() && !savingLabel) { setSavingLabel(true); void send({ action: "label-save", kind, displayName: newLabelName.trim() }).then((res) => { setLocalLabels((prev) => [...prev, { id: res.id, displayName: newLabelName.trim() }]); setLabelId(res.id); setNewLabelName(""); setCreatingLabel(false); notify("Jenis rencana ditambahkan."); refresh(); }).catch((err) => setError(errorMessage(err))).finally(() => setSavingLabel(false)); } }
+        }} /></label>
+        <button type="button" className="button-primary" disabled={savingLabel || !newLabelName.trim()} onClick={() => { setSavingLabel(true); void send({ action: "label-save", kind, displayName: newLabelName.trim() }).then((res) => { setLocalLabels((prev) => [...prev, { id: res.id, displayName: newLabelName.trim() }]); setLabelId(res.id); setNewLabelName(""); setCreatingLabel(false); notify("Jenis rencana ditambahkan."); refresh(); }).catch((err) => setError(errorMessage(err))).finally(() => setSavingLabel(false)); }}>{savingLabel ? <LoadingIndicator>Menambah…</LoadingIndicator> : "Tambah"}</button>
+        <button type="button" className="finance-secondary" disabled={savingLabel} onClick={() => { setCreatingLabel(false); setNewLabelName(""); }}>Batal</button></div></div>}
+      </div>
         <label className="field"><span>Mata uang</span><select value={currency} disabled={!!initial} onChange={(event) => { setCurrency(event.target.value); setSourceAssetId(""); setGoalId(""); setObligationId(""); }}>
           {data.currencies.map((row) => <option value={row.code} key={row.code}>{row.code}</option>)}</select></label></div>
       <label className="field"><span>{kind === "budget" ? "Batas pengeluaran" : kind === "goal" ? "Target tabungan" : kind === "reserve" ? "Jumlah yang disisihkan" : "Jumlah kewajiban"}</span>
         <input inputMode="decimal" value={number} onChange={(event) => setNumber(event.target.value)} required placeholder="0" /></label>
       {kind === "budget" && <><div className="planning-form-grid"><label className="field"><span>Mulai (termasuk)</span><input type="date" required value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label>
         <label className="field"><span>Akhir (tidak termasuk)</span><input type="date" required value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label></div>
-        <label className="field"><span>Kategori (opsional)</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Semua pengeluaran</option>
-          {data.categories.map((row) => <option value={row.id} key={row.id}>{row.name}</option>)}
-          {initial?.kind === "budget" && initial.categoryId && !data.categories.some((row) => row.id === initial.categoryId) &&
-            <option value={initial.categoryId}>{initial.categoryName} · diarsipkan</option>}</select></label></>}
+        <InlineCatalogSelect
+          label="Kategori (opsional)"
+          catalog="transactionCategories"
+          appliesTo="expense"
+          value={categoryId}
+          emptyLabel="Semua pengeluaran"
+          items={data.categories.map((row) => ({ id: row.id, displayName: row.name }))}
+          extraOptions={initial?.kind === "budget" && initial.categoryId && !data.categories.some((row) => row.id === initial.categoryId)
+            ? <option value={initial.categoryId}>{initial.categoryName} · diarsipkan</option>
+            : undefined}
+          onChange={setCategoryId}
+        /></>}
       {kind === "goal" && <label className="field"><span>Tanggal target (opsional)</span><input type="date" value={targetOn} onChange={(event) => setTargetOn(event.target.value)} /></label>}
       {kind === "obligation" && <label className="field"><span>Jatuh tempo</span><input type="date" required value={dueOn} onChange={(event) => setDueOn(event.target.value)} /></label>}
       {kind === "reserve" && <><label className="field"><span>Tujuan cadangan</span><select value={purpose} onChange={(event) => { setPurpose(event.target.value as ReservePurpose); setGoalId(""); setObligationId(""); }}>

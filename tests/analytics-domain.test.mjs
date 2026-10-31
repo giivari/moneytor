@@ -43,3 +43,21 @@ test('large bigint arithmetic never crosses Number; percent zero/sign handling',
   assert.equal(periodChange('0','100').percentageChangeBps,'-10000');
   for(const [a,b] of [['100','0'],['0','0'],['-100','100'],['100','-100']])assert.equal(periodChange(a,b).percentageChangeBps,null);
 });
+test('flexible presets (1w, 1m, 6m, 1y, 5y) and explicit day/week/month/year granularity', async ()=>{
+  const {visualTrend}=await import('../src/lib/analytics/visuals.ts');
+  const w=reportingPeriod({kind:'last_7_days'},now);
+  assert.equal(w.startDay,'2026-10-05');assert.equal(w.endDayExclusive,'2026-10-12');
+  assert.equal(previousPeriod({kind:'last_7_days'},w,now).startDay,'2026-09-28');
+  const m6=reportingPeriod({kind:'last_6_months'},now);
+  assert.equal(monthKeys(m6).length,6);
+  const y5=reportingPeriod({kind:'last_5_years'},now);
+  assert.equal(monthKeys(y5).length,60);
+  assert.equal(analyticsFilters(new URLSearchParams('period=last_5_years&granularity=year')).granularity,'year');
+  assert.throws(()=>analyticsFilters(new URLSearchParams('period=current_month&granularity=decade')));
+  const report={generatedAt:now.toISOString(),period:w,daily:[{key:'2026-10-05',currency:'IDR',exponent:0,incomeMinor:'50000',spendingMinor:'15000',netMinor:'35000',activityCount:'2'}],monthly:[]};
+  const dailyTrend=visualTrend(report,'IDR',14,'day');
+  assert.equal(dailyTrend.granularity,'day');assert.equal(dailyTrend.intervals.length,7);
+  const yearReport={generatedAt:now.toISOString(),period:y5,daily:[],monthly:[{key:'2025-10',currency:'IDR',exponent:0,incomeMinor:'100',spendingMinor:'40',netMinor:'60',activityCount:'1'},{key:'2026-10',currency:'IDR',exponent:0,incomeMinor:'200',spendingMinor:'50',netMinor:'150',activityCount:'1'}]};
+  const yearlyTrend=visualTrend(yearReport,'IDR',12,'year');
+  assert.equal(yearlyTrend.granularity,'year');assert.ok(yearlyTrend.intervals.length>=5);
+});

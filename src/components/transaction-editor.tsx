@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
 import { OptionalChargesEditor, type ChargeEditorRow } from "./optional-charges-editor";
 import { OptionalFormSection } from "./optional-form-section";
+import { InlineCatalogSelect } from "./inline-catalog-select";
 import { financeRequest, requestJson } from "@/lib/finance/client";
 import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./finance-form-hooks";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
@@ -41,7 +42,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   const { refresh, notify } = useFinanceFeedback();
   const dialog = useFinanceDialog(onClose);
   const replay = useRef<{ payload: string; key: string } | null>(null);
-  const { options, optionsError, retry } = useFinanceOptions();
+  const { options, optionsError, retry, reload } = useFinanceOptions();
   const [error, setError] = useState("");
   const { pending, begin, finish } = useMutationPending();
   const [kind, setKind] = useState<ActivityKind>(initial?.kind ?? "expense");
@@ -309,10 +310,18 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         <OptionalFormSection label="Ada biaya transfer" enabled={feeEnabled} onChange={setFeeEnabled}>
           <label className="field"><span>Biaya transfer ({currency})</span><input inputMode="decimal" value={fee} onChange={(event) => setFee(event.target.value)} placeholder="0" /></label>
         </OptionalFormSection></>}
-      {kind !== "transfer" && <label className="field"><span>Kategori (opsional)</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-        <option value="">Tanpa kategori</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>}
+      {kind !== "transfer" && <InlineCatalogSelect
+        label="Kategori (opsional)"
+        catalog="transactionCategories"
+        appliesTo={kind}
+        value={categoryId}
+        emptyLabel="Tanpa kategori"
+        items={categories}
+        onCreated={() => void reload()}
+        onChange={setCategoryId}
+      />}
       {kind === "expense" && <OptionalChargesEditor enabled={chargesEnabled} onEnabledChange={setChargesEnabled}
-        rows={charges} onChange={setCharges} chargeTypes={chargeTypes} maxRows={20} />}
+        rows={charges} onChange={setCharges} chargeTypes={chargeTypes} maxRows={20} onChargeTypeCreated={() => void reload()} />}
       <details className="transaction-optional" open={Boolean(initial) || isCreditPurchase || undefined}><summary>Waktu & catatan <span>opsional</span></summary>
         <div className="field-grid"><label className="field"><span>Waktu</span><input required type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} /></label>
           <label className="field"><span>Catatan</span><textarea rows={2} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Tambahkan keterangan bila perlu" /></label></div>

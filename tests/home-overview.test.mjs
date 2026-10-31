@@ -15,7 +15,7 @@ globalThis.homeReadProbe = {snapshot: null, report: null, inputs: [], calls: [],
 const stub = code => ({format: 'module', shortCircuit: true, source: code});
 registerHooks({
  resolve(specifier, context, next) {
-  if (specifier === 'next/server') return next('next/server.js', context);
+  if (specifier === 'next/server' || specifier === 'next/link' || specifier === 'next/navigation') return next(specifier + '.js', context);
   const base = specifier.startsWith('@/') ? new URL('src/'+specifier.slice(2), root)
    : specifier.startsWith('.') && context.parentURL ? new URL(specifier, context.parentURL) : null;
   if (base && !/\.[a-z]+$/i.test(base.pathname)) for (const extension of ['.tsx','.ts']) {
@@ -259,4 +259,20 @@ test('shared foundations retain readable type and control targets without maskin
  assert.match(typography,/--type-copy: 14px/);
  assert.match(typography,/financial-amount-group \{ white-space: nowrap/);
  assert.doesNotMatch(source('src/components/financial-amount.tsx'),/useEffect|useState|tabIndex|scrollIntoView|<input|Number\(/);
+ const emptyOutput = html(fixture());
+ assert.doesNotMatch(emptyOutput, /Konfirmasi transaksi otomatis/);
+ const withPending = fixture();
+ withPending.pendingAutomations = [{
+  key: 'schedule:occ-1', id: 'occ-1', storage: 'schedule', title: 'Parkir Stasiun',
+  status: 'pending', latestResultStatus: null, triggerSource: 'time', categoryId: null,
+  at: '2026-10-11T01:00:00Z', amount: '10000', currency: 'IDR', exponent: 0,
+  context: 'E-Money · Pengeluaran', needsAmount: false, canPost: true, canSkip: true,
+  resultId: null, rootId: null, failure: null, actionMeaning: 'Pengeluaran Rp10.000 dari E-Money'
+ }];
+ const pendingOutput = html(withPending);
+ assert.match(pendingOutput, /Konfirmasi transaksi otomatis \(1\)/);
+ assert.match(pendingOutput, /Parkir Stasiun/);
+ assert.match(pendingOutput, /Konfirmasi/);
+ assert.match(pendingOutput, /Lewati/);
+ assert.ok(pendingOutput.indexOf('home-automation-alert') < pendingOutput.indexOf('home-hero'));
 });

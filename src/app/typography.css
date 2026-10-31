@@ -112,6 +112,7 @@ small { font-size: var(--type-meta); font-weight: var(--weight-regular); }
 /* Read-only money is never independently scrollable. Only whole grouping
  * tokens may move to the next line when available space is insufficient. */
 .financial-value.financial-amount { min-width: 0; max-width: 100%; flex-shrink: 1; white-space: normal; overflow: visible; overflow-wrap: normal; word-break: normal; }
+.financial-value.financial-amount[data-wide="false"] { white-space: nowrap; flex-shrink: 0; }
 .financial-amount-group { white-space: nowrap; }
 .investment-onboarding .investment-steps li { font-size: var(--type-copy); font-weight: var(--weight-regular); line-height: 1.4; }
 .investment-onboarding .investment-steps li > span { font-size: var(--type-meta); font-weight: var(--weight-medium); }

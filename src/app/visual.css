@@ -77,7 +77,8 @@ p { color: var(--muted); }
 .progress { background: #e7e9ea; }
 .progress > span { background: #646c71; }
 
-.insight-panel,
+.insight-panel { background: #fff; border-color: var(--line, #e1e4e6); }
+.insight-panel-legacy,
 .note-panel,
 .planning-note { background: #f5f6f6; border-color: #e1e4e6; }
 .insight-panel h2,

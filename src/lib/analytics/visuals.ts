@@ -1,11 +1,13 @@
 import type { AnalyticsReport, DimensionRow } from "./types";
 import { dayLabel, inclusiveEndDay, monthLabel, plotPercent } from "./presentation.ts";
-import { jakartaDay } from "./periods.ts";
+import { jakartaDay, type AnalyticsGranularity } from "./periods.ts";
 
 export type VisualInterval = {
   key: string; startDay: string; endDayExclusive: string; label: string;
   incomeMinor: string; spendingMinor: string; netMinor: string; activityCount: string;
 };
+export type ResolvedGranularity = "day" | "week" | "month" | "year";
+
 const dayMs = 86400000;
 const stamp = (day: string) => Date.parse(`${day}T00:00:00Z`);
 const day = (time: number) => new Date(time).toISOString().slice(0, 10);
@@ -16,15 +18,44 @@ const sum = (rows: Pick<VisualInterval, "incomeMinor" | "spendingMinor" | "netMi
   activityCount: rows.reduce((total, row) => total + BigInt(row.activityCount), 0n).toString(),
 });
 
-/** Presentation buckets only. Monday–Sunday Jakarta weeks are clipped to the selected range.
+/** Presentation buckets only. Supports explicit day/week/month/year or automatic selection.
  * Empty calendar buckets are zero; they are not invented financial observations. */
-export function visualTrend(report: AnalyticsReport, currency: string, maximum = 6) {
-  if (!Number.isInteger(maximum) || maximum < 1 || maximum > 36) throw Error("Batas interval tidak valid");
+export function visualTrend(
+  report: AnalyticsReport,
+  currency: string,
+  maximum = 6,
+  granularity: AnalyticsGranularity = "auto",
+) {
+  if (!Number.isInteger(maximum) || maximum < 1 || maximum > 62) throw Error("Batas interval tidak valid");
   const start = stamp(report.period.startDay), end = stamp(report.period.endDayExclusive);
-  const weekly = Array.isArray(report.daily) && (end - start) / dayMs <= 62;
+  const spanDays = (end - start) / dayMs;
+  const resolved: ResolvedGranularity =
+    granularity !== "auto"
+      ? granularity
+      : Array.isArray(report.daily) && spanDays <= 62
+        ? "week"
+        : "month";
+
+  const weekly = resolved === "week";
   let intervals: VisualInterval[];
-  if (weekly) {
-    const daily = new Map(report.daily.filter((row) => row.currency === currency).map((row) => [row.key, row]));
+
+  if (resolved === "day") {
+    const daily = new Map((report.daily ?? []).filter((row) => row.currency === currency).map((row) => [row.key, row]));
+    intervals = [];
+    for (let cursor = start; cursor < end; cursor += dayMs) {
+      const key = day(cursor);
+      const next = cursor + dayMs;
+      const row = daily.get(key);
+      intervals.push({
+        key,
+        startDay: key,
+        endDayExclusive: day(next),
+        label: dayLabel(key),
+        ...sum(row ? [row] : []),
+      });
+    }
+  } else if (resolved === "week") {
+    const daily = new Map((report.daily ?? []).filter((row) => row.currency === currency).map((row) => [row.key, row]));
     intervals = [];
     for (let cursor = start; cursor < end;) {
       const weekday = (new Date(cursor).getUTCDay() + 6) % 7;
@@ -37,12 +68,39 @@ export function visualTrend(report: AnalyticsReport, currency: string, maximum =
         label: `${dayLabel(day(cursor))} – ${dayLabel(day(next - dayMs))}`, ...sum(rows) });
       cursor = next;
     }
-  } else intervals = report.monthly.filter((row) => row.currency === currency).map((row) => {
-    const date = new Date(`${row.key}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + 1);
-    const startDay = row.key + "-01" > report.period.startDay ? row.key + "-01" : report.period.startDay;
-    const endDayExclusive = day(date.getTime()) < report.period.endDayExclusive ? day(date.getTime()) : report.period.endDayExclusive;
-    return { key: row.key, startDay, endDayExclusive, label: monthLabel(row.key), ...sum([row]) };
-  });
+  } else if (resolved === "year") {
+    const monthlyRows = report.monthly.filter((row) => row.currency === currency);
+    const byYear = new Map<string, DimensionRow[]>();
+    for (const row of monthlyRows) {
+      const yr = row.key.slice(0, 4);
+      const list = byYear.get(yr) ?? [];
+      list.push(row);
+      byYear.set(yr, list);
+    }
+    const startYr = Number(report.period.startDay.slice(0, 4));
+    const endYr = Number(inclusiveEndDay(report.period.endDayExclusive).slice(0, 4));
+    intervals = [];
+    for (let yr = startYr; yr <= endYr; yr++) {
+      const yrStr = String(yr);
+      const yrStart = `${yrStr}-01-01` > report.period.startDay ? `${yrStr}-01-01` : report.period.startDay;
+      const yrEndExcl = `${yr + 1}-01-01` < report.period.endDayExclusive ? `${yr + 1}-01-01` : report.period.endDayExclusive;
+      intervals.push({
+        key: yrStr,
+        startDay: yrStart,
+        endDayExclusive: yrEndExcl,
+        label: `Tahun ${yrStr}`,
+        ...sum(byYear.get(yrStr) ?? []),
+      });
+    }
+  } else {
+    intervals = report.monthly.filter((row) => row.currency === currency).map((row) => {
+      const date = new Date(`${row.key}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + 1);
+      const startDay = row.key + "-01" > report.period.startDay ? row.key + "-01" : report.period.startDay;
+      const endDayExclusive = day(date.getTime()) < report.period.endDayExclusive ? day(date.getTime()) : report.period.endDayExclusive;
+      return { key: row.key, startDay, endDayExclusive, label: monthLabel(row.key), ...sum([row]) };
+    });
+  }
+
   const size = Math.max(1, Math.ceil(intervals.length / maximum)), visible: VisualInterval[] = [];
   for (let index = 0; index < intervals.length; index += size) {
     const group = intervals.slice(index, index + size), first = group[0], last = group.at(-1)!;
@@ -50,7 +108,7 @@ export function visualTrend(report: AnalyticsReport, currency: string, maximum =
       label: group.length === 1 ? first.label : `${dayLabel(first.startDay)} – ${dayLabel(inclusiveEndDay(last.endDayExclusive))}`,
       ...sum(group) });
   }
-  return { intervals: visible, fullIntervals: intervals, weekly, grouped: size > 1 };
+  return { intervals: visible, fullIntervals: intervals, weekly, granularity: resolved, grouped: size > 1 };
 }
 
 export function initialVisualInterval(rows: VisualInterval[], report: AnalyticsReport, month?: string) {
@@ -71,10 +129,11 @@ export function visualIntervalState(row: VisualInterval, report: AnalyticsReport
 }
 
 /** Short axis labels accompany exact clipped interval labels, never substitute for them. */
-export function visualIntervalAxis(row: VisualInterval, weekly: boolean) {
+export function visualIntervalAxis(row: VisualInterval, weekly: boolean, granularity?: ResolvedGranularity) {
   const start = row.startDay, end = inclusiveEndDay(row.endDayExclusive);
   const year = start.slice(0, 4) === end.slice(0, 4) ? start.slice(0, 4) : `${start.slice(0, 4)}–${end.slice(0, 4)}`;
-  if (weekly) return { label: new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${start}T00:00:00Z`)), year };
+  if (granularity === "year") return { label: year, year };
+  if (weekly || granularity === "day") return { label: new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${start}T00:00:00Z`)), year };
   const firstQuarter = Math.floor((Number(start.slice(5, 7)) - 1) / 3) + 1;
   const lastQuarter = Math.floor((Number(end.slice(5, 7)) - 1) / 3) + 1;
   const fullQuarter = start.endsWith("-01") && Number(start.slice(5, 7)) % 3 === 1
@@ -93,6 +152,17 @@ export function spendingShares(rows: DimensionRow[]) {
     const percent = plotPercent(row.spendingMinor, total), start = offset;
     offset += percent;
     return { ...row, percent, offset: start, shareBps: total > 0n ? (BigInt(row.spendingMinor) * 10000n / total).toString() : null };
+  }) };
+}
+
+export function incomeShares(rows: DimensionRow[]) {
+  if (new Set(rows.map((row) => row.currency)).size > 1) throw Error("Pilih satu mata uang");
+  const total = rows.reduce((value, row) => value + BigInt(row.incomeMinor), 0n);
+  let offset = 0;
+  return { totalMinor: total.toString(), rows: rows.map((row) => {
+    const percent = plotPercent(row.incomeMinor, total), start = offset;
+    offset += percent;
+    return { ...row, percent, offset: start, shareBps: total > 0n ? (BigInt(row.incomeMinor) * 10000n / total).toString() : null };
   }) };
 }
 

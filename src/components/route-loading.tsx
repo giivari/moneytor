@@ -8,11 +8,15 @@ import { LoadingIndicator } from "./loading-indicator";
 export function RouteLoading() {
   const id = useId();
   const pathname = usePathname();
-  const { reportNavigation } = useFinanceFeedback();
+  const { reportNavigation, reportRouteSkeleton } = useFinanceFeedback();
   useEffect(() => {
     reportNavigation(id, true);
-    return () => reportNavigation(id, false);
-  }, [id, reportNavigation]);
+    reportRouteSkeleton(id, true);
+    return () => {
+      reportNavigation(id, false);
+      reportRouteSkeleton(id, false);
+    };
+  }, [id, reportNavigation, reportRouteSkeleton]);
   const cards = pathname === "/" || pathname.startsWith("/assets/investments");
   return <div className="page route-loading" aria-busy="true" aria-label="Memuat halaman">
     <div className="route-loading-status" role="status"><LoadingIndicator>Menyiapkan halaman…</LoadingIndicator><span>Konten sedang dimuat.</span></div>

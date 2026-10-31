@@ -16,6 +16,7 @@ import {
   parseCreditMeta,
 } from "@/lib/domain/credit";
 import { ProviderBrandMark } from "./provider-brand-mark";
+import { InlineCatalogSelect } from "./inline-catalog-select";
 import { financeRequest, requestJson } from "@/lib/finance/client";
 import { ExportMenuButton } from "./export-menu-button";
 import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./finance-form-hooks";
@@ -38,7 +39,7 @@ function AssetForm({
 }) {
   const { refresh, notify } = useFinanceFeedback();
   const dialog = useFinanceDialog(onClose);
-  const { options, optionsError, retry } = useFinanceOptions();
+  const { options, optionsError, retry, reload } = useFinanceOptions();
   const [error, setError] = useState("");
   const { pending, begin, finish } = useMutationPending();
   const [operation, setOperation] = useState<"save" | "archive">("save");
@@ -350,72 +351,73 @@ function AssetForm({
             )}
 
             <div className="field-grid">
-              <label className="field">
-                <span>Jenis aset</span>
-                <select
-                  required
-                  value={typeId || options.catalogs.assetTypes[0]?.id || ""}
-                  onChange={(event) => setTypeId(event.target.value)}
-                >
-                  {initial?.assetTypeId &&
-                    !options.catalogs.assetTypes.some((item) => item.id === initial.assetTypeId) && (
-                      <option value={initial.assetTypeId}>{initial.assetTypeName} (diarsipkan)</option>
-                    )}
-                  {options.catalogs.assetTypes.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Grup aset</span>
-                <select value={groupId} onChange={(event) => setGroupId(event.target.value)}>
-                  <option value="">Tanpa grup</option>
-                  {initial?.assetGroupId &&
-                    !options.catalogs.assetGroups.some((item) => item.id === initial.assetGroupId) && (
-                      <option value={initial.assetGroupId}>{initial.assetGroupName} (diarsipkan)</option>
-                    )}
-                  {options.catalogs.assetGroups.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <InlineCatalogSelect
+                label="Jenis aset"
+                catalog="assetTypes"
+                createLabel="jenis aset"
+                required
+                value={typeId || options.catalogs.assetTypes[0]?.id || ""}
+                items={options.catalogs.assetTypes}
+                extraOptions={
+                  initial?.assetTypeId &&
+                  !options.catalogs.assetTypes.some((item) => item.id === initial.assetTypeId) ? (
+                    <option value={initial.assetTypeId}>{initial.assetTypeName} (diarsipkan)</option>
+                  ) : undefined
+                }
+                onCreated={() => void reload()}
+                onChange={setTypeId}
+              />
+              <InlineCatalogSelect
+                label="Grup aset"
+                catalog="assetGroups"
+                createLabel="grup aset"
+                value={groupId}
+                emptyLabel="Tanpa grup"
+                items={options.catalogs.assetGroups}
+                extraOptions={
+                  initial?.assetGroupId &&
+                  !options.catalogs.assetGroups.some((item) => item.id === initial.assetGroupId) ? (
+                    <option value={initial.assetGroupId}>{initial.assetGroupName} (diarsipkan)</option>
+                  ) : undefined
+                }
+                onCreated={() => void reload()}
+                onChange={setGroupId}
+              />
             </div>
 
             <div className="field-grid">
-              <label className="field">
-                <span>Penyedia</span>
-                <select value={providerId} onChange={(event) => setProviderId(event.target.value)}>
-                  <option value="">Tanpa penyedia</option>
-                  {initial?.providerId &&
-                    !options.catalogs.providers.some((item) => item.id === initial.providerId) && (
-                      <option value={initial.providerId}>{initial.providerName} (diarsipkan)</option>
-                    )}
-                  {options.catalogs.providers.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Jaringan kartu</span>
-                <select value={networkId} onChange={(event) => setNetworkId(event.target.value)}>
-                  <option value="">Tidak ada</option>
-                  {initial?.paymentNetworkId &&
-                    !options.catalogs.paymentNetworks.some((item) => item.id === initial.paymentNetworkId) && (
-                      <option value={initial.paymentNetworkId}>{"Jaringan tersimpan"} (diarsipkan)</option>
-                    )}
-                  {options.catalogs.paymentNetworks.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <InlineCatalogSelect
+                label="Penyedia"
+                catalog="providers"
+                createLabel="penyedia"
+                value={providerId}
+                emptyLabel="Tanpa penyedia"
+                items={options.catalogs.providers}
+                extraOptions={
+                  initial?.providerId &&
+                  !options.catalogs.providers.some((item) => item.id === initial.providerId) ? (
+                    <option value={initial.providerId}>{initial.providerName} (diarsipkan)</option>
+                  ) : undefined
+                }
+                onCreated={() => void reload()}
+                onChange={setProviderId}
+              />
+              <InlineCatalogSelect
+                label="Jaringan kartu"
+                catalog="paymentNetworks"
+                createLabel="jaringan kartu"
+                value={networkId}
+                emptyLabel="Tidak ada"
+                items={options.catalogs.paymentNetworks}
+                extraOptions={
+                  initial?.paymentNetworkId &&
+                  !options.catalogs.paymentNetworks.some((item) => item.id === initial.paymentNetworkId) ? (
+                    <option value={initial.paymentNetworkId}>{"Jaringan tersimpan"} (diarsipkan)</option>
+                  ) : undefined
+                }
+                onCreated={() => void reload()}
+                onChange={setNetworkId}
+              />
             </div>
 
             {!isCredit ? (
@@ -745,7 +747,7 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
     <div className="dialog-heading"><div><span className="eyebrow">REKONSILIASI ASET</span><h2 id="asset-opening-title">Koreksi saldo awal</h2></div><button type="button" className="icon-button" aria-label="Tutup" disabled={pending} onClick={() => dialog.current?.close()}><X size={20} /></button></div>
     <p className="finance-hint">Perbaiki saldo saat aset pertama dicatat. Transaksi yang sudah ada tetap utuh.</p>
     {!asset.isActive && <p className="finance-hint">Aset diarsipkan. Pulihkan aset sebelum membuat koreksi baru; riwayatnya tetap dapat dilihat.</p>}
-    {loading ? <LoadingIndicator>Memuat saldo awal...</LoadingIndicator> : history && <form onSubmit={submit} aria-busy={pending}><fieldset className="finance-fieldset" disabled={pending}>
+    {loading ? <div className="route-loading-status" role="status"><LoadingIndicator>Menyiapkan formulir…</LoadingIndicator><span>Memuat saldo awal.</span></div> : history && <form onSubmit={submit} aria-busy={pending}><fieldset className="finance-fieldset" disabled={pending}>
       <dl className="investment-preview"><div><dt>Saldo awal asli</dt><dd>{formatMinor(history.originalMinor, history.currency, history.exponent)}</dd></div><div><dt>Saldo awal saat ini</dt><dd>{formatMinor(history.effectiveMinor, history.currency, history.exponent)}</dd></div></dl>
       {asset.isActive && <>
       <label className="field"><span>Saldo awal yang benar ({history.currency})</span><input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" /></label>

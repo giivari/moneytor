@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import type { AnalyticsGranularity } from "@/lib/analytics/periods";
 import type { AnalyticsReport, DimensionRow } from "@/lib/analytics/types";
 import { compactAxisMoney, inclusiveEndDay, originLabel, percentageLabel, plotPercent } from "@/lib/analytics/presentation";
 import { initialVisualInterval, spendingShares, visualIntervalAxis, visualIntervalState, visualTrend } from "@/lib/analytics/visuals";
@@ -15,12 +16,13 @@ function categoryShares(rows: DimensionRow[]) {
   const shares = spendingShares(rows);
   return { ...shares, rows: [...shares.rows].sort((a, b) => BigInt(a.spendingMinor) === BigInt(b.spendingMinor) ? a.name.localeCompare(b.name) : BigInt(a.spendingMinor) > BigInt(b.spendingMinor) ? -1 : 1) };
 }
-type VisualTrendProps = { report: AnalyticsReport; currency: string; exponent: number; selection?: InsightsMonthSelection; dashboard?: boolean };
-export function useInsightsVisualTrend({ report, currency, exponent, selection, dashboard = false }: VisualTrendProps) {
+type VisualTrendProps = { report: AnalyticsReport; currency: string; exponent: number; selection?: InsightsMonthSelection; dashboard?: boolean; granularity?: AnalyticsGranularity };
+export function useInsightsVisualTrend({ report, currency, exponent, selection, dashboard = false, granularity = "auto" }: VisualTrendProps) {
   const viewport = useInsightsViewport();
   const mobile = dashboard ? false : viewport;
   const duration = Date.parse(report.period.endDayExclusive) - Date.parse(report.period.startDay);
-  const data = visualTrend(report, currency, mobile ? duration <= 62 * 86400000 ? 6 : 4 : 12), rows = data.intervals;
+  const maxBins = mobile ? (duration <= 62 * 86400000 ? 6 : 4) : (granularity === "day" ? 14 : 12);
+  const data = visualTrend(report, currency, maxBins, granularity), rows = data.intervals;
   const [manual, setManual] = useState<{ key: string; month?: string } | null>(null);
   const selected = manual && manual.month === selection?.month && rows.some((row) => row.key === manual.key) ? manual.key : initialVisualInterval(rows, report, selection?.month);
   const active = rows.find((row) => row.key === selected), id = useId();
@@ -44,18 +46,34 @@ export function InsightsTrendSummary({ model, inlineDetails = false }: { model: 
 function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, dashboard = false) {
   const { report, currency, exponent, mobile, data, rows, active, id, select, maximum, width, bottom, step, money } = model;
   if (!active) return <p className="insight-empty">Belum ada interval untuk mata uang ini.</p>;
+  const helperCopy = data.granularity === "day"
+    ? "Per hari · Tanggal kalender Asia/Jakarta dalam periode terpilih."
+    : data.weekly
+      ? "Per minggu · Senin–Minggu, dipotong batas periode."
+      : data.granularity === "year"
+        ? "Per tahun · Akumulasi tahun kalender dalam periode terpilih."
+        : "Per bulan · Transaksi efektif dalam periode terpilih.";
+  const granWord = data.granularity === "day" ? "harian" : data.weekly ? "mingguan" : data.granularity === "year" ? "tahunan" : "bulanan";
+  const detailWord = data.weekly ? "minggu" : data.granularity === "day" ? "hari" : data.granularity === "year" ? "tahun" : "interval";
   return <>
-    <SectionHeading title="Pemasukan & belanja" helper={data.weekly ? "Per minggu · Senin–Minggu, dipotong batas periode." : "Per bulan · Transaksi efektif dalam periode terpilih."} />
+    <SectionHeading title="Pemasukan & belanja" helper={helperCopy} />
     <div className="insight-legend"><span><i className="insight-income-dot" />Pemasukan</span><span><i className="insight-spending-dot" />Belanja</span></div>
-    {data.grouped && <p className="insight-note">{mobile && !data.weekly ? "Maksimal 4 interval; TW = triwulan. " : "Interval berurutan diringkas. "}Tanggal tepat ada pada pilihan interval; semua bulan tersedia di rincian.</p>}
+    {data.grouped && <p className="insight-note">{mobile && data.granularity === "month" ? "Maksimal 4 interval; TW = triwulan. " : "Interval berurutan diringkas. "}Tanggal tepat ada pada pilihan interval; semua bulan tersedia di rincian.</p>}
     {maximum === 0n && <p className="insight-empty">Pemasukan dan belanja nol. Transfer tetap dilaporkan terpisah.</p>}
     <svg className="insight-fit-chart" viewBox={`0 0 ${width} ${dashboard ? 140 : 224}`} role="group" aria-labelledby={`${id}-title`}>
-      <title id={`${id}-title`}>{`Pemasukan dan belanja ${data.weekly ? "mingguan" : "bulanan"}; skala dari nol, angka tepat melalui pilihan interval.`}</title>
+      <title id={`${id}-title`}>{`Pemasukan dan belanja ${granWord}; skala dari nol, angka tepat melalui pilihan interval.`}</title>
       {(maximum === 0n ? [0] : [0, 1, 2]).map((tick) => <g key={tick}><line x1="64" x2={width - 8} y1={bottom - tick * (dashboard ? 36 : 74)} y2={bottom - tick * (dashboard ? 36 : 74)} className="insight-gridline" /><text x="58" y={bottom - tick * (dashboard ? 36 : 74) + 4} textAnchor="end" className="insight-axis">{compactAxisMoney(maximum * BigInt(tick) / 2n, currency, exponent)}</text></g>)}
       {rows.map((row, index) => {
         const x = 64 + step * (index + .5), size = Math.min(18, step * .3);
         const income = plotPercent(row.incomeMinor, maximum) * (dashboard ? .72 : 1.48), spending = plotPercent(row.spendingMinor, maximum) * (dashboard ? .72 : 1.48);
         const label = `${row.label}, ${visualIntervalState(row, report)}: pemasukan ${money(row.incomeMinor)}, belanja ${money(row.spendingMinor)}, net ${money(row.netMinor)}`;
+        const axisLabel = mobile || dashboard
+          ? visualIntervalAxis(row, data.weekly, data.granularity).label
+          : data.weekly || data.granularity === "day"
+            ? `${Number(row.startDay.slice(8))}/${Number(row.startDay.slice(5, 7))}`
+            : data.granularity === "year"
+              ? visualIntervalAxis(row, false, "year").label
+              : row.startDay.slice(5, 7) + (data.grouped ? `–${inclusiveEndDay(row.endDayExclusive).slice(5, 7)}` : "");
         return <g className="insight-month" key={row.key} role="button" tabIndex={0} aria-label={label} aria-pressed={row.key === active.key} onClick={() => select(row.key)} onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(row.key); }
           if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -67,8 +85,8 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
         }}>
           <title>{label}</title><rect className="insight-chart-hit" x={x - step * .45} y="24" width={step * .9} height={bottom - 22} rx="4" />
           <rect className="insight-income-bar" x={x - size - 2} y={bottom - income} width={size} height={income} rx="2" /><rect className="insight-spending-bar" x={x + 2} y={bottom - spending} width={size} height={spending} rx="2" />
-          <text className="insight-axis" textAnchor="middle" x={x} y={bottom + 22}>{mobile || dashboard ? visualIntervalAxis(row, data.weekly).label : data.weekly ? `${Number(row.startDay.slice(8))}/${Number(row.startDay.slice(5, 7))}` : row.startDay.slice(5, 7) + (data.grouped ? `–${inclusiveEndDay(row.endDayExclusive).slice(5, 7)}` : "")}</text>
-          {mobile && !data.weekly && <text className="insight-axis insight-axis-year" textAnchor="middle" x={x} y="220">{visualIntervalAxis(row, false).year}</text>}
+          <text className="insight-axis" textAnchor="middle" x={x} y={bottom + 22}>{axisLabel}</text>
+          {mobile && data.granularity === "month" && <text className="insight-axis insight-axis-year" textAnchor="middle" x={x} y="220">{visualIntervalAxis(row, false).year}</text>}
         </g>;
       })}
     </svg>
@@ -76,7 +94,7 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
       <div><dt>Pemasukan</dt><dd><FinancialAmount value={money(active.incomeMinor)} as="span" className="insight-positive" /></dd></div>
       <div><dt>Belanja</dt><dd><FinancialAmount value={money(active.spendingMinor)} as="span" className="insight-negative" /></dd></div>
       <div><dt>Net operasional</dt><dd><FinancialAmount value={money(active.netMinor)} as="span" className={BigInt(active.netMinor) < 0n ? "insight-negative" : "insight-positive"} /></dd></div>
-    </dl></div> : <><label className="field insight-interval-picker"><span>Rincian {data.weekly ? "minggu" : "interval"}</span><select value={active.key} onChange={(event) => select(event.target.value)}>{rows.map((row) => <option key={row.key} value={row.key}>{row.label} · {visualIntervalState(row, report)}</option>)}</select></label>
+    </dl></div> : <><label className="field insight-interval-picker"><span>Rincian {detailWord}</span><select value={active.key} onChange={(event) => select(event.target.value)}>{rows.map((row) => <option key={row.key} value={row.key}>{row.label} · {visualIntervalState(row, report)}</option>)}</select></label>
     <dl className="insight-interval-values" aria-live="polite"><div><dt>Pemasukan</dt><dd><FinancialAmount value={money(active.incomeMinor)} as="span" /></dd></div><div><dt>Belanja</dt><dd><FinancialAmount value={money(active.spendingMinor)} as="span" /></dd></div><div><dt>Net operasional</dt><dd className={BigInt(active.netMinor) < 0n ? "insight-negative" : "insight-positive"}><FinancialAmount value={money(active.netMinor)} as="span" /></dd></div></dl></>}
     {inlineDetails && <details className="insight-inline-detail"><summary>Angka semua interval</summary><InsightsIntervalDetails model={model} /></details>}
   </>;
@@ -91,7 +109,7 @@ export function InsightsComposition({ rows, inlineDetails = true }: { rows: Dime
   const sorted = shares.rows;
   const total = BigInt(shares.totalMinor), first = rows[0];
   return <>
-    <SectionHeading title="Komposisi belanja" helper="Expense + biaya terlampir. Biaya Transfer tidak termasuk." />
+    <SectionHeading title="Komposisi belanja" helper="Expense + biaya terlampir. Pokok & Biaya Transfer tidak termasuk." />
     {!first || total === 0n ? <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p> : <>
       <div className="insight-composition"><svg viewBox="0 0 160 160" role="img" aria-labelledby={`${id}-title`}>
         <title id={`${id}-title`}>{`Komposisi kategori; total ${formatMinor(total, first.currency, first.exponent)}. Rincian nominal dan persentase tersedia di bawah.`}</title>

@@ -8,6 +8,30 @@ import { prepareOwnerInvestmentSummaryRead } from "@/lib/investments/read";
 import { horizonDay, planningTotals } from "@/lib/domain/planning";
 import { computeCreditBills, isCreditAsset } from "@/lib/domain/credit";
 import { planningSchemaReady, readPlanningSummary } from "@/lib/planning/repository";
+import { readAutomation } from "@/lib/automation/service";
+import { readIncomeEvents } from "@/lib/automation/income-events";
+import { readGeneralAutomation } from "@/lib/automation/composable-service";
+import { unifyAutomation, type WorkspaceInstance } from "@/lib/automation/composable-facade";
+import { orderAutomationInstances } from "@/lib/automation/list-order";
+import { activityClassification } from "@/lib/automation/review-domain";
+
+async function readPendingAutomations(): Promise<WorkspaceInstance[]> {
+  try {
+    const [schedules, income, general] = await Promise.all([
+      readAutomation([]),
+      readIncomeEvents([]),
+      readGeneralAutomation([]),
+    ]);
+    const { instances } = unifyAutomation(schedules, income, general);
+    return orderAutomationInstances(
+      instances.filter((item) => activityClassification(item).tab === "attention"),
+      "history",
+      "desc",
+    );
+  } catch {
+    return [];
+  }
+}
 
 function planningHorizon() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
@@ -51,9 +75,10 @@ export async function monthlyExpenses() {
 }
 export async function financeSnapshot({ includeRecent = true, includeExpenses = true }: { includeRecent?: boolean; includeExpenses?: boolean } = {}, existing?: PoolClient) {
   await requireOwnerSession();
-  const [readAssets, readInvestments, recent] = await Promise.all([
+  const [readAssets, readInvestments, recent, pendingAutomations] = await Promise.all([
     prepareOwnerAssetRead(), prepareOwnerInvestmentSummaryRead(),
     includeRecent ? listActivities(false, 4) : Promise.resolve([]),
+    includeRecent ? readPendingAutomations() : Promise.resolve([] as WorkspaceInstance[]),
   ]);
   const read = async (client: PoolClient) => {
     // One transaction uses one connection; queueing concurrent pg queries adds no parallelism.
@@ -101,7 +126,7 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
       const rows = await client.query<{ currency: string; exponent: number }>("SELECT code AS currency,minor_unit_exponent AS exponent FROM currencies WHERE code = ANY($1::text[])", [missing]);
       for (const row of rows.rows) byCurrency.set(row.currency, { currency: row.currency, exponent: row.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, unpricedCount: 0 });
     }
-    return { assets, recent, investment, planningReady, throughDay, currencies: [...byCurrency.values()].map((entry) => {
+    return { assets, recent, pendingAutomations, investment, planningReady, throughDay, currencies: [...byCurrency.values()].map((entry) => {
       const commitmentsForCurrency = planning.get(entry.currency);
       const totalDue = (BigInt(commitmentsForCurrency?.dueMinor ?? "0") + entry.creditDebt).toString();
       const totalUncovered = (BigInt(commitmentsForCurrency?.uncoveredMinor ?? "0") + entry.creditDebt).toString();

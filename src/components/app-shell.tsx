@@ -28,7 +28,7 @@ const navigation = [
 const mobileMore = navigation.slice(3);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { refreshing, loading } = useFinanceFeedback();
+  const { refreshing, navigating, routeSkeleton, loading } = useFinanceFeedback();
   const pathname = usePathname();
   const standalone = ["/unlock", "/recover", "/enroll"].includes(pathname);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -90,7 +90,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
     </header>
 
-    <main id="main-content" className="main-content" aria-busy={refreshing}>{refreshing && <p className="finance-refresh-status" role="status"><LoadingIndicator>Memperbarui data…</LoadingIndicator></p>}{children}</main>
+    <main id="main-content" className="main-content" aria-busy={refreshing || navigating}>
+      {(refreshing || (navigating && !routeSkeleton)) && (
+        <div className="page finance-status-shell">
+          <div className="route-loading-status finance-refresh-status" role="status">
+            <LoadingIndicator>{refreshing ? "Memperbarui data…" : "Menyiapkan halaman…"}</LoadingIndicator>
+            <span>{refreshing ? "Konten sedang diperbarui." : "Konten sedang dimuat."}</span>
+          </div>
+        </div>
+      )}
+      {children}
+    </main>
 
     <nav className="bottom-nav" aria-label="Navigasi seluler">
       <Link href="/" data-area="home" className={active("/") ? "active" : ""} aria-current={active("/") ? "page" : undefined}><NavigationIcon><House size={22} weight={active("/") ? "fill" : "regular"} /></NavigationIcon><span>Home</span></Link>

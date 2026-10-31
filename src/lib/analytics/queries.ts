@@ -1,10 +1,10 @@
 import "server-only";
 import type { PoolClient } from "pg";
 import type { ReportingPeriod } from "./periods";
-import type { ChargeReport, DimensionRow, InvestmentFlows } from "./types";
+import type { AnalyticsExpenseItem, ChargeReport, DimensionRow, InvestmentFlows } from "./types";
 import { FEE_SYSTEM_KEYS, TAX_SYSTEM_KEYS } from "./domain";
 
-export type AggregateRow = DimensionRow & { dimension: "summary" | "category" | "account" | "origin" | "month" | "day" };
+export type AggregateRow = DimensionRow & { dimension: "summary" | "category" | "income_category" | "weekday" | "account" | "origin" | "month" | "day" };
 /** One effective activity is one fact. Charges are reduced before any dimension joins. */
 export async function readAggregates(client: PoolClient, period: ReportingPeriod, currency: string | null, summaryOnly = false): Promise<AggregateRow[]> {
   const result = await client.query<AggregateRow>(`
@@ -49,12 +49,16 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
       SELECT f.*,d.* FROM facts f CROSS JOIN LATERAL (VALUES
         ('summary','summary',NULL::text,'Ringkasan',false),
         ('category',COALESCE(f.category_id::text,'uncategorized'),f.category_id::text,COALESCE(f.category_name,'Tanpa kategori'),NOT COALESCE(f.category_active,true)),
+        ('income_category',COALESCE(f.category_id::text,'uncategorized'),f.category_id::text,COALESCE(f.category_name,'Tanpa kategori'),NOT COALESCE(f.category_active,true)),
+        ('weekday',extract(isodow from f.occurred_at AT TIME ZONE 'Asia/Jakarta')::int::text,NULL::text,extract(isodow from f.occurred_at AT TIME ZONE 'Asia/Jakarta')::int::text,false),
         ('account',f.account_id::text,f.account_id::text,f.account_name,NOT f.account_active),
         ('origin',f.origin,NULL::text,f.origin,false),
         ('month',to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM'),NULL::text,to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM'),false),
         ('day',to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM-DD'),NULL::text,to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM-DD'),false)
       ) d(dimension,key,dimension_id,name,archived)
-      WHERE (d.dimension<>'category' OR f.kind='expense') AND (NOT $4::boolean OR d.dimension='summary')
+      WHERE (d.dimension<>'category' OR f.kind='expense')
+        AND (d.dimension<>'income_category' OR f.kind='income')
+        AND (NOT $4::boolean OR d.dimension='summary')
     )
     SELECT dimension,key,dimension_id AS id,name,archived,currency_code AS currency,exponent,
       sum(income)::text AS "incomeMinor",sum(expense)::text AS "expensePrincipalMinor",
@@ -92,4 +96,59 @@ export async function readInvestmentFlows(client: PoolClient, period: ReportingP
     FROM investment_transactions t JOIN currencies c ON c.code=t.currency_code LEFT JOIN investment_trade_fees f ON f.transaction_id=t.id
     WHERE t.status='posted' AND t.occurred_at >= $1 AND t.occurred_at < $2 AND ($3::text IS NULL OR t.currency_code=$3)
     GROUP BY t.currency_code,c.minor_unit_exponent ORDER BY t.currency_code COLLATE "C"`, [period.startAt, period.endAt, currency])).rows;
+}
+export async function readExpenseItems(client: PoolClient, period: ReportingPeriod, currency: string | null): Promise<AnalyticsExpenseItem[]> {
+  const result = await client.query<{
+    id: string;
+    occurredAt: Date | string;
+    currency: string;
+    exponent: number;
+    baseAmountMinor: string;
+    chargesMinor: string;
+    spendingMinor: string;
+    categoryId: string | null;
+    categoryName: string | null;
+    sourceAssetId: string;
+    sourceName: string;
+    note: string | null;
+    origin: AnalyticsExpenseItem["origin"];
+    charges: { typeId: string; amountMinor: string }[];
+  }>(`
+    WITH RECURSIVE selected AS MATERIALIZED (
+      SELECT * FROM financial_activities WHERE status='posted' AND kind='expense' AND occurred_at >= $1 AND occurred_at < $2
+        AND ($3::text IS NULL OR currency_code=$3)
+    ), lineage AS (
+      SELECT id,id AS ancestor FROM selected
+      UNION SELECT l.id,f.replaces_activity_id FROM lineage l JOIN financial_activities f ON f.id=l.ancestor
+        WHERE f.replaces_activity_id IS NOT NULL
+    ), receipts AS (
+      SELECT result_activity_id AS id,'allocation_adjustment' AS origin FROM automation_allocation_adjustments WHERE result_activity_id IS NOT NULL
+      UNION ALL SELECT activity_id,'automation' FROM automation_action_results
+      UNION ALL SELECT result_activity_id,'automation' FROM income_event_instances WHERE result_activity_id IS NOT NULL
+      UNION ALL SELECT activity_id,'automation' FROM recurring_transaction_occurrences WHERE activity_id IS NOT NULL
+    ), origins AS (
+      SELECT l.id,CASE WHEN bool_or(r.origin='allocation_adjustment') THEN 'allocation_adjustment'
+        WHEN bool_or(r.origin='automation') THEN 'automation' ELSE 'manual' END AS origin
+      FROM lineage l LEFT JOIN receipts r ON r.id=l.ancestor GROUP BY l.id
+    ), charges AS (
+      SELECT ac.activity_id,sum(ac.amount_minor::numeric) AS total,
+        COALESCE(jsonb_agg(jsonb_build_object('typeId', ac.charge_type_id::text, 'amountMinor', ac.amount_minor::text) ORDER BY ac.id), '[]'::jsonb) AS list
+      FROM activity_charges ac JOIN selected f ON f.id=ac.activity_id GROUP BY ac.activity_id
+    )
+    SELECT f.id::text AS id, f.occurred_at AS "occurredAt", f.currency_code AS currency, c.minor_unit_exponent AS exponent,
+      f.base_amount_minor::text AS "baseAmountMinor", COALESCE(ch.total,0)::text AS "chargesMinor",
+      (f.base_amount_minor::numeric + COALESCE(ch.total,0))::text AS "spendingMinor",
+      f.category_id::text AS "categoryId", cat.display_name AS "categoryName",
+      f.source_asset_id::text AS "sourceAssetId", a.display_name AS "sourceName",
+      f.note, o.origin, COALESCE(ch.list, '[]'::jsonb) AS charges
+    FROM selected f JOIN currencies c ON c.code=f.currency_code JOIN origins o ON o.id=f.id
+    LEFT JOIN charges ch ON ch.activity_id=f.id LEFT JOIN transaction_categories cat ON cat.id=f.category_id
+    JOIN assets a ON a.id=f.source_asset_id
+    ORDER BY (f.category_id IS NOT NULL) ASC, (f.base_amount_minor::numeric + COALESCE(ch.total,0)) DESC, f.occurred_at DESC
+    LIMIT 80`, [period.startAt, period.endAt, currency]);
+  return result.rows.map((row) => ({
+    ...row,
+    occurredAt: row.occurredAt instanceof Date ? row.occurredAt.toISOString() : String(row.occurredAt),
+    charges: Array.isArray(row.charges) ? row.charges : [],
+  }));
 }

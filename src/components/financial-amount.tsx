@@ -7,7 +7,8 @@ export function FinancialAmount({ value, level = "supporting", className = "", a
   className?: string; as?: "strong" | "span";
 }) {
   const Element = as;
-  return <Element className={`financial-value financial-amount financial-value--${level} ${className}`} data-wide={value.length > 18}>
-    {value.split(/(?=\.\d{3}(?:\D|$))/).map((group, index) => <Fragment key={index}>{index > 0 && <wbr />}<span className="financial-amount-group">{group}</span></Fragment>)}
+  const wide = value.length > 18;
+  return <Element className={`financial-value financial-amount financial-value--${level} ${className}`} data-wide={wide}>
+    {value.split(/(?=\.\d{3}(?:\D|$))/).map((group, index) => <Fragment key={index}>{wide && index > 0 && <wbr />}<span className="financial-amount-group">{group}</span></Fragment>)}
   </Element>;
 }

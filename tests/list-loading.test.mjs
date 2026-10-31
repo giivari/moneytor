@@ -8,8 +8,9 @@ import {renderToStaticMarkup} from 'react-dom/server';
 
 // Exercise the real hooks with controlled effect commits and deferred network responses.
 registerHooks({resolve(specifier,context,next){
+ if(specifier==='next/link' || specifier==='next/navigation') return next(specifier+'.js',context);
  if(specifier==='react'&&/\/(use-list-request|use-automation-history|use-insights-report|use-insights-month|insights-workspace|activity-page)\.tsx?$/.test(context.parentURL??''))return {shortCircuit:true,url:'data:text/javascript,export const useState=(...args)=>globalThis.listHarness.state(...args);export const useEffect=(...args)=>globalThis.listHarness.effect(...args);export const useCallback=(...args)=>globalThis.listHarness.callback(...args);'};
- if(specifier==='@/lib/finance/client')return {shortCircuit:true,url:'data:text/javascript,export const requestJson=(...args)=>globalThis.listHarness.request(...args);'};
+ if(specifier==='@/lib/finance/client')return {shortCircuit:true,url:'data:text/javascript,export const requestJson=(...args)=>globalThis.listHarness.request(...args);export const financeRequest=(...args)=>globalThis.listHarness.request(...args);export const loadFinanceOptions=()=>globalThis.listHarness.request("/api/finance/options",{});'};
  if(specifier.startsWith('@/')){const url=new URL('../src/'+specifier.slice(2),import.meta.url);return next(url.href+(fs.existsSync(new URL(url.href+'.tsx'))?'.tsx':'.ts'),context);}
  if(specifier.startsWith('.')&&context.parentURL?.includes('/src/')&&!/\.[a-z]+$/i.test(specifier)){const url=new URL(specifier,context.parentURL);return next(url.href+(fs.existsSync(new URL(url.href+'.tsx'))?'.tsx':'.ts'),context);}
  return next(specifier,context);
