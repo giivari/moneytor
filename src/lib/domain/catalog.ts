@@ -50,3 +50,15 @@ export function requireActive<T extends { id: string; isActive: boolean }>(item:
   if (!item.isActive) throw new Error(`Inactive reference: ${id}`);
   return item;
 }
+
+/**
+ * Dedicated system categories are used by background automations or special system tracking
+ * (e.g. recurring bank account admin fees). They must not crowd out general everyday spending
+ * categories in manual transaction creation dropdowns, while remaining fully recorded, projected
+ * and auditable in transaction history and financial analytics.
+ */
+export function isDedicatedCategory(item: { systemKey?: string | null; displayName?: string }): boolean {
+  if (item.systemKey === "bank_admin_fee") return true;
+  if (/^biaya\s*admin(\s*rekening|\s*bank)?$/i.test(item.displayName ?? "")) return true;
+  return false;
+}

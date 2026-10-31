@@ -4,7 +4,7 @@ import {
   addMoney, defineCurrency, deserializeMoney, majorDecimal, money, serializeMoney,
 } from "../src/lib/domain/money.ts";
 import {
-  assertUniqueSystemKeys, customCatalogItem, validateCatalogName,
+  assertUniqueSystemKeys, customCatalogItem, isDedicatedCategory, validateCatalogName,
 } from "../src/lib/domain/catalog.ts";
 import { planActivity } from "../src/lib/domain/ledger.ts";
 import {
@@ -145,4 +145,15 @@ test("asset admin fee & deposit interest terms encode, parse, strip cleanly, and
   assert.equal(yieldEst.taxMonthlyMinor, 12000n);
   assert.equal(yieldEst.netInterestMonthlyMinor, 48000n);
   assert.equal(yieldEst.netAfterAdminMonthlyMinor, 37000n);
+});
+
+test("dedicated system categories (e.g. bank admin fee) are identified to avoid crowding manual dropdowns", () => {
+  assert.equal(isDedicatedCategory({ displayName: "Biaya Admin Rekening" }), true);
+  assert.equal(isDedicatedCategory({ displayName: "biaya admin" }), true);
+  assert.equal(isDedicatedCategory({ displayName: "Biaya Admin Bank" }), true);
+  assert.equal(isDedicatedCategory({ systemKey: "bank_admin_fee" }), true);
+  assert.equal(isDedicatedCategory({ displayName: "Makanan" }), false);
+  assert.equal(isDedicatedCategory({ displayName: "Belanja" }), false);
+  assert.equal(isDedicatedCategory({ displayName: "Transport" }), false);
+  assert.equal(isDedicatedCategory({ displayName: "Rumah Tangga" }), false);
 });

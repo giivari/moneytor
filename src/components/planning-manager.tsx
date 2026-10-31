@@ -18,6 +18,7 @@ import { LoadingIndicator } from "./loading-indicator";
 import { requestJson } from "@/lib/finance/client";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
 import { horizonDay, planningPosition, type PlanKind, type ReservePurpose } from "@/lib/domain/planning";
+import { isDedicatedCategory } from "@/lib/domain/catalog";
 import type { PlanningData, PlanningItem, PlanningLabel } from "@/lib/planning/repository";
 
 type Position = { currency: string; exponent: number; liquidMinor: string; eligibleMinor: string };
@@ -138,7 +139,9 @@ function PlanningForm({ kind, initial, data, sources, positions, today, onClose 
           appliesTo="expense"
           value={categoryId}
           emptyLabel="Semua pengeluaran"
-          items={data.categories.map((row) => ({ id: row.id, displayName: row.name }))}
+          items={data.categories
+            .filter((row) => !isDedicatedCategory({ displayName: row.name }) || (initial?.kind === "budget" && row.id === initial.categoryId))
+            .map((row) => ({ id: row.id, displayName: row.name }))}
           extraOptions={initial?.kind === "budget" && initial.categoryId && !data.categories.some((row) => row.id === initial.categoryId)
             ? <option value={initial.categoryId}>{initial.categoryName} · diarsipkan</option>
             : undefined}

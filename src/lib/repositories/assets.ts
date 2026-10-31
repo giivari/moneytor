@@ -315,14 +315,20 @@ async function ensureAdminExpenseCategoryId(): Promise<string | undefined> {
   const existing = await database().query<{ id: string }>(
     `SELECT id FROM transaction_categories
      WHERE applies_to = 'expense' AND is_active
-       AND display_name ~* '(biaya\\s*admin|administrasi|biaya\\s*rekening|biaya\\s*bank)'
+       AND (system_key = 'bank_admin_fee' OR display_name ~* '^(biaya\\s*admin|biaya\\s*admin\\s*rekening|biaya\\s*bank)$')
      ORDER BY is_builtin DESC, created_at ASC LIMIT 1`,
   );
-  if (existing.rows[0]?.id) return existing.rows[0].id;
+  if (existing.rows[0]?.id) {
+    await database().query(
+      "UPDATE transaction_categories SET system_key = 'bank_admin_fee', is_builtin = true WHERE id = $1 AND (system_key IS NULL OR system_key = '')",
+      [existing.rows[0].id],
+    );
+    return existing.rows[0].id;
+  }
   const createdId = randomUUID();
   const inserted = await database().query<{ id: string }>(
     `INSERT INTO transaction_categories (id, display_name, applies_to, is_builtin, system_key)
-     VALUES ($1, 'Biaya Admin Rekening', 'expense', false, NULL)
+     VALUES ($1, 'Biaya Admin Rekening', 'expense', true, 'bank_admin_fee')
      ON CONFLICT DO NOTHING
      RETURNING id`,
     [createdId],

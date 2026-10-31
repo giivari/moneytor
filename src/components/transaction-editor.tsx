@@ -10,6 +10,7 @@ import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./fin
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
+import { isDedicatedCategory } from "@/lib/domain/catalog";
 import {
   calculateCreditInstallmentPlan,
   computeCreditBills,
@@ -71,7 +72,10 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   const exponent = account?.exponent ?? 0;
   const destinationOptions = active.filter((item) => item.id !== account?.id && item.currency === currency);
   const destination = destinationId ? destinationOptions.find((item) => item.id === destinationId) : destinationOptions[0];
-  const categories = options?.catalogs.transactionCategories.filter((item) => item.appliesTo === kind) ?? [];
+  const categories =
+    options?.catalogs.transactionCategories.filter(
+      (item) => item.appliesTo === kind && (!isDedicatedCategory(item) || item.id === initial?.categoryId),
+    ) ?? [];
   const chargeTypes = options?.catalogs.chargeTypes.filter((item) => item.systemKey !== "transfer_fee") ?? [];
 
   const isCreditPurchase = !initial && kind === "expense" && Boolean(account && isCreditAsset(account));

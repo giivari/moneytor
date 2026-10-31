@@ -69,6 +69,13 @@ export async function listCatalog(catalog: Catalog, includeArchived = false): Pr
          SET is_builtin = false, system_key = NULL
          WHERE system_key = 'demo_network'`,
       );
+    } else if (catalog === "transactionCategories") {
+      await database().query(
+        `UPDATE transaction_categories
+         SET is_builtin = true, system_key = 'bank_admin_fee'
+         WHERE display_name ~* '^(biaya\\s*admin\\s*rekening|biaya\\s*admin|administrasi\\s*bank)$'
+           AND (system_key IS NULL OR system_key = '')`,
+      );
     }
   }
   const flags = await readLifecycleFlags(database(), table, includeArchived);
