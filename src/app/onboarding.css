@@ -56,17 +56,37 @@ html[data-privacy="hidden"] .financial-amount {
 }
 
 @media (max-width: 1020px) {
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
   .onboarding-help-trigger {
-    width: 38px;
-    height: 38px;
-    border-color: #d5dce0;
-    background: #ffffff;
-    color: #253036;
-    box-shadow: 0 2px 8px rgba(24, 29, 32, 0.06);
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    border: none;
+    background: #5044dc;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(80, 68, 220, 0.22);
+    transition: transform 0.15s ease, background-color 0.15s ease;
   }
   .onboarding-help-trigger:hover {
-    background: #f3f6f8;
-    border-color: #bcc6cc;
+    background: #4438cc;
+  }
+  .onboarding-help-trigger:active {
+    transform: scale(0.95);
+  }
+  .privacy-toggle-trigger[aria-pressed="true"] {
+    background: #392eb5;
+    color: #ffffff;
+  }
+}
+
+@media (max-width: 390px) {
+  .onboarding-help-trigger {
+    width: 40px;
+    height: 40px;
   }
 }
 

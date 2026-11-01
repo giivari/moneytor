@@ -301,6 +301,55 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
   if (activeRows.length === 0) {
     return <p className="insight-empty">Belum ada transaksi tercatat pada interval di periode ini.</p>;
   }
+
+  if (model.mobile) {
+    return (
+      <div className="insight-interval-list-wrap">
+        <div className="u-table-wrap" tabIndex={0} role="region" aria-label="Tabel rincian per interval">
+          <table className="u-table insight-interval-table">
+            <caption>Pemasukan, belanja, dan net operasional ({model.currency})</caption>
+            <thead>
+              <tr>
+                <th scope="col">Interval</th>
+                <th scope="col">Net operasional</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeRows.map((row) => {
+                const net = BigInt(row.netMinor);
+                const state = visualIntervalState(row, model.report);
+                return (
+                  <tr key={row.key}>
+                    <th scope="row">
+                      <strong>{row.label}</strong>
+                      <em className="u-pill" data-status={state}>
+                        {state}
+                      </em>
+                      <small className="u-cell-sub">
+                        Masuk {model.money(row.incomeMinor)} · Belanja {model.money(row.spendingMinor)}
+                      </small>
+                    </th>
+                    <td className={net < 0n ? "insight-negative" : net > 0n ? "insight-positive" : "insight-zero-muted"}>
+                      <FinancialAmount
+                        as="span"
+                        value={signedMoney(row.netMinor, model.currency, model.exponent)}
+                        className="insight-money"
+                      />
+                      <small className="u-cell-sub">Net</small>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {hiddenCount > 0 && (
+          <p className="insight-note">{hiddenCount} interval tanpa transaksi disembunyikan agar tetap ringkas.</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="insight-interval-list-wrap">
       <div className="u-table-wrap insight-chart-scroll" tabIndex={0} role="region" aria-label="Tabel rincian per interval">

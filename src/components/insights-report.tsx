@@ -178,6 +178,7 @@ export function InsightsReportView({
   monthSelection?: InsightsMonthSelection;
   slideSelection?: InsightsSlideSelection;
 }) {
+  const mobile = useInsightsViewport();
   const data = insightsCurrency(report, currency);
   const summary = data.summary;
   if (!summary) {
@@ -307,45 +308,88 @@ export function InsightsReportView({
                 <div className="u-table-section">
                   <h4 className="u-table-title">Perbandingan vs {periodLabel(report.comparison.period)}</h4>
                   <div className="u-table-wrap">
-                    <table className="u-table" aria-label="Perbandingan dengan periode sebelumnya">
-                      <thead>
-                        <tr>
-                          <th scope="col">Indikator</th>
-                          <th scope="col">Periode ini</th>
-                          <th scope="col">Selisih</th>
-                          <th scope="col">%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(
-                          [
-                            ["Pemasukan", summary.incomeMinor, "income", "insight-positive"],
-                            ["Belanja", summary.spendingMinor, "spending", "insight-negative"],
+                    {mobile ? (
+                      <table className="u-table" aria-label="Perbandingan dengan periode sebelumnya">
+                        <thead>
+                          <tr>
+                            <th scope="col">Indikator</th>
+                            <th scope="col">Periode ini &amp; selisih</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(
                             [
-                              "Net operasional",
-                              summary.netMinor,
-                              "net",
-                              BigInt(summary.netMinor) < 0n ? "insight-negative" : "insight-positive",
-                            ],
-                          ] as const
-                        ).map(([label, currentVal, key, tone]) => {
-                          const comp = data.comparison?.[key];
-                          const diffBig = comp ? BigInt(comp.differenceMinor) : 0n;
-                          return (
-                            <tr key={key}>
-                              <th scope="row">
-                                <strong>{label}</strong>
-                              </th>
-                              <td className={BigInt(currentVal) === 0n ? "insight-zero-muted" : tone}>{money(currentVal)}</td>
-                              <td className={!comp || diffBig === 0n ? "insight-zero-muted" : ""}>
-                                {comp ? signedMoney(comp.differenceMinor, currency, summary.exponent) : "—"}
-                              </td>
-                              <td className="insight-zero-muted">{comp ? percentageLabel(comp.percentageChangeBps, true) : "—"}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                              ["Pemasukan", summary.incomeMinor, "income", "insight-positive"],
+                              ["Belanja", summary.spendingMinor, "spending", "insight-negative"],
+                              [
+                                "Net operasional",
+                                summary.netMinor,
+                                "net",
+                                BigInt(summary.netMinor) < 0n ? "insight-negative" : "insight-positive",
+                              ],
+                            ] as const
+                          ).map(([label, currentVal, key, tone]) => {
+                            const comp = data.comparison?.[key];
+                            const diffText = comp ? signedMoney(comp.differenceMinor, currency, summary.exponent) : "—";
+                            const pctText = comp ? percentageLabel(comp.percentageChangeBps, true) : "—";
+                            return (
+                              <tr key={key}>
+                                <th scope="row">
+                                  <strong>{label}</strong>
+                                  <small className="u-cell-sub">
+                                    Selisih {diffText} ({pctText})
+                                  </small>
+                                </th>
+                                <td className={BigInt(currentVal) === 0n ? "insight-zero-muted" : tone}>
+                                  {money(currentVal)}
+                                  <small className="u-cell-sub">Periode ini</small>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <table className="u-table" aria-label="Perbandingan dengan periode sebelumnya">
+                        <thead>
+                          <tr>
+                            <th scope="col">Indikator</th>
+                            <th scope="col">Periode ini</th>
+                            <th scope="col">Selisih</th>
+                            <th scope="col">%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(
+                            [
+                              ["Pemasukan", summary.incomeMinor, "income", "insight-positive"],
+                              ["Belanja", summary.spendingMinor, "spending", "insight-negative"],
+                              [
+                                "Net operasional",
+                                summary.netMinor,
+                                "net",
+                                BigInt(summary.netMinor) < 0n ? "insight-negative" : "insight-positive",
+                              ],
+                            ] as const
+                          ).map(([label, currentVal, key, tone]) => {
+                            const comp = data.comparison?.[key];
+                            const diffBig = comp ? BigInt(comp.differenceMinor) : 0n;
+                            return (
+                              <tr key={key}>
+                                <th scope="row">
+                                  <strong>{label}</strong>
+                                </th>
+                                <td className={BigInt(currentVal) === 0n ? "insight-zero-muted" : tone}>{money(currentVal)}</td>
+                                <td className={!comp || diffBig === 0n ? "insight-zero-muted" : ""}>
+                                  {comp ? signedMoney(comp.differenceMinor, currency, summary.exponent) : "—"}
+                                </td>
+                                <td className="insight-zero-muted">{comp ? percentageLabel(comp.percentageChangeBps, true) : "—"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </div>
 

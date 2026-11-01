@@ -167,14 +167,59 @@
 }
 
 @media (max-width: 1020px) {
-  .site-header { padding: 18px 22px 0; }
-  .header-inner { display: flex; justify-content: space-between; }
-  .brand { font-size: 18px; padding-inline-start: 12px; }
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: 14px 22px 8px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .site-header .brand {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 20px;
+    border-radius: 999px;
+    background: linear-gradient(105deg, #4c6274 0%, #399da4 48%, #5044dc 100%);
+    color: #ffffff;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(45, 60, 100, 0.16);
+    flex: 1 1 auto;
+    max-width: 230px;
+  }
+  .site-header .brand-identity {
+    display: inline-flex;
+    align-items: center;
+    width: 100%;
+  }
+  .site-header .brand-identity::before {
+    content: none;
+  }
+  .site-header .brand-wordmark {
+    color: #ffffff;
+    text-transform: capitalize;
+  }
+  .site-header[data-loading="true"] .brand {
+    background: linear-gradient(105deg, #4c6274, #399da4, #5044dc, #399da4, #4c6274);
+    background-size: 250% 100%;
+    animation: header-loading-flow 2.8s ease-in-out infinite;
+  }
   .brand-mark { width: 27px; height: 27px; }
   .floating-nav,
   .header-actions .button-primary { display: none; }
   .demo-badge { display: block; }
-  .main-content { padding: 30px 22px 120px; }
+  .main-content { padding: 22px 22px 120px; }
 
   .bottom-nav {
     position: fixed;
@@ -290,6 +335,11 @@
 
 @media (max-width: 390px) {
   .site-header { padding-inline: 14px; }
+  .site-header .brand {
+    font-size: 17px;
+    padding: 0 16px;
+    max-width: 190px;
+  }
   .main-content { padding-inline: 14px; }
   .bottom-nav { width: calc(100% - 20px); }
 }
