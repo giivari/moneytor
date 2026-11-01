@@ -69,11 +69,12 @@ export function useInsightsVisualTrend({
     (max, row) => [BigInt(row.incomeMinor), BigInt(row.spendingMinor)].reduce((a, b) => (a > b ? a : b), max),
     0n,
   );
-  const width = dashboard ? 600 : mobile ? 320 : Math.max(420, rows.length * 44 + 72);
+  const width = dashboard ? 600 : mobile ? 340 : Math.max(420, rows.length * 44 + 72);
   const bottom = dashboard ? 98 : 180;
-  const step = (width - 72) / Math.max(1, rows.length);
+  const axisLeft = 68;
+  const step = (width - axisLeft - 12) / Math.max(1, rows.length);
   const money = (amount: string) => formatMinor(amount, currency, exponent);
-  return { report, currency, exponent, mobile, data, rows, active, id, select, maximum, width, bottom, step, money };
+  return { report, currency, exponent, mobile, data, rows, active, id, select, maximum, width, bottom, axisLeft, step, money };
 }
 
 export type VisualTrendModel = ReturnType<typeof useInsightsVisualTrend>;
@@ -132,31 +133,47 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
         {(maximum === 0n ? [0] : [0, 1, 2]).map((tick) => (
           <g key={tick}>
             <line
-              x1="64"
+              x1={model.axisLeft ?? 68}
               x2={width - 8}
               y1={bottom - tick * (dashboard ? 36 : 74)}
               y2={bottom - tick * (dashboard ? 36 : 74)}
               className="insight-gridline"
             />
-            <text x="58" y={bottom - tick * (dashboard ? 36 : 74) + 4} textAnchor="end" className="insight-axis">
+            <text x={(model.axisLeft ?? 68) - 6} y={bottom - tick * (dashboard ? 36 : 74) + 4} textAnchor="end" className="insight-axis">
               {compactAxisMoney((maximum * BigInt(tick)) / 2n, currency, exponent)}
             </text>
           </g>
         ))}
         {rows.map((row, index) => {
-          const x = 64 + step * (index + 0.5);
+          const x = (model.axisLeft ?? 68) + step * (index + 0.5);
           const size = Math.min(18, step * 0.3);
           const income = plotPercent(row.incomeMinor, maximum) * (dashboard ? 0.72 : 1.48);
           const spending = plotPercent(row.spendingMinor, maximum) * (dashboard ? 0.72 : 1.48);
           const label = `${row.label}, ${visualIntervalState(row, report)}: pemasukan ${money(row.incomeMinor)}, belanja ${money(row.spendingMinor)}, net ${money(row.netMinor)}`;
-          const axisLabel =
-            mobile || dashboard
-              ? visualIntervalAxis(row, data.weekly, data.granularity).label
-              : data.weekly || data.granularity === "day"
-                ? `${Number(row.startDay.slice(8))}/${Number(row.startDay.slice(5, 7))}`
-                : data.granularity === "year"
-                  ? visualIntervalAxis(row, false, "year").label
-                  : row.startDay.slice(5, 7) + (data.grouped ? `–${inclusiveEndDay(row.endDayExclusive).slice(5, 7)}` : "");
+          const isCompact = mobile || dashboard;
+          const axisLabel = (() => {
+            if (data.granularity === "year") {
+              return visualIntervalAxis(row, false, "year").label;
+            }
+            if (isCompact) {
+              if (data.granularity === "month") {
+                return visualIntervalAxis(row, false, "month").label;
+              }
+              const day = Number(row.startDay.slice(8));
+              const month = Number(row.startDay.slice(5, 7));
+              if (step < 34 && index % Math.ceil(34 / step) !== 0 && index !== rows.length - 1) {
+                return "";
+              }
+              return `${day}/${month}`;
+            }
+            if (data.weekly || data.granularity === "day") {
+              return `${Number(row.startDay.slice(8))}/${Number(row.startDay.slice(5, 7))}`;
+            }
+            return (
+              row.startDay.slice(5, 7) +
+              (data.grouped ? `–${inclusiveEndDay(row.endDayExclusive).slice(5, 7)}` : "")
+            );
+          })();
           return (
             <g
               className="insight-month"
@@ -591,7 +608,7 @@ export function InsightsCategoryDetails({ rows, charges = [] }: { rows: Dimensio
 
 export function InsightsCashflowSlide({ model }: { model: VisualTrendModel }) {
   const id = useId();
-  const { report, currency, exponent, data, rows } = model;
+  const { report, currency, exponent, data, rows, mobile } = model;
   const curData = insightsCurrency(report, currency);
   const summary = curData.summary;
 
@@ -608,13 +625,14 @@ export function InsightsCashflowSlide({ model }: { model: VisualTrendModel }) {
     return peak > acc ? peak : acc;
   }, 0n);
 
-  const width = 320;
+  const width = 340;
   const yZero = 96;
   const half = 56;
-  const step = (width - 68) / Math.max(1, series.length);
+  const axisLeft = 68;
+  const step = (width - axisLeft - 12) / Math.max(1, series.length);
   const poly = series
     .map((item, idx) => {
-      const cx = 62 + step * (idx + 0.5);
+      const cx = axisLeft + step * (idx + 0.5);
       const ratio = maxAbs > 0n ? Number((item.cumBig * 1000n) / maxAbs) / 1000 : 0;
       const cy = Math.round((yZero - ratio * half) * 10) / 10;
       return `${cx},${cy}`;
@@ -651,25 +669,41 @@ export function InsightsCashflowSlide({ model }: { model: VisualTrendModel }) {
       ) : (
         <svg className="insight-fit-chart" viewBox={`0 0 ${width} 192`} role="img" aria-labelledby={`${id}-cf-slide`}>
           <title id={`${id}-cf-slide`}>Grafik surplus, defisit, dan arus kas kumulatif pada periode terpilih.</title>
-          <line x1="58" x2={width - 8} y1={yZero - half} y2={yZero - half} className="insight-gridline" />
-          <line x1="58" x2={width - 8} y1={yZero} y2={yZero} className="insight-zero-line" />
-          <line x1="58" x2={width - 8} y1={yZero + half} y2={yZero + half} className="insight-gridline" />
-          <text x="52" y={yZero - half + 4} textAnchor="end" className="insight-axis">
+          <line x1={axisLeft} x2={width - 8} y1={yZero - half} y2={yZero - half} className="insight-gridline" />
+          <line x1={axisLeft} x2={width - 8} y1={yZero} y2={yZero} className="insight-zero-line" />
+          <line x1={axisLeft} x2={width - 8} y1={yZero + half} y2={yZero + half} className="insight-gridline" />
+          <text x={axisLeft - 6} y={yZero - half + 4} textAnchor="end" className="insight-axis">
             +{compactAxisMoney(maxAbs, currency, exponent)}
           </text>
-          <text x="52" y={yZero + 4} textAnchor="end" className="insight-axis">
+          <text x={axisLeft - 6} y={yZero + 4} textAnchor="end" className="insight-axis">
             {formatMinor(0n, currency, exponent)}
           </text>
-          <text x="52" y={yZero + half + 4} textAnchor="end" className="insight-axis">
+          <text x={axisLeft - 6} y={yZero + half + 4} textAnchor="end" className="insight-axis">
             −{compactAxisMoney(maxAbs, currency, exponent)}
           </text>
           {series.map((item, idx) => {
-            const cx = 62 + step * (idx + 0.5);
+            const cx = axisLeft + step * (idx + 0.5);
             const bw = Math.min(18, Math.max(7, step * 0.42));
             const absNet = item.netBig < 0n ? -item.netBig : item.netBig;
             const bh = (plotPercent(absNet, maxAbs) / 100) * half;
             const by = item.netBig >= 0n ? yZero - bh : yZero;
-            const axisLabel = visualIntervalAxis(item, data.weekly, data.granularity).label;
+            const axisLabel = (() => {
+              if (data.granularity === "year") {
+                return visualIntervalAxis(item, false, "year").label;
+              }
+              if (mobile || width <= 360) {
+                if (data.granularity === "month") {
+                  return visualIntervalAxis(item, false, "month").label;
+                }
+                const day = Number(item.startDay.slice(8));
+                const month = Number(item.startDay.slice(5, 7));
+                if (step < 34 && idx % Math.ceil(34 / step) !== 0 && idx !== series.length - 1) {
+                  return "";
+                }
+                return `${day}/${month}`;
+              }
+              return visualIntervalAxis(item, data.weekly, data.granularity).label;
+            })();
             return (
               <g key={item.key}>
                 <rect
@@ -688,7 +722,7 @@ export function InsightsCashflowSlide({ model }: { model: VisualTrendModel }) {
           })}
           {series.length > 1 && <polyline points={poly} fill="none" className="insight-cumulative-line" />}
           {series.map((item, idx) => {
-            const cx = 62 + step * (idx + 0.5);
+            const cx = axisLeft + step * (idx + 0.5);
             const ratio = Number((item.cumBig * 1000n) / maxAbs) / 1000;
             const cy = Math.round((yZero - ratio * half) * 10) / 10;
             return <circle key={`${item.key}-pt`} cx={cx} cy={cy} r="3" className="insight-cumulative-point" />;

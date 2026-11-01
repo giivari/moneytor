@@ -128,10 +128,32 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
                 </select>
               </label>
             )}
+            <label className="insight-inline-select insight-period-select-mobile">
+              <span className="sr-only">Rentang waktu</span>
+              <select
+                aria-label="Rentang waktu laporan"
+                value={isCustom ? "custom" : draft.kind}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "custom") {
+                    commitDraft({ ...draft, kind: "custom" });
+                  } else {
+                    commitDraft({ ...draft, kind: val });
+                  }
+                }}
+              >
+                {QUICK_PERIODS.map((preset) => (
+                  <option key={preset.kind} value={preset.kind}>
+                    {preset.label}
+                  </option>
+                ))}
+                <option value="custom">Kustom...</option>
+              </select>
+            </label>
           </div>
         </div>
 
-        <div className="insight-pill-scroller" role="group" aria-label="Rentang waktu">
+        <div className="insight-pill-scroller insight-period-pills-desktop" role="group" aria-label="Rentang waktu">
           {QUICK_PERIODS.map((preset) => (
             <button
               key={preset.kind}

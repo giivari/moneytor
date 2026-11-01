@@ -400,7 +400,7 @@ export function InsightsFinancialSuite({
                       const barHeight = maxAbsFlow > 0n ? (plotPercent(absNet, maxAbsFlow) / 100) * halfSpan : 0;
                       const barY = item.netBig >= 0n ? yZero - barHeight : yZero;
                       const axisLabel =
-                        trendData.granularity === "day"
+                        mobile || trendData.granularity === "day" || trendData.weekly
                           ? `${Number(item.startDay.slice(8))}/${Number(item.startDay.slice(5, 7))}`
                           : visualIntervalAxis(item, trendData.weekly, trendData.granularity).label;
                       return (
@@ -764,91 +764,152 @@ export function InsightsFinancialSuite({
             </div>
 
             {facilities.length > 0 && (
-              <div className="u-table-wrap insight-chart-scroll insight-table-gap">
-                <table className="u-table" aria-label="Daftar fasilitas kredit">
-                  <thead>
-                    <tr>
-                      <th scope="col">Fasilitas</th>
-                      <th scope="col">Sisa limit</th>
-                      <th scope="col">Tagihan terdekat</th>
-                      <th scope="col">Periode depan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {facilities.map((fac) => {
-                      const curBill = BigInt(fac.currentBillMinor);
-                      const nextBill = BigInt(fac.nextBillMinor);
-                      const unpaid = BigInt(fac.totalUnpaidMinor);
-                      const limit = BigInt(fac.limitMinor);
-                      const usedPct = limit > 0n ? plotPercent(unpaid, limit) : 0;
-                      const facIncomeBps = opIncome > 0n && unpaid > 0n ? (unpaid * 10000n) / opIncome : null;
-                      const facLiquidBps =
-                        liquidMinor !== null && liquidMinor > 0n && unpaid > 0n ? (unpaid * 10000n) / liquidMinor : null;
-                      return (
-                        <tr key={fac.id}>
-                          <th scope="row">
-                            <strong>{fac.name}</strong>
-                            {!fac.isActive && <em className="u-pill">Diarsipkan</em>}
-                            <small className="u-cell-sub">
-                              {facIncomeBps !== null
-                                ? `${percentageLabel(facIncomeBps.toString())} pemasukan`
-                                : ""}
-                              {facIncomeBps !== null && facLiquidBps !== null ? " · " : ""}
-                              {facLiquidBps !== null
-                                ? `${percentageLabel(facLiquidBps.toString())} kas likuid`
-                                : ""}
-                              {facIncomeBps === null && facLiquidBps === null
-                                ? limit > 0n
-                                  ? `Plafon terpakai ${usedPct}%`
-                                  : "Bebas tagihan"
-                                : ""}
-                            </small>
-                          </th>
+              <div className="u-table-wrap insight-table-gap">
+                {mobile ? (
+                  <table className="u-table" aria-label="Daftar fasilitas kredit">
+                    <thead>
+                      <tr>
+                        <th scope="col">Fasilitas &amp; limit</th>
+                        <th scope="col">Tagihan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {facilities.map((fac) => {
+                        const curBill = BigInt(fac.currentBillMinor);
+                        const nextBill = BigInt(fac.nextBillMinor);
+                        const unpaid = BigInt(fac.totalUnpaidMinor);
+                        const limit = BigInt(fac.limitMinor);
+                        const usedPct = limit > 0n ? plotPercent(unpaid, limit) : 0;
+                        return (
+                          <tr key={fac.id}>
+                            <th scope="row">
+                              <strong>{fac.name}</strong>
+                              {!fac.isActive && <em className="u-pill">Diarsipkan</em>}
+                              <small className="u-cell-sub">
+                                {fac.availableLimitMinor !== null && limit > 0n
+                                  ? `Sisa limit ${money(fac.availableLimitMinor)} (plafon ${usedPct}%)`
+                                  : "Bebas tagihan"}
+                              </small>
+                            </th>
+                            <td className={curBill > 0n ? "insight-negative" : "insight-positive"}>
+                              {curBill > 0n ? (
+                                <FinancialAmount as="span" value={money(curBill)} />
+                              ) : (
+                                "Lunas"
+                              )}
+                              <small className="u-cell-sub">
+                                {formatShortDueIso(fac.currentDueIso)}
+                                {nextBill > 0n ? ` · Depan: ${money(nextBill)}` : ""}
+                              </small>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    {facilities.length > 1 && (
+                      <tfoot>
+                        <tr>
+                          <th scope="row">Total {facilities.length} fasilitas kredit</th>
+                          <td className={currentCycleBills > 0n ? "insight-negative" : "insight-positive"}>
+                            {currentCycleBills > 0n ? (
+                              <FinancialAmount as="span" value={money(currentCycleBills)} />
+                            ) : (
+                              "Lunas"
+                            )}
+                            {nextCycleBills > 0n && (
+                              <small className="u-cell-sub">Depan: {money(nextCycleBills)}</small>
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                ) : (
+                  <table className="u-table" aria-label="Daftar fasilitas kredit">
+                    <thead>
+                      <tr>
+                        <th scope="col">Fasilitas</th>
+                        <th scope="col">Sisa limit</th>
+                        <th scope="col">Tagihan terdekat</th>
+                        <th scope="col">Periode depan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {facilities.map((fac) => {
+                        const curBill = BigInt(fac.currentBillMinor);
+                        const nextBill = BigInt(fac.nextBillMinor);
+                        const unpaid = BigInt(fac.totalUnpaidMinor);
+                        const limit = BigInt(fac.limitMinor);
+                        const usedPct = limit > 0n ? plotPercent(unpaid, limit) : 0;
+                        const facIncomeBps = opIncome > 0n && unpaid > 0n ? (unpaid * 10000n) / opIncome : null;
+                        const facLiquidBps =
+                          liquidMinor !== null && liquidMinor > 0n && unpaid > 0n ? (unpaid * 10000n) / liquidMinor : null;
+                        return (
+                          <tr key={fac.id}>
+                            <th scope="row">
+                              <strong>{fac.name}</strong>
+                              {!fac.isActive && <em className="u-pill">Diarsipkan</em>}
+                              <small className="u-cell-sub">
+                                {facIncomeBps !== null
+                                  ? `${percentageLabel(facIncomeBps.toString())} pemasukan`
+                                  : ""}
+                                {facIncomeBps !== null && facLiquidBps !== null ? " · " : ""}
+                                {facLiquidBps !== null
+                                  ? `${percentageLabel(facLiquidBps.toString())} kas likuid`
+                                  : ""}
+                                {facIncomeBps === null && facLiquidBps === null
+                                  ? limit > 0n
+                                    ? `Plafon terpakai ${usedPct}%`
+                                    : "Bebas tagihan"
+                                  : ""}
+                              </small>
+                            </th>
+                            <td className="insight-zero-muted">
+                              {fac.availableLimitMinor !== null && limit > 0n ? (
+                                <>
+                                  <FinancialAmount as="span" value={money(fac.availableLimitMinor)} />
+                                  <small className="u-cell-sub">
+                                    dari {money(limit)} (plafon {usedPct}%)
+                                  </small>
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td className={curBill > 0n ? "insight-negative" : "insight-positive"}>
+                              {curBill > 0n ? <FinancialAmount as="span" value={money(curBill)} /> : "Lunas"}
+                              <small className="u-cell-sub">{formatShortDueIso(fac.currentDueIso)}</small>
+                            </td>
+                            <td className={nextBill === 0n ? "insight-zero-muted" : ""}>
+                              <FinancialAmount as="span" value={money(nextBill)} />
+                              <small className="u-cell-sub">{formatShortDueIso(fac.nextDueIso)}</small>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    {facilities.length > 1 && (
+                      <tfoot>
+                        <tr>
+                          <th scope="row">Total {facilities.length} fasilitas kredit</th>
                           <td className="insight-zero-muted">
-                            {fac.availableLimitMinor !== null && limit > 0n ? (
-                              <>
-                                <FinancialAmount as="span" value={money(fac.availableLimitMinor)} />
-                                <small className="u-cell-sub">
-                                  dari {money(limit)} (plafon {usedPct}%)
-                                </small>
-                              </>
+                            {limitedFacilities.length > 0 ? (
+                              <FinancialAmount as="span" value={money(totalAvailableLimit)} />
                             ) : (
                               "—"
                             )}
                           </td>
-                          <td className={curBill > 0n ? "insight-negative" : "insight-positive"}>
-                            {curBill > 0n ? <FinancialAmount as="span" value={money(curBill)} /> : "Lunas"}
-                            <small className="u-cell-sub">{formatShortDueIso(fac.currentDueIso)}</small>
+                          <td className={currentCycleBills > 0n ? "insight-negative" : "insight-positive"}>
+                            {currentCycleBills > 0n ? <FinancialAmount as="span" value={money(currentCycleBills)} /> : "Lunas"}
                           </td>
-                          <td className={nextBill === 0n ? "insight-zero-muted" : ""}>
-                            <FinancialAmount as="span" value={money(nextBill)} />
-                            <small className="u-cell-sub">{formatShortDueIso(fac.nextDueIso)}</small>
+                          <td className={nextCycleBills === 0n ? "insight-zero-muted" : ""}>
+                            <FinancialAmount as="span" value={money(nextCycleBills)} />
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                  {facilities.length > 1 && (
-                    <tfoot>
-                      <tr>
-                        <th scope="row">Total {facilities.length} fasilitas kredit</th>
-                        <td className="insight-zero-muted">
-                          {limitedFacilities.length > 0 ? (
-                            <FinancialAmount as="span" value={money(totalAvailableLimit)} />
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td className={currentCycleBills > 0n ? "insight-negative" : "insight-positive"}>
-                          {currentCycleBills > 0n ? <FinancialAmount as="span" value={money(currentCycleBills)} /> : "Lunas"}
-                        </td>
-                        <td className={nextCycleBills === 0n ? "insight-zero-muted" : ""}>
-                          <FinancialAmount as="span" value={money(nextCycleBills)} />
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
+                      </tfoot>
+                    )}
+                  </table>
+                )}
               </div>
             )}
 

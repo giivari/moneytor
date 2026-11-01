@@ -10,6 +10,7 @@ import { InsightsSecondary } from "./insights-secondary";
 import { elapsedDaysInPeriod, InsightsFinancialSuite } from "./insights-cashflow";
 import { FinancialAmount } from "./financial-amount";
 import { SectionHeading } from "./section-heading";
+import { useInsightsViewport } from "./use-insights-viewport";
 
 function Money({
   value,
@@ -31,7 +32,73 @@ function Money({
 }
 
 function AccountMutationTable({ rows }: { rows: DimensionRow[] }) {
+  const mobile = useInsightsViewport();
   if (!rows.length) return <p className="insight-note">Belum ada aktivitas tercatat pada periode ini.</p>;
+
+  if (mobile) {
+    return (
+      <div className="u-table-wrap" tabIndex={0} role="region" aria-label="Tabel rincian mutasi per akun">
+        <table className="u-table" aria-label="Rincian mutasi per akun">
+          <thead>
+            <tr>
+              <th scope="col">Akun</th>
+              <th scope="col">Mutasi bersih</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const inc = BigInt(row.incomeMinor);
+              const trfIn = BigInt(row.transferInMinor ?? "0");
+              const exp = BigInt(row.spendingMinor);
+              const trfOut = BigInt(row.transferPrincipalMinor);
+              const netMutation = inc + trfIn - exp - trfOut;
+              const hasActivity = inc > 0n || trfIn > 0n || exp > 0n || trfOut > 0n;
+              return (
+                <tr key={row.key}>
+                  <th scope="row">
+                    <strong>{row.name}</strong>
+                    {row.archived && <em className="u-pill">Diarsipkan</em>}
+                    <small className="u-cell-sub">
+                      {hasActivity
+                        ? [
+                            exp > 0n ? `Belanja ${formatMinor(row.spendingMinor, row.currency, row.exponent)}` : null,
+                            inc > 0n ? `Masuk ${formatMinor(row.incomeMinor, row.currency, row.exponent)}` : null,
+                            `${row.activityCount}x transaksi`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")
+                        : "Tidak ada aktivitas"}
+                    </small>
+                  </th>
+                  <td
+                    className={
+                      netMutation < 0n
+                        ? "insight-negative"
+                        : netMutation > 0n
+                          ? "insight-positive"
+                          : "insight-zero-muted"
+                    }
+                  >
+                    <FinancialAmount
+                      as="span"
+                      value={signedMoney(netMutation.toString(), row.currency, row.exponent)}
+                      className="insight-money"
+                    />
+                    <small className="u-cell-sub">
+                      {inc + trfIn > 0n && exp + trfOut > 0n
+                        ? `Masuk ${formatMinor((inc + trfIn).toString(), row.currency, row.exponent)}`
+                        : "Mutasi bersih"}
+                    </small>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
     <div className="u-table-wrap insight-chart-scroll" tabIndex={0} role="region" aria-label="Tabel rincian mutasi per akun">
       <table className="u-table" aria-label="Rincian mutasi per akun">

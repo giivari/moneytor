@@ -280,6 +280,10 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(deskOut,/Komponen belanja &amp; aktivitas/);
  const expandedAcc=desktopHtml(r,{'Mutasi akun dan posisi aset':'accounts'});
  assert.match(expandedAcc,/<table class="u-table" aria-label="Rincian mutasi per akun">/);
+ assert.match(expandedAcc,/<th scope="col">Transfer keluar<\/th>/);
+ const expandedAccMob=html(r,'IDR','current_month',true);
+ assert.match(expandedAccMob,/<th scope="col">Mutasi bersih<\/th>/);
+ assert.doesNotMatch(expandedAccMob,/<th scope="col">Transfer keluar<\/th>/);
  const expandedInv=desktopHtml(r,{'Mutasi akun dan posisi aset':'investments'});
  assert.match(expandedInv,/Posisi kas &amp; aset saat ini/);
  assert.match(expandedInv,/Valuasi &amp; transaksi investasi/);
@@ -293,5 +297,8 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(insightsCss,/\.insights-page \.insight-inline-select select \{[^}]*appearance:\s*none/);
  assert.match(insightsCss,/\.insights-page \.insight-mid-grid \{[^}]*align-items:\s*stretch/);
  assert.match(insightsCss,/\.insights-page \.insight-credit-ratios-strip/);
+ assert.match(insightsCss,/\.insights-page \.insight-period-select-mobile\s*\{[^}]*display:\s*none/);
+ assert.match(insightsCss,/\.insights-page \.insight-period-pills-desktop\s*\{[^}]*display:\s*none/);
+ assert.match(insightsCss,/\.insights-page \.insight-fit-chart \.insight-axis\s*\{[^}]*font-size:\s*11px/);
  assert.match(dataCss,/\.u-subgrid\b/);
 });

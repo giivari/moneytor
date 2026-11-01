@@ -197,8 +197,8 @@
   .insights-page .insight-slide .section-heading h2 { font-size: var(--type-section); }
   .insights-page .insight-slide .section-heading p { font-size: 13px; }
   .insights-page .insight-fit-chart { margin-block: 8px; }
-  .insights-page .insight-fit-chart .insight-axis { font-size: 14px; }
-  .insights-page .insight-fit-chart .insight-axis-year { font-size: 12px; }
+  .insights-page .insight-fit-chart .insight-axis { font-size: 11px; font-weight: 500; }
+  .insights-page .insight-fit-chart .insight-axis-year { font-size: 10px; }
   .insights-page .insight-interval-picker select { font-size: 14px; }
   .insights-page .insight-legend { font-size: 13px; gap: 12px; }
   .insights-page .insight-secondary-grid { display: block; border-top: 1px solid #dde4e9; }
@@ -217,6 +217,8 @@
 
 /* M-Banking & Sekuritas Streamlined Insights UI */
 .insights-page .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.insights-page .insight-period-select-mobile { display: none; }
+.insights-page .insight-period-pills-desktop { display: flex; }
 .insights-page .insight-toolbar { padding: 14px var(--surface-padding); display: grid; gap: 12px; min-width: 0; }
 .insights-page .insight-toolbar-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px 16px; min-width: 0; }
 .insights-page .insight-toolbar-period { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
@@ -327,7 +329,14 @@
 }
 
 @media (max-width: 700px) {
+  .insights-page .insight-period-select-mobile { display: inline-flex; order: -1; }
+  .insights-page .insight-period-pills-desktop { display: none; }
   .insights-page .insight-toolbar { padding: 12px 14px; gap: 10px; }
+  .insights-page .insight-toolbar-top { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+  .insights-page .insight-toolbar-period { display: flex; justify-content: space-between; align-items: baseline; width: 100%; }
+  .insights-page .insight-toolbar-selects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .insights-page .insight-toolbar-selects .insight-inline-select { width: 100%; }
+  .insights-page .insight-toolbar-selects .insight-inline-select select { width: 100%; min-width: 0; }
   .insights-page .insight-overview-foot .insight-live-pill { float: none; margin-bottom: 8px; }
   .insights-page .insight-compact-kpis { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .insights-page .insight-compact-kpis > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
