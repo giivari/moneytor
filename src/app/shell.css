@@ -167,51 +167,57 @@
 }
 
 @media (max-width: 1020px) {
+  /*
+   * Mobile header = the desktop floating bar split into its parts:
+   * a full-width gradient brand capsule plus round action buttons.
+   * Sticky like desktop; the strip uses the page colour so it blends with
+   * the page at rest and fades content underneath while scrolling.
+   */
   .site-header {
     position: sticky;
     top: 0;
     z-index: 20;
-    padding: 14px 22px 8px;
-    background: rgba(255, 255, 255, 0.94);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    padding: 18px 22px 12px;
+    background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 82%, color-mix(in srgb, var(--bg) 0%, transparent) 100%);
   }
   .header-inner {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 9px;
+    max-width: none;
   }
   .site-header .brand {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
-    padding: 0 20px;
-    border-radius: 999px;
-    background: linear-gradient(105deg, #4c6274 0%, #399da4 48%, #5044dc 100%);
-    color: #ffffff;
-    font-size: 19px;
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    text-decoration: none;
-    box-shadow: 0 4px 14px rgba(45, 60, 100, 0.16);
     flex: 1 1 auto;
-    max-width: 230px;
-  }
-  .site-header .brand-identity {
-    display: inline-flex;
-    align-items: center;
-    width: 100%;
-  }
-  .site-header .brand-identity::before {
-    content: none;
-  }
-  .site-header .brand-wordmark {
+    min-width: 0;
+    min-height: 46px;
+    padding: 0 24px;
+    border-radius: 999px;
+    background: linear-gradient(105deg, #4c6274 0%, #399da4 42%, #4b80bb 68%, #4b4fcc 100%);
     color: #ffffff;
-    text-transform: capitalize;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    text-decoration: none;
   }
-  .site-header[data-loading="true"] .brand {
-    background: linear-gradient(105deg, #4c6274, #399da4, #5044dc, #399da4, #4c6274);
+  .site-header .brand:focus-visible { outline: 2px solid #4b4fcc; outline-offset: 3px; }
+  .site-header .brand-identity { display: inline-flex; align-items: center; min-width: 0; }
+  .site-header .brand-identity::before { content: none; }
+  .site-header .brand-wordmark { color: #ffffff; text-transform: capitalize; }
+  /* Same loading flow as the desktop bar, painted behind the wordmark. */
+  .site-header[data-loading="true"] .brand::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(105deg, #4c6274, #399da4, #4b4fcc, #399da4, #4c6274);
     background-size: 250% 100%;
     animation: header-loading-flow 2.8s ease-in-out infinite;
   }
@@ -219,7 +225,7 @@
   .floating-nav,
   .header-actions .button-primary { display: none; }
   .demo-badge { display: block; }
-  .main-content { padding: 22px 22px 120px; }
+  .main-content { padding: 14px 22px 120px; }
 
   .bottom-nav {
     position: fixed;
@@ -326,20 +332,18 @@
 @media (prefers-reduced-motion: reduce) {
   .more-popover { animation: none; }
   .site-header[data-loading="true"] .header-inner::before { animation: none; opacity: .7; }
+  .site-header[data-loading="true"] .brand::before { animation: none; opacity: .7; }
 }
 
 @media (max-width: 760px) {
   .site-header { padding-inline: 18px; }
-  .main-content { padding: 25px 18px 125px; }
+  .main-content { padding: 14px 18px 125px; }
 }
 
 @media (max-width: 390px) {
   .site-header { padding-inline: 14px; }
-  .site-header .brand {
-    font-size: 17px;
-    padding: 0 16px;
-    max-width: 190px;
-  }
+  .header-inner { gap: 8px; }
+  .site-header .brand { font-size: 19px; padding: 0 20px; }
   .main-content { padding-inline: 14px; }
   .bottom-nav { width: calc(100% - 20px); }
 }

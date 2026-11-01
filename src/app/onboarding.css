@@ -56,37 +56,33 @@ html[data-privacy="hidden"] .financial-amount {
 }
 
 @media (max-width: 1020px) {
+  /* Round buttons continue the brand capsule's gradient tail (soft periwinkle). */
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
   .onboarding-help-trigger {
-    width: 44px;
-    height: 44px;
+    width: 46px;
+    height: 46px;
+    border: 0;
     border-radius: 999px;
-    border: none;
-    background: #5044dc;
+    background: #627cce;
     color: #ffffff;
-    box-shadow: 0 4px 14px rgba(80, 68, 220, 0.22);
-    transition: transform 0.15s ease, background-color 0.15s ease;
+    box-shadow: none;
+    transition: background-color 0.15s ease, transform 0.12s ease;
   }
-  .onboarding-help-trigger:hover {
-    background: #4438cc;
-  }
-  .onboarding-help-trigger:active {
-    transform: scale(0.95);
-  }
-  .privacy-toggle-trigger[aria-pressed="true"] {
-    background: #392eb5;
-    color: #ffffff;
-  }
+  .privacy-toggle-trigger { background: #6082ca; }
+  .onboarding-help-trigger:hover { background: #5670c4; border-color: transparent; }
+  .onboarding-help-trigger:active { transform: scale(0.95); }
+  .onboarding-help-trigger:focus-visible { outline: 2px solid #4b4fcc; outline-offset: 2px; }
+  .privacy-toggle-trigger[aria-pressed="true"] { background: #4b5fb8; border-color: transparent; }
 }
 
 @media (max-width: 390px) {
   .onboarding-help-trigger {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 }
 
