@@ -83,7 +83,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   const dueDay = creditMeta.dueDay;
   const cutoffDay = creditMeta.cutoffDay;
 
-  const autoAfterCutoff = isAfterCutoffDay(new Date(occurredAt).toISOString(), cutoffDay);
+  const autoAfterCutoff = isAfterCutoffDay(new Date(occurredAt).toISOString(), cutoffDay, dueDay);
   const targetCycle: "current" | "next" =
     cycleOverride === "auto" ? (autoAfterCutoff ? "next" : "current") : cycleOverride;
 
@@ -162,13 +162,29 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
 
       // If transaction is deferred to the next billing cycle (e.g. bought after cutoff day 20), update deferredMinor on the credit asset
       if (isCreditPurchase && targetCycle === "next") {
+        const currentBills = computeCreditBills(account);
+        const hasShifted = Boolean(
+          creditMeta.anchorDueIso && currentBills.currentDueIso > creditMeta.anchorDueIso,
+        );
+        const updatedCarryCurrent = hasShifted
+          ? currentBills.currentBillMinor + BigInt(account.balanceMinor)
+          : creditMeta.carryCurrentMinor;
+        const updatedCarryNext = hasShifted ? 0n : creditMeta.carryNextMinor;
+        const updatedDeferred = hasShifted
+          ? BigInt(postedAmountMinor)
+          : creditMeta.deferredMinor + BigInt(postedAmountMinor);
+        const updatedAnchorDueIso = hasShifted
+          ? currentBills.currentDueIso
+          : creditMeta.anchorDueIso ?? currentBills.currentDueIso;
+
         const updatedNote = encodeCreditNote(creditMeta.cleanNote, true, {
           dueDay: creditMeta.dueDay,
           cutoffDay: creditMeta.cutoffDay,
           limitMinor: creditMeta.limitMinor,
-          carryCurrentMinor: creditMeta.carryCurrentMinor,
-          carryNextMinor: creditMeta.carryNextMinor,
-          deferredMinor: creditMeta.deferredMinor + BigInt(postedAmountMinor),
+          carryCurrentMinor: updatedCarryCurrent,
+          carryNextMinor: updatedCarryNext,
+          deferredMinor: updatedDeferred,
+          anchorDueIso: updatedAnchorDueIso,
         });
         await financeRequest("asset-update", {
           id: account.id,

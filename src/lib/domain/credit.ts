@@ -13,6 +13,7 @@ export type CreditMeta = Readonly<{
   carryCurrentMinor: bigint;
   carryNextMinor: bigint;
   deferredMinor: bigint;
+  anchorDueIso: string | null;
   cleanNote: string;
 }>;
 
@@ -41,6 +42,7 @@ export function parseCreditMeta(note?: string | null): CreditMeta {
       carryCurrentMinor: 0n,
       carryNextMinor: 0n,
       deferredMinor: 0n,
+      anchorDueIso: null,
       cleanNote: stripAssetMetaTags(raw),
     };
   }
@@ -61,6 +63,8 @@ export function parseCreditMeta(note?: string | null): CreditMeta {
   const carryCurrentMinor = parseBigIntSafe(params.get("cur"));
   const carryNextMinor = parseBigIntSafe(params.get("next"));
   const deferredMinor = parseBigIntSafe(params.get("def"));
+  const rawAnchor = params.get("anchor");
+  const anchorDueIso = rawAnchor && /^\d{4}-\d{2}-\d{2}$/.test(rawAnchor) ? rawAnchor : null;
 
   return {
     isCreditFlagged: true,
@@ -70,6 +74,7 @@ export function parseCreditMeta(note?: string | null): CreditMeta {
     carryCurrentMinor,
     carryNextMinor: carryNextMinor > 0n ? carryNextMinor : 0n,
     deferredMinor: deferredMinor > 0n ? deferredMinor : 0n,
+    anchorDueIso,
     cleanNote: stripAssetMetaTags(raw.slice(match[0].length)),
   };
 }
@@ -84,6 +89,7 @@ export function encodeCreditNote(
     carryCurrentMinor?: bigint;
     carryNextMinor?: bigint;
     deferredMinor?: bigint;
+    anchorDueIso?: string | null;
   },
 ): string | undefined {
   const stripped = stripAssetMetaTags(cleanNote);
@@ -96,12 +102,19 @@ export function encodeCreditNote(
   const cur = options?.carryCurrentMinor ?? 0n;
   const next = options?.carryNextMinor && options.carryNextMinor > 0n ? options.carryNextMinor : 0n;
   const def = options?.deferredMinor && options.deferredMinor > 0n ? options.deferredMinor : 0n;
+  const anchor =
+    options?.anchorDueIso !== undefined
+      ? options.anchorDueIso && /^\d{4}-\d{2}-\d{2}$/.test(options.anchorDueIso)
+        ? options.anchorDueIso
+        : null
+      : nextMonthlyDueDayIso(due, 0);
 
   const kv = [`due=${due}`, `cutoff=${cutoff}`];
   if (lim > 0n) kv.push(`limit=${lim.toString()}`);
   if (cur !== 0n) kv.push(`cur=${cur.toString()}`);
   if (next > 0n) kv.push(`next=${next.toString()}`);
   if (def > 0n) kv.push(`def=${def.toString()}`);
+  if (anchor) kv.push(`anchor=${anchor}`);
 
   const prefix = `[CREDIT:${kv.join(",")}]`;
   return stripped ? `${prefix} ${stripped}` : prefix;
@@ -141,7 +154,21 @@ export function computeCreditBills(
   const balance = parseBigIntSafe(asset.balanceMinor);
   const rawTotal = meta.carryCurrentMinor + meta.carryNextMinor - balance;
   const totalUnpaidMinor = rawTotal > 0n ? rawTotal : 0n;
-  const scheduledNext = meta.carryNextMinor + meta.deferredMinor;
+
+  const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0);
+  const nextDueIso = nextMonthlyDueDayIso(meta.dueDay, 1);
+
+  let hasShifted = false;
+  if (meta.anchorDueIso && currentDueIso > meta.anchorDueIso) {
+    const [anchorYear, anchorMonth] = meta.anchorDueIso.split("-").map(Number);
+    const [currYear, currMonth] = currentDueIso.split("-").map(Number);
+    const monthDiff = (currYear - anchorYear) * 12 + (currMonth - anchorMonth);
+    if (monthDiff >= 1) {
+      hasShifted = true;
+    }
+  }
+
+  const scheduledNext = hasShifted ? 0n : meta.carryNextMinor + meta.deferredMinor;
 
   let currentBillMinor = 0n;
   let nextBillMinor = 0n;
@@ -160,9 +187,6 @@ export function computeCreditBills(
         : 0n
       : null;
 
-  const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0);
-  const nextDueIso = nextMonthlyDueDayIso(meta.dueDay, 1);
-
   return {
     currentBillMinor,
     nextBillMinor,
@@ -180,14 +204,49 @@ export function creditBillMinor(balanceMinor: string, note?: string | null): big
   return computeCreditBills({ balanceMinor, note: note ?? null }).totalUnpaidMinor;
 }
 
-export function isAfterCutoffDay(occurredAtIso: string, cutoffDay: number): boolean {
+export function closingCutoffIsoForDue(dueIso: string, cutoffDay: number): string {
+  const safeCutoff = clampDay(cutoffDay, 20);
+  const [yearStr, monthStr, dayStr] = dueIso.split("-");
+  const dueYear = Number(yearStr);
+  const dueMonth = Number(monthStr);
+  const dueDay = Number(dayStr);
+
+  let targetYear = dueYear;
+  let targetMonth = dueMonth;
+  if (safeCutoff >= dueDay) {
+    targetMonth = dueMonth - 1;
+    if (targetMonth < 1) {
+      targetMonth = 12;
+      targetYear -= 1;
+    }
+  }
+
+  const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+  const clampedDay = Math.min(safeCutoff, daysInTargetMonth);
+  return `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
+}
+
+export function isAfterCutoffDay(occurredAtIso: string, cutoffDay: number, dueDay?: number): boolean {
   const d = occurredAtIso ? new Date(occurredAtIso) : new Date();
   if (Number.isNaN(d.getTime())) return false;
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
     day: "2-digit",
   }).formatToParts(d);
   const day = Number(parts.find((p) => p.type === "day")?.value ?? "1");
+
+  if (dueDay !== undefined) {
+    const year = parts.find((p) => p.type === "year")?.value ?? "1970";
+    const month = parts.find((p) => p.type === "month")?.value ?? "01";
+    const dayStr = parts.find((p) => p.type === "day")?.value ?? "01";
+    const occurredDateIso = `${year}-${month}-${dayStr}`;
+    const currentDueIso = nextMonthlyDueDayIso(dueDay, 0);
+    const closingCutoffIso = closingCutoffIsoForDue(currentDueIso, cutoffDay);
+    return occurredDateIso > closingCutoffIso;
+  }
+
   return day > cutoffDay;
 }
 

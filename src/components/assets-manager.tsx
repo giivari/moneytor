@@ -206,6 +206,7 @@ function AssetForm({
           carryCurrentMinor,
           carryNextMinor,
           deferredMinor: 0n,
+          anchorDueIso: nextMonthlyDueDayIso(parsedDue, 0),
         });
       } else {
         const parsedAdminMinor = adminFee.trim()
