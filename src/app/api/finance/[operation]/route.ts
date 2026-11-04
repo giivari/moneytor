@@ -106,7 +106,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await archiveCustomCatalogItem(catalog(body.catalog), str(body.id, 36)); return json({ ok: true });
     }
     if (operation === "post") return json({ id: await postActivity(body.draft as ActivityDraft, str(body.idempotencyKey, 36),
-      { creditCycle: body.creditCycle === "next" ? "next" : undefined }) });
+      {
+        creditCycle: body.creditCycle === "next" || body.creditCycle === "current" ? body.creditCycle : undefined,
+        creditFuturePrincipalMinor: typeof body.creditFuturePrincipalMinor === "string" ? body.creditFuturePrincipalMinor : undefined,
+      }) });
     if (operation === "replace") return json({ id: await replaceActivity(str(body.id, 36), body.draft as ActivityDraft, str(body.idempotencyKey, 36)) });
     if (operation === "void") return json({ id: await voidActivity(str(body.id, 36), str(body.idempotencyKey, 36)) });
     return json({ error: "Tidak tersedia" }, 404);

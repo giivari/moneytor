@@ -292,3 +292,83 @@ test("receivables and credit lines are never reserve sources", () => {
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "BCA Utama", note: "[CREDIT:due=5,cutoff=25]" }), false);
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "BCA Utama", normallySpendable: false }), false);
 });
+
+// Installment top-up via PayLater and per-activity cycle tracking (manual overrides).
+const ACT_A = "a1b2c3d4-0000-4000-8000-000000000001";
+const ACT_B = "b2c3d4e5-0000-4000-8000-000000000002";
+const ACT_C = "c3d4e5f6-0000-4000-8000-000000000003";
+const ACT_D = "d4e5f6a7-0000-4000-8000-000000000004";
+const freshCredit = () => credit.parseCreditMeta(creditNote({ dueDay: 1, cutoffDay: 20, limitMinor: 0n, carryCurrentMinor: 0n,
+  carryNextMinor: 0n, deferredMinor: 0n, deferredEntries: [], anchorDueIso: "2026-12-01" }));
+const roundTrip = (state) => credit.parseCreditMeta(creditNote(state));
+
+test("installment top-up delivers the full principal and bills only installment 1 in the nearest cycle", () => {
+  const plan = credit.calculateCreditInstallmentPlan({ principalMinorStr: "300000", tenorMonths: 3, interestMode: "percent",
+    interestRatePercent: 2.95, interestFlatMinorStr: "0" });
+  const future = credit.installmentFuturePrincipalMinor(300000n, plan);
+  assert.equal(future, 200000n);
+  // Posted transfer: 300k to e-money, fee = 1k admin + 8.85k first-month interest. Credit impact 309.85k.
+  const impact = credit.creditSourceImpactMinor({ kind: "transfer", amountMinor: "300000", transferFeeMinor: String(1000 + 8850) });
+  assert.equal(impact, 309850n);
+  // Current cycle: nearest bill = installment 1 (100k + 8.85k interest) + 1k admin; future principal waits.
+  const current = roundTrip(credit.deferCreditCharge(freshCredit(), impact, NOV_25, { activityId: ACT_A, deferredMinor: future }));
+  assert.deepEqual(billsAt(-309850n, creditNote(current), NOV_25), { current: 109850n, next: 200000n, total: 309850n });
+  assert.deepEqual(current.deferredEntries, [{ ref: "a1b2c3d4", partMinor: 200000n }]);
+  // Next cycle: the whole impact (future principal + installment 1 + fees) waits for the next bill.
+  const next = roundTrip(credit.deferCreditCharge(freshCredit(), impact, NOV_25, { activityId: ACT_A, deferredMinor: impact }));
+  assert.deepEqual(billsAt(-309850n, creditNote(next), NOV_25), { current: 0n, next: 309850n, total: 309850n });
+  assert.deepEqual(next.deferredEntries, [{ ref: "a1b2c3d4", partMinor: null }]);
+  // Voiding the current-cycle top-up releases only its future principal.
+  const voided = credit.releaseDeferredCreditCharge(current, { activityId: ACT_A, occurredAtIso: "2026-11-10T03:00:00.000Z",
+    reversedImpactMinor: impact }, NOV_25);
+  assert.equal(voided.deferredMinor, 0n);
+  assert.deepEqual(billsAt(0n, creditNote(voided), NOV_25), { current: 0n, next: 0n, total: 0n });
+  // Correcting it to a 600k top-up keeps installment 1 billed now and defers the rest.
+  const corrected = credit.releaseDeferredCreditCharge(current, { activityId: ACT_A, occurredAtIso: "2026-11-10T03:00:00.000Z",
+    reversedImpactMinor: impact, replacementActivityId: ACT_D, replacementImpactMinor: 609850n }, NOV_25);
+  assert.equal(corrected.deferredMinor, 500000n);
+  assert.deepEqual(corrected.deferredEntries, [{ ref: "d4e5f6a7", partMinor: 500000n }]);
+});
+
+test("manual cycle overrides survive void and correction exactly", () => {
+  // A: after the cutoff, auto -> next (50k). B: after the cutoff but forced to the current bill (30k).
+  // C: before the cutoff but forced to the next bill (20k).
+  let meta = roundTrip(credit.deferCreditCharge(freshCredit(), 50000n, NOV_25, { activityId: ACT_A }));
+  meta = roundTrip(credit.deferCreditCharge(meta, 20000n, NOV_25, { activityId: ACT_C }));
+  assert.equal(meta.deferredMinor, 70000n);
+  assert.deepEqual(meta.deferredEntries.map((entry) => entry.ref), ["a1b2c3d4", "c3d4e5f6"]);
+  assert.match(creditNote(meta), /dl=a1b2c3d4\.c3d4e5f6/);
+  // Balance: 100k earlier + A 50k + B 30k + C 20k = -200k. Current = 100k + B 30k, next = A + C.
+  assert.deepEqual(billsAt(-200000n, creditNote(meta), NOV_25), { current: 130000n, next: 70000n, total: 200000n });
+  // Void B (after the cutoff, but recorded as current): the next bucket must not move.
+  assert.equal(credit.releaseDeferredCreditCharge(meta, { activityId: ACT_B, occurredAtIso: "2026-11-24T03:00:00.000Z",
+    reversedImpactMinor: 30000n }, NOV_25), null);
+  assert.deepEqual(billsAt(-170000n, creditNote(meta), NOV_25), { current: 100000n, next: 70000n, total: 170000n });
+  // Void C (before the cutoff, but recorded as next): its 20k leaves the next bucket.
+  const afterC = credit.releaseDeferredCreditCharge(meta, { activityId: ACT_C, occurredAtIso: "2026-11-10T03:00:00.000Z",
+    reversedImpactMinor: 20000n }, NOV_25);
+  assert.equal(afterC.deferredMinor, 50000n);
+  assert.deepEqual(afterC.deferredEntries, [{ ref: "a1b2c3d4", partMinor: null }]);
+  assert.deepEqual(billsAt(-150000n, creditNote(afterC), NOV_25), { current: 100000n, next: 50000n, total: 150000n });
+  // Correct A from 50k to 45k: the replacement inherits the next cycle.
+  const afterA = credit.releaseDeferredCreditCharge(roundTrip(afterC), { activityId: ACT_A, occurredAtIso: "2026-11-24T03:00:00.000Z",
+    reversedImpactMinor: 50000n, replacementActivityId: ACT_D, replacementImpactMinor: 45000n }, NOV_25);
+  assert.equal(afterA.deferredMinor, 45000n);
+  assert.deepEqual(afterA.deferredEntries, [{ ref: "d4e5f6a7", partMinor: null }]);
+});
+
+test("credit tag keeps older untracked notes on the cutoff-date rule", () => {
+  const legacy = credit.parseCreditMeta("[CREDIT:due=1,cutoff=20,def=50000,anchor=2026-12-01] PayLater");
+  assert.equal(legacy.deferredEntries, null);
+  // A tracked deferral on top of an untracked bucket stays untracked until the next rollover.
+  assert.equal(credit.deferCreditCharge(legacy, 10000n, NOV_25, { activityId: ACT_A }).deferredEntries, null);
+  const released = credit.releaseDeferredCreditCharge(legacy, { activityId: ACT_A, occurredAtIso: "2026-11-24T03:00:00.000Z",
+    reversedImpactMinor: 50000n }, NOV_25);
+  assert.equal(released.deferredMinor, 0n);
+  // After rollover the bucket restarts tracked.
+  assert.deepEqual(credit.deferCreditCharge(legacy, 10000n, DEC_25, { activityId: ACT_A }).deferredEntries, [{ ref: "a1b2c3d4", partMinor: null }]);
+  // Malformed entries are treated as untracked rather than trusted.
+  assert.equal(credit.parseCreditMeta("[CREDIT:due=1,def=5,dl=zz] x").deferredEntries, null);
+  // The meta tag, including the entry list, never leaks into the visible note.
+  assert.equal(credit.parseCreditMeta("[CREDIT:due=1,def=5,dl=a1b2c3d4~5] Kartu").cleanNote, "Kartu");
+});

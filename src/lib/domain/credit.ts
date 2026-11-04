@@ -5,6 +5,12 @@ const CREDIT_TAG_RE = /^\[CREDIT(?::([^\]]*))?\]\s*/i;
 const CREDIT_NAME_RE =
   /(?:spaylater|shopee\s*pay\s*later|gopay\s*later|pay\s*later|paylater|\b(?:kredivo|akulaku|indodana|atome|home\s*credit|kartu\s+kredit|credit\s+card|fasilitas\s+kredit|pinjaman|cicilan|kta|kredit)\b)/i;
 
+/**
+ * One outflow whose amount (or part of it) sits in the next-cycle bucket. `ref` is the first 8 hex digits
+ * of the activity id; `partMinor` is null when the whole ledger impact of that activity is deferred.
+ */
+export type DeferredEntry = Readonly<{ ref: string; partMinor: bigint | null }>;
+
 export type CreditMeta = Readonly<{
   isCreditFlagged: boolean;
   dueDay: number;
@@ -13,6 +19,11 @@ export type CreditMeta = Readonly<{
   carryCurrentMinor: bigint;
   carryNextMinor: bigint;
   deferredMinor: bigint;
+  /**
+   * Activities making up deferredMinor. null means "untracked" (a note written before per-activity
+   * tracking existed); void/replace then fall back to the cutoff-date rule.
+   */
+  deferredEntries: readonly DeferredEntry[] | null;
   anchorDueIso: string | null;
   cleanNote: string;
 }>;
@@ -30,6 +41,33 @@ function parseBigIntSafe(raw?: string | null): bigint {
   }
 }
 
+const ENTRY_RE = /^([0-9a-f]{8})(?:~([0-9a-z]+))?$/;
+
+/** Short, stable reference of an activity id used inside the credit tag. */
+export function creditActivityRef(activityId: string): string {
+  return activityId.replace(/-/g, "").slice(0, 8).toLowerCase();
+}
+
+function parseDeferredEntries(raw?: string): DeferredEntry[] | null {
+  if (!raw) return null;
+  const entries: DeferredEntry[] = [];
+  for (const token of raw.split(".")) {
+    const match = token.match(ENTRY_RE);
+    if (!match) return null;
+    let partMinor: bigint | null = null;
+    if (match[2]) {
+      partMinor = [...match[2]].reduce((acc, digit) => acc * 36n + BigInt(parseInt(digit, 36)), 0n);
+      if (partMinor <= 0n) return null;
+    }
+    entries.push({ ref: match[1], partMinor });
+  }
+  return entries;
+}
+
+function encodeDeferredEntries(entries: readonly DeferredEntry[]): string {
+  return entries.map((entry) => entry.partMinor === null ? entry.ref : `${entry.ref}~${entry.partMinor.toString(36)}`).join(".");
+}
+
 export function parseCreditMeta(note?: string | null): CreditMeta {
   const raw = (note ?? "").trim();
   const match = raw.match(CREDIT_TAG_RE);
@@ -42,6 +80,7 @@ export function parseCreditMeta(note?: string | null): CreditMeta {
       carryCurrentMinor: 0n,
       carryNextMinor: 0n,
       deferredMinor: 0n,
+      deferredEntries: [],
       anchorDueIso: null,
       cleanNote: stripAssetMetaTags(raw),
     };
@@ -63,6 +102,7 @@ export function parseCreditMeta(note?: string | null): CreditMeta {
   const carryCurrentMinor = parseBigIntSafe(params.get("cur"));
   const carryNextMinor = parseBigIntSafe(params.get("next"));
   const deferredMinor = parseBigIntSafe(params.get("def"));
+  const deferredEntries = deferredMinor > 0n ? parseDeferredEntries(params.get("dl")) : [];
   const rawAnchor = params.get("anchor");
   const anchorDueIso = rawAnchor && /^\d{4}-\d{2}-\d{2}$/.test(rawAnchor) ? rawAnchor : null;
 
@@ -74,6 +114,7 @@ export function parseCreditMeta(note?: string | null): CreditMeta {
     carryCurrentMinor,
     carryNextMinor: carryNextMinor > 0n ? carryNextMinor : 0n,
     deferredMinor: deferredMinor > 0n ? deferredMinor : 0n,
+    deferredEntries,
     anchorDueIso,
     cleanNote: stripAssetMetaTags(raw.slice(match[0].length)),
   };
@@ -89,6 +130,7 @@ export function encodeCreditNote(
     carryCurrentMinor?: bigint;
     carryNextMinor?: bigint;
     deferredMinor?: bigint;
+    deferredEntries?: readonly DeferredEntry[] | null;
     anchorDueIso?: string | null;
   },
 ): string | undefined {
@@ -114,6 +156,7 @@ export function encodeCreditNote(
   if (cur !== 0n) kv.push(`cur=${cur.toString()}`);
   if (next > 0n) kv.push(`next=${next.toString()}`);
   if (def > 0n) kv.push(`def=${def.toString()}`);
+  if (def > 0n && options?.deferredEntries?.length) kv.push(`dl=${encodeDeferredEntries(options.deferredEntries)}`);
   if (anchor) kv.push(`anchor=${anchor}`);
 
   const prefix = `[CREDIT:${kv.join(",")}]`;
@@ -290,6 +333,7 @@ export type CreditNoteState = Readonly<{
   carryCurrentMinor: bigint;
   carryNextMinor: bigint;
   deferredMinor: bigint;
+  deferredEntries: readonly DeferredEntry[] | null;
   anchorDueIso: string | null;
 }>;
 
@@ -301,6 +345,7 @@ function noteStateFrom(meta: CreditMeta): CreditNoteState {
     carryCurrentMinor: meta.carryCurrentMinor,
     carryNextMinor: meta.carryNextMinor,
     deferredMinor: meta.deferredMinor,
+    deferredEntries: meta.deferredEntries,
     anchorDueIso: meta.anchorDueIso,
   };
 }
@@ -349,52 +394,97 @@ export function creditSourceImpactMinor(draft: {
 }
 
 /**
- * Credit note state after a new outflow of `impactMinor` (already posted to the ledger) is assigned
- * to the next billing cycle. The result never reads the account balance, so it cannot be skewed by a
- * balance read before or after the posting.
+ * Credit note state after an outflow with ledger impact `impactMinor` (already posted) puts `deferredMinor`
+ * of that impact into the next billing cycle. By default the whole impact is deferred (a purchase after the
+ * cutoff). An installment top-up in the current cycle defers only its future principal. The result never
+ * reads the account balance, so it cannot be skewed by a balance read before or after the posting.
  *
- * Invariant: the raw unpaid total grows by exactly `impactMinor` and the next bill grows by `impactMinor`.
+ * Passing `activityId` records which activity owns the deferred part, so a later void or correction
+ * releases exactly that part even when the cycle was chosen manually.
  */
-export function deferCreditCharge(meta: CreditMeta, impactMinor: bigint, now: Date = new Date()): CreditNoteState {
+export function deferCreditCharge(
+  meta: CreditMeta,
+  impactMinor: bigint,
+  now: Date = new Date(),
+  options: { activityId?: string; deferredMinor?: bigint } = {},
+): CreditNoteState {
   const impact = impactMinor > 0n ? impactMinor : 0n;
-  const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0, now);
+  const requested = options.deferredMinor ?? impact;
+  const part = requested <= 0n ? 0n : requested > impact ? impact : requested;
   const state = noteStateFrom(meta);
+  if (part === 0n) return state;
+  const entry: DeferredEntry | null = options.activityId
+    ? { ref: creditActivityRef(options.activityId), partMinor: part === impact ? null : part }
+    : null;
+  const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0, now);
   if (isCreditCycleShifted(meta, now)) {
     // The old "next" bill has become the current bill. carryNext moves into carryCurrent; the old
-    // deferred amount already lives in the ledger balance, so a fresh next-cycle bucket starts at impact.
+    // deferred amount already lives in the ledger balance, so a fresh next-cycle bucket starts at `part`.
     return {
       ...state,
       carryCurrentMinor: meta.carryCurrentMinor + meta.carryNextMinor,
       carryNextMinor: 0n,
-      deferredMinor: impact,
+      deferredMinor: part,
+      deferredEntries: entry ? [entry] : null,
       anchorDueIso: currentDueIso,
     };
   }
   return {
     ...state,
-    deferredMinor: meta.deferredMinor + impact,
+    deferredMinor: meta.deferredMinor + part,
+    // Tracking stays exact only while every deferred amount has an owner.
+    deferredEntries: entry && meta.deferredEntries !== null ? [...meta.deferredEntries, entry] : null,
     anchorDueIso: meta.anchorDueIso ?? currentDueIso,
   };
 }
 
 /**
- * Credit note state after a credit outflow is voided or corrected, so the next-cycle bucket does not keep
- * an amount the ledger no longer carries. A reversed outflow counts as deferred when it occurred after the
- * closing cutoff of the anchored bill, the same rule the editor applies automatically. Returns null when
- * nothing has to change.
+ * Credit note state after a credit outflow is voided or corrected, so the next-cycle bucket does not keep an
+ * amount the ledger no longer carries. With per-activity tracking the recorded cycle decides, including
+ * manual overrides. Untracked (older) notes fall back to the rule the editor applies automatically: an
+ * outflow after the closing cutoff of the anchored bill was deferred. Returns null when nothing changes.
  */
 export function releaseDeferredCreditCharge(
   meta: CreditMeta,
-  input: { occurredAtIso: string; reversedImpactMinor: bigint; replacementImpactMinor?: bigint },
+  input: {
+    activityId?: string;
+    occurredAtIso: string;
+    reversedImpactMinor: bigint;
+    replacementActivityId?: string;
+    replacementImpactMinor?: bigint;
+  },
   now: Date = new Date(),
 ): CreditNoteState | null {
-  if (!meta.isCreditFlagged || meta.deferredMinor <= 0n || !meta.anchorDueIso) return null;
+  if (!meta.isCreditFlagged || meta.deferredMinor <= 0n) return null;
   if (isCreditCycleShifted(meta, now)) return null;
+  const reversed = input.reversedImpactMinor > 0n ? input.reversedImpactMinor : 0n;
+  const replacement = input.replacementImpactMinor && input.replacementImpactMinor > 0n ? input.replacementImpactMinor : 0n;
+
+  if (meta.deferredEntries !== null && input.activityId) {
+    const ref = creditActivityRef(input.activityId);
+    const owned = meta.deferredEntries.find((entry) => entry.ref === ref);
+    if (!owned) return null; // recorded in the current cycle
+    const ownedPart = owned.partMinor ?? reversed;
+    const released = ownedPart > meta.deferredMinor ? meta.deferredMinor : ownedPart;
+    const entries = meta.deferredEntries.filter((entry) => entry !== owned);
+    // A correction keeps the amount billed now and moves the difference to the deferred part.
+    const billedNow = owned.partMinor === null ? 0n : reversed > owned.partMinor ? reversed - owned.partMinor : 0n;
+    const nextPart = replacement > billedNow ? replacement - billedNow : 0n;
+    const deferredMinor = meta.deferredMinor - released + nextPart;
+    if (nextPart > 0n && input.replacementActivityId) {
+      entries.push({ ref: creditActivityRef(input.replacementActivityId), partMinor: nextPart === replacement ? null : nextPart });
+    }
+    return {
+      ...noteStateFrom(meta),
+      deferredMinor,
+      deferredEntries: nextPart > 0n && !input.replacementActivityId ? null : entries,
+    };
+  }
+
+  if (!meta.anchorDueIso) return null;
   const occurredDate = jakartaDateIso(input.occurredAtIso);
   if (!occurredDate || occurredDate <= closingCutoffIsoForDue(meta.anchorDueIso, meta.cutoffDay)) return null;
-  const reversed = input.reversedImpactMinor > 0n ? input.reversedImpactMinor : 0n;
   const released = reversed > meta.deferredMinor ? meta.deferredMinor : reversed;
-  const replacement = input.replacementImpactMinor && input.replacementImpactMinor > 0n ? input.replacementImpactMinor : 0n;
   const deferredMinor = meta.deferredMinor - released + replacement;
   if (deferredMinor === meta.deferredMinor) return null;
   return { ...noteStateFrom(meta), deferredMinor };
@@ -420,6 +510,7 @@ export function creditStateForDesiredBills(input: {
     carryCurrentMinor: input.desiredCurrentMinor + input.balanceMinor,
     carryNextMinor: input.desiredNextMinor,
     deferredMinor: 0n,
+    deferredEntries: [],
     anchorDueIso: nextMonthlyDueDayIso(input.dueDay, 0, input.now ?? new Date()),
   };
 }
@@ -434,6 +525,20 @@ export function formatShortDueIso(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * Installment top-up from a credit line (transfer with tenor > 1): the destination receives the full
+ * principal today, the nearest bill carries installment 1 (its principal share + interest), and the
+ * principal of installments 2..N waits in the next-cycle bucket. Returns that future principal.
+ */
+export function installmentFuturePrincipalMinor(
+  principalMinor: bigint,
+  plan: Pick<ReturnType<typeof calculateCreditInstallmentPlan>, "firstMonthTotalMinor" | "monthlyInterestMinor">,
+): bigint {
+  const firstMonthPrincipal = parseBigIntSafe(plan.firstMonthTotalMinor) - parseBigIntSafe(plan.monthlyInterestMinor);
+  const future = principalMinor - firstMonthPrincipal;
+  return future > 0n ? future : 0n;
 }
 
 export function calculateCreditInstallmentPlan(params: {

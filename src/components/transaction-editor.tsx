@@ -15,6 +15,7 @@ import {
   calculateCreditInstallmentPlan,
   computeCreditBills,
   formatShortDueIso,
+  installmentFuturePrincipalMinor,
   isAfterCutoffDay,
   isCreditAsset,
   isReceivableAsset,
@@ -293,14 +294,15 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
 
       let finalAmountMinor = rawPrincipalMinor;
       let finalTransferFeeMinor: string | undefined = undefined;
+      // Installment top-up: the destination gets the full principal now; installments 2..N of the principal
+      // wait in the credit account's next-cycle bucket so the nearest bill only asks for installment 1.
+      const isInstallmentTopUp = kind === "transfer" && isCreditPurchase && Boolean(plan) && tenorMonths > 1;
+      const futurePrincipalMinor = isInstallmentTopUp && plan
+        ? installmentFuturePrincipalMinor(BigInt(rawPrincipalMinor), plan)
+        : 0n;
 
       if (kind === "transfer") {
-        const transferPrincipalMinor =
-          isCreditPurchase && plan
-            ? tenorMonths === 1
-              ? rawPrincipalMinor
-              : (BigInt(plan.monthlyPrincipalMinor) + (BigInt(rawPrincipalMinor) % BigInt(tenorMonths))).toString()
-            : rawPrincipalMinor;
+        const transferPrincipalMinor = rawPrincipalMinor;
 
         const addonFeeBig =
           (feeMode === "addon" || feeMode === "both") && feeEnabled && fee.trim()
@@ -334,7 +336,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
 
       const effectiveNote =
         isCreditPurchase && tenorMonths > 1
-          ? `${note.trim() || account.displayName} (Cicilan 1/${tenorMonths})`
+          ? isInstallmentTopUp
+            ? `${note.trim() || account.displayName} (Dicicil ${tenorMonths}x · tagihan 1/${tenorMonths})`
+            : `${note.trim() || account.displayName} (Cicilan 1/${tenorMonths})`
           : note;
 
       const draft: ActivityDraft = {
@@ -367,7 +371,10 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         id: initial?.id,
         draft,
         idempotencyKey: replay.current.key,
-        ...(isCreditPurchase && targetCycle === "next" ? { creditCycle: "next" } : {}),
+        // The effective cycle (automatic or manual override) is stored with the activity so a later void or
+        // correction releases exactly what this posting deferred.
+        ...(isCreditPurchase ? { creditCycle: targetCycle } : {}),
+        ...(futurePrincipalMinor > 0n ? { creditFuturePrincipalMinor: futurePrincipalMinor.toString() } : {}),
       });
 
       if (isCreditPurchase && plan && plan.futureInstallmentsMinor.length > 0) {
@@ -377,7 +384,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
           title: `Cicilan ${idx + 2}/${tenorMonths} · ${account.displayName} (${labelBase})`.slice(0, 120),
           amountMinor: amt,
           dueOn: nextMonthlyDueDayIso(dueDay, idx + startOffset),
-          note: `Cicilan otomatis dari transaksi ${account.displayName} (Total ${formatMinor(plan.grandTotalMinor, currency, exponent)})`,
+          note: isInstallmentTopUp
+            ? `Pengingat cicilan top-up ${account.displayName} (Total ${formatMinor(plan.grandTotalMinor, currency, exponent)}). Pokok cicilan ini sudah tercatat di saldo ${account.displayName} sebagai tagihan bulan berikutnya; bunga bulan ini belum tercatat.`.slice(0, 500)
+            : `Cicilan otomatis dari transaksi ${account.displayName} (Total ${formatMinor(plan.grandTotalMinor, currency, exponent)})`.slice(0, 500),
         }));
         await requestJson("/api/planning", {
           method: "POST",

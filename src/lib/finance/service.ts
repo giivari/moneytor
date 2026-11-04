@@ -149,18 +149,34 @@ async function sourceImpactMinor(client: PoolClient, activityId: string, assetId
   return parseMinor(row.rows[0]?.impact ?? "0");
 }
 async function writeCreditNote(client: PoolClient, assetId: string, cleanNote: string, state: CreditNoteState): Promise<void> {
-  const note = encodeCreditNote(cleanNote, true, state);
+  let note = encodeCreditNote(cleanNote, true, state);
+  // A very long owner note can leave no room for per-activity tracking; keep the totals and fall back to
+  // the cutoff-date rule rather than rejecting the posting.
+  if (note && note.length > 1000 && state.deferredEntries?.length) note = encodeCreditNote(cleanNote, true, { ...state, deferredEntries: null });
   if (note && note.length > 1000) throw new Error("Catatan akun kredit terlalu panjang untuk menyimpan periode tagihan");
   await client.query("UPDATE assets SET note=$2 WHERE id=$1", [assetId, note ?? null]);
 }
-/** Moves a freshly posted credit outflow into the next billing cycle inside the posting transaction. */
-async function deferCreditOutflow(client: PoolClient, activityId: string, assetId: string): Promise<void> {
+/** How a credit outflow is billed: its cycle, and for an installment top-up the principal billed in later months. */
+export type CreditPosting = { creditCycle?: CreditCycle; creditFuturePrincipalMinor?: string };
+function deferredPartFor(posting: CreditPosting): { cycle: CreditCycle; futurePrincipal: bigint } | null {
+  if (posting.creditCycle !== "current" && posting.creditCycle !== "next") return null;
+  const futurePrincipal = posting.creditFuturePrincipalMinor ? assertStoredMinor(parseMinor(posting.creditFuturePrincipalMinor)) : 0n;
+  if (futurePrincipal < 0n) throw new Error("Pokok cicilan mendatang tidak valid");
+  if (posting.creditCycle === "current" && futurePrincipal === 0n) return null; // billed now: nothing to record
+  return { cycle: posting.creditCycle, futurePrincipal };
+}
+/** Records the deferred part of a freshly posted credit outflow inside the posting transaction. */
+async function deferCreditOutflow(client: PoolClient, activityId: string, assetId: string,
+  part: { cycle: CreditCycle; futurePrincipal: bigint }): Promise<void> {
   const asset = await client.query<{ note: string | null }>("SELECT note FROM assets WHERE id=$1 FOR UPDATE", [assetId]);
   if (!asset.rows[0]) return;
   const impact = await sourceImpactMinor(client, activityId, assetId);
   if (impact <= 0n) return;
+  if (part.futurePrincipal > impact) throw new Error("Pokok cicilan mendatang melebihi nilai transaksi");
   const meta = parseCreditMeta(asset.rows[0].note);
-  await writeCreditNote(client, assetId, meta.cleanNote, deferCreditCharge(meta, impact));
+  // Next cycle: the whole impact waits. Current cycle installment: only the future principal waits.
+  const deferredMinor = part.cycle === "next" ? impact : part.futurePrincipal;
+  await writeCreditNote(client, assetId, meta.cleanNote, deferCreditCharge(meta, impact, new Date(), { activityId, deferredMinor }));
 }
 /** Keeps the next-cycle bucket of a credit account in step with a voided or corrected outflow. */
 async function releaseCreditDeferral(client: PoolClient, reversedId: string, replacementId?: string): Promise<void> {
@@ -172,8 +188,10 @@ async function releaseCreditDeferral(client: PoolClient, reversedId: string, rep
   const meta = parseCreditMeta(asset.rows[0]?.note);
   if (!meta.isCreditFlagged || meta.deferredMinor <= 0n) return;
   const updated = releaseDeferredCreditCharge(meta, {
+    activityId: reversedId,
     occurredAtIso: row.occurred_at.toISOString(),
     reversedImpactMinor: await sourceImpactMinor(client, reversedId, row.source_asset_id),
+    replacementActivityId: replacementId,
     replacementImpactMinor: replacementId ? await sourceImpactMinor(client, replacementId, row.source_asset_id) : 0n,
   });
   if (updated) await writeCreditNote(client, row.source_asset_id, meta.cleanNote, updated);
@@ -201,15 +219,15 @@ async function withIdempotency(operation: "post" | "replace" | "void", key: stri
   return inDatabaseTransaction((client) => idempotentOnClient(client,operation,key,payload,action));
 }
 
-export async function postActivity(raw: ActivityDraft, key: string, options: { creditCycle?: CreditCycle } = {}): Promise<string> {
+export async function postActivity(raw: ActivityDraft, key: string, options: CreditPosting = {}): Promise<string> {
   const draft = normalizeDraft(raw);
-  const deferToNextCycle = options.creditCycle === "next" && draft.kind !== "income" && Boolean(draft.sourceAssetId);
-  // Plain posts keep their historical request hash; a deferred credit post hashes the cycle as well.
-  const payload = deferToNextCycle ? { draft, creditCycle: "next" } : draft;
+  const part = draft.kind !== "income" && draft.sourceAssetId ? deferredPartFor(options) : null;
+  // Plain posts keep their historical request hash; a deferred credit post hashes its billing as well.
+  const payload = part ? { draft, creditCycle: part.cycle, creditFuturePrincipalMinor: part.futurePrincipal.toString() } : draft;
   return withIdempotency("post", key, payload, async (client) => {
-    if (deferToNextCycle) await client.query("SELECT id FROM assets WHERE id=$1 FOR UPDATE", [draft.sourceAssetId]);
+    if (part) await client.query("SELECT id FROM assets WHERE id=$1 FOR UPDATE", [draft.sourceAssetId]);
     const id = await insertPosted(client, draft);
-    if (deferToNextCycle) await deferCreditOutflow(client, id, draft.sourceAssetId!);
+    if (part) await deferCreditOutflow(client, id, draft.sourceAssetId!, part);
     return id;
   });
 }
