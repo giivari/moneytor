@@ -1,8 +1,8 @@
 :root {
-  --radius-dialog: 22px;
-  --radius-surface: 18px;
-  --radius-control: 12px;
-  --radius-compact: 10px;
+  --radius-dialog: 8px;
+  --radius-surface: 8px;
+  --radius-control: 6px;
+  --radius-compact: 4px;
   --control-height: 46px;
   --mobile-dock-height: 70px;
   --mobile-dock-offset: 14px;

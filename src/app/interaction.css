@@ -25,7 +25,7 @@
 .finance-asset-mark[data-tone="violet"] { color: var(--data-violet); background: var(--data-violet-soft); }
 .home-page .hero-kicker svg { color: var(--data-blue); }
 .investment-note > svg, .investment-summary h2 svg { color: var(--data-violet); }
-.auth-card .auth-symbol { display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 14px; border-radius: 13px; background: #f0f1f2; color: #30363a; }
+.auth-card .auth-symbol { display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 14px; border-radius: 8px; background: #f0f1f2; color: #30363a; }
 .button-primary:disabled, .auth-primary:disabled { opacity: .8; }
 .loading-indicator { color: var(--data-blue); }
 button .loading-indicator { color: inherit; }

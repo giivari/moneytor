@@ -8,7 +8,7 @@ import { ListSortControl } from "./list-sort-control";
 import { useRef, useState } from "react";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
-import { ArrowRight, FileArrowUp, X } from "@phosphor-icons/react";
+import { CalendarCheck, FileArrowUp, Plus, X } from "@phosphor-icons/react";
 import { financeRequest } from "@/lib/finance/client";
 import { formatMinor } from "@/lib/finance/format";
 import type { FinanceActivity } from "@/lib/finance/types";
@@ -20,6 +20,7 @@ import { ListFilterControl } from "./list-filter-control";
 import { MoneyMovementRow } from "./money-movement-row";
 import { TransactionEditor } from "./transaction-editor";
 import { AppLink } from "./app-link";
+import { formatCurrencyTotals, sumByCurrency } from "@/lib/finance/currency-totals";
 
 const labels = { income: "Pemasukan", expense: "Pengeluaran", transfer: "Transfer" };
 function describeCharges(item: FinanceActivity): string | undefined {
@@ -42,6 +43,7 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
   const [history, setHistory] = useState(false);
   const [selected, setSelected] = useState<FinanceActivity | null>(null);
   const [editing, setEditing] = useState<FinanceActivity | null>(null);
+  const [creating, setCreating] = useState(false);
   const [confirmVoid, setConfirmVoid] = useState(false);
   const [error, setError] = useState("");
   const { pending, begin, finish } = useMutationPending();
@@ -49,6 +51,9 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
   const replay = useRef<{ id: string; key: string } | null>(null);
   const activityPage=useActivityPage(activities,filter,history,sort.direction);
   const shown=activityPage.items;
+  // Status bar totals cover visible rows only; voided/corrected rows stay listed but are not summed.
+  const posted=shown.filter(item=>item.status==="posted");
+  const statusTotal=(kind: FinanceActivity["kind"])=>sumByCurrency(posted.filter(item=>item.kind===kind),item=>BigInt(activityValueMinor(item)));
   function openDetails(item: FinanceActivity) {
     if (refreshing) return;
     setSelected(item); setError(""); setConfirmVoid(false);
@@ -63,16 +68,25 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
     catch (cause) { setError(cause instanceof Error ? cause.message : "Pembatalan gagal."); }
     finally { finish(); }
   }
-  return <div className="page"><div className="page-heading"><div><span className="eyebrow">CATATAN UANG</span><h1>Transactions</h1>
-    <p>Aktivitas tersimpan, dengan jumlah dasar dan biaya yang terpisah.</p></div><div className="transactions-header-actions"><AppLink href="/transactions/imports" className="finance-edit-button transactions-import-trigger"><FileArrowUp size={16} /> Impor CSV/Excel</AppLink><AppLink href="/transactions/automation" className="text-link automation-entry">Otomatisasi <ArrowRight size={16} /></AppLink></div></div>
+  return <div className="page transactions-page"><div className="page-heading"><div><span className="eyebrow">CATATAN UANG</span><h1>Transactions</h1>
+    <p>Aktivitas tersimpan, dengan jumlah dasar dan biaya yang terpisah.</p></div></div>
+    <div className="office-command-bar transactions-command-bar" role="toolbar" aria-label="Perintah transaksi">
+      <div className="office-command-bar__group">
+        <button type="button" className="office-command office-command--primary" onClick={() => setCreating(true)}><Plus size={16} weight="bold" aria-hidden="true" /> Catat Transaksi</button>
+        <AppLink href="/transactions/automation" className="office-command automation-entry-command"><CalendarCheck size={16} aria-hidden="true" /> Otomatisasi &amp; Jadwal</AppLink>
+        <AppLink href="/transactions/imports" className="office-command transactions-import-command"><FileArrowUp size={16} aria-hidden="true" /> Impor CSV / Excel</AppLink>
+      </div>
+      <div className="office-command-bar__group office-command-bar__group--end">
+        <ListToolbar label="Filter dan urutan transaksi"
+          visibility={<><label className="finance-history-toggle"><input type="checkbox" checked={history} onChange={(event) => setHistory(event.target.checked)} /> Tampilkan koreksi & pembatalan</label><ExportMenuButton dataset="transactions" label="Ekspor" /></>}>
+          <ListFilterControl value={filter} onChange={setFilter} label="Jenis" options={[{value:"all",label:"Semua"},{value:"expense",label:"Pengeluaran"},{value:"income",label:"Pemasukan"},{value:"transfer",label:"Transfer"}]} />
+          <ListSortControl {...sort} />
+        </ListToolbar>
+      </div>
+    </div>
     <div className="summary-strip"><div><span>Pengeluaran bulan ini</span><strong>{monthly.length ? monthly.map((item) => formatMinor(item.expenseMinor, item.currency, item.exponent)).join(" · ") : "—"}</strong></div>
       <div><span>Aktivitas pada halaman</span><strong>{shown.length}</strong></div></div>
     <section className="surface"><div className="section-heading"><div><span className="eyebrow">RIWAYAT TERCATAT</span><h2>Aktivitas terakhir</h2></div></div>
-      <ListToolbar label="Filter dan urutan transaksi"
-        visibility={<><label className="finance-history-toggle"><input type="checkbox" checked={history} onChange={(event) => setHistory(event.target.checked)} /> Tampilkan koreksi & pembatalan</label><ExportMenuButton dataset="transactions" label="Ekspor Mutasi" /></>}>
-        <ListFilterControl value={filter} onChange={setFilter} label="Jenis" options={[{value:"all",label:"Semua"},{value:"expense",label:"Pengeluaran"},{value:"income",label:"Pemasukan"},{value:"transfer",label:"Transfer"}]} />
-        <ListSortControl {...sort} />
-      </ListToolbar>
       <ListContent loading={activityPage.loading} error={activityPage.error} hasItems={shown.length>0} onRetry={activityPage.retry}
         empty={activities.length?'Tidak ada transaksi pada filter ini.':'Belum ada transaksi. Gunakan Tambah transaksi untuk mulai mencatat.'}>
       {shown.length>0 && (
@@ -93,10 +107,16 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
               fee={describeCharges(item)} />
           </button>} />)}
       </ListContent>
+      <footer className="office-status-bar transactions-status-bar" role="status" aria-live="polite" aria-label="Ringkasan transaksi yang ditampilkan">
+        <span>Menampilkan <strong>{shown.length} transaksi</strong></span>
+        <span>Total Pemasukan (tampil): <strong data-tone="positive">{formatCurrencyTotals(statusTotal("income"), "+")}</strong></span>
+        <span>Total Pengeluaran (tampil): <strong data-tone="negative">{formatCurrencyTotals(statusTotal("expense"), "−")}</strong></span>
+        <span>Total Transfer (tampil): <strong>{formatCurrencyTotals(statusTotal("transfer"))}</strong></span>
+      </footer>
       <ListToolbar label="Halaman transaksi"><button type="button" className="row-action" disabled={activityPage.loading||activityPage.pageNumber===1} onClick={activityPage.previous}>Sebelumnya</button><span className="record-muted">Halaman {activityPage.pageNumber}</span><button type="button" className="row-action" disabled={activityPage.loading||!activityPage.hasNext} onClick={activityPage.next}>Berikutnya</button></ListToolbar></section>
 
     <details className="context-help"><summary>Tentang riwayat transaksi</summary><p className="supporting-prose supporting-prose--section">Koreksi dan pembatalan tetap ada dalam riwayat dan dibalik di ledger.</p></details>
-    {selected && <div className="dialog-backdrop" onMouseDown={(event) => { if (!pending && event.target === event.currentTarget) setSelected(null); }}>
+    {selected && <div className="dialog-backdrop office-inspector-backdrop" onMouseDown={(event) => { if (!pending && event.target === event.currentTarget) setSelected(null); }}>
       <section className="detail-dialog finance-detail" role="dialog" aria-modal="true" aria-busy={pending} aria-labelledby="finance-detail-title" onKeyDown={(event) => { if (!pending && event.key === "Escape") setSelected(null); }}>
         <div className="dialog-heading"><div><span className="eyebrow">RINCIAN TRANSAKSI</span><h2 id="finance-detail-title">{selected.note || labels[selected.kind]}</h2></div>
           <button type="button" className="icon-button" disabled={pending} onClick={() => setSelected(null)} aria-label="Tutup rincian"><X size={20} /></button></div>
@@ -120,5 +140,6 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
           <button type="button" className="finance-secondary" onClick={() => setConfirmVoid(false)} disabled={pending}>Kembali</button></div>}
         {error && <p role="alert" className="finance-error">{error}</p>}</section></div>}
     {editing && <TransactionEditor key={editing.id} initial={editing} onClose={() => setEditing(null)} />}
+    {creating && <TransactionEditor onClose={() => setCreating(false)} />}
   </div>;
 }

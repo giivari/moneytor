@@ -44,6 +44,8 @@ import { FinancialAmount } from "./financial-amount";
 import { SectionHeading } from "./section-heading";
 import { InvestmentSummary } from "./investment-summary";
 import { useMobileViewport } from "./use-mobile-viewport";
+import { OfficeTabs } from "./office-tabs";
+import { formatCurrencyTotals, sumByCurrency } from "@/lib/finance/currency-totals";
 
 const ADMIN_DAY_CHOICES = [
   { value: "0", label: "Akhir bulan" },
@@ -1616,6 +1618,24 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
   </dialog>;
 }
 
+type AssetSheet = "all" | "cash" | "savings" | "credit" | "receivable" | "archive";
+const ASSET_SHEET_TITLES: Record<"all" | "cash" | "savings" | "receivable", string> = {
+  all: "Akun & nilai tercatat",
+  cash: "Kas, bank & e-money",
+  savings: "Tabungan & cadangan",
+  receivable: "Piutang & talangan",
+};
+const ASSET_SHEET_EMPTY: Record<"all" | "cash" | "savings" | "receivable", string> = {
+  all: "Belum ada akun aktif.",
+  cash: "Belum ada rekening harian, kas, atau e-money yang aktif.",
+  savings: "Belum ada tabungan berbunga atau dana cadangan yang aktif.",
+  receivable: "Belum ada akun piutang atau talangan. Gunakan Split Bill pada pengeluaran untuk mencatat talangan teman.",
+};
+/** Savings/reserve sheet: interest-bearing accounts or groups not meant for daily spending. */
+function isSavingsAsset(asset: FinanceAsset): boolean {
+  return parseAssetTerms(asset.note).interestRateBps > 0 || !asset.normallySpendable;
+}
+
 export function AssetsManager({ assets, totals, investmentTotals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number }[]; investmentTotals: InvestmentTotal[] }) {
   const mobile = useMobileViewport();
   const [viewingAsset, setViewingAsset] = useState<FinanceAsset | null>(null);
@@ -1640,6 +1660,29 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
   const creditActive = active.filter((item) => isCreditAsset(item));
   const archived = assets.filter((item) => !item.isActive);
   const creditFirst = creditActive.some((item) => computeCreditBills(item).totalUnpaidMinor > 0n);
+  const [sheet, setSheet] = useState<AssetSheet>("all");
+  const receivableActive = regularActive.filter((item) => isReceivableAsset(item));
+  const savingsActive = regularActive.filter((item) => !isReceivableAsset(item) && isSavingsAsset(item));
+  const cashActive = regularActive.filter((item) => !isReceivableAsset(item) && !isSavingsAsset(item));
+  const sheets: { id: AssetSheet; label: string }[] = [
+    { id: "all", label: "Semua Akun" },
+    { id: "cash", label: "Kas, Bank & E-Money" },
+    { id: "savings", label: "Tabungan & Cadangan" },
+    { id: "credit", label: "Kredit & PayLater" },
+    { id: "receivable", label: "Piutang & Talangan" },
+    ...(archived.length > 0 ? [{ id: "archive" as const, label: `Arsip (${archived.length})` }] : []),
+  ];
+  const activeSheet: AssetSheet = sheet === "archive" && !archived.length ? "all" : sheet;
+  const sheetRows: Record<Exclude<AssetSheet, "credit" | "archive">, FinanceAsset[]> = {
+    all: regularActive, cash: cashActive, savings: savingsActive, receivable: receivableActive,
+  };
+  const listRows = activeSheet === "credit" || activeSheet === "archive" ? [] : sheetRows[activeSheet];
+  const showCredit = activeSheet === "all" || activeSheet === "credit";
+  const showArchivedList = activeSheet === "archive" || (activeSheet === "all" && showArchived);
+  const displayedCount = listRows.length + (showCredit ? creditActive.length : 0) + (showArchivedList ? archived.length : 0);
+  const statusLiquid = sumByCurrency(cashActive.concat(savingsActive).filter((item) => item.normallyLiquid), (item) => BigInt(item.balanceMinor));
+  const statusReceivable = sumByCurrency(receivableActive, (item) => BigInt(item.balanceMinor));
+  const statusCredit = sumByCurrency(creditActive, (item) => computeCreditBills(item).totalUnpaidMinor);
 
   const liveViewingAsset = viewingAsset
     ? assets.find((item) => item.id === viewingAsset.id) ?? viewingAsset
@@ -1727,14 +1770,17 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
 
   return <div className="page finance-assets-page"><div className="page-heading finance-heading"><div><span className="eyebrow">POSISI KEUANGAN</span><h1>Assets</h1>
     </div><div className="page-heading-actions"><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></div></div>
-    <div className="asset-overview-grid">{!!totals.length && <section className="asset-total finance-asset-total"><div className="finance-total-heading"><span className="finance-total-icon"><Bank size={17} weight="bold" /></span><span>Total aset tercatat</span></div>
+    {activeSheet === "all" && <div className="asset-overview-grid">{!!totals.length && <section className="asset-total finance-asset-total"><div className="finance-total-heading"><span className="finance-total-icon"><Bank size={17} weight="bold" /></span><span>Total aset tercatat</span></div>
       {totals.map((item) => <strong className="financial-value financial-value--summary" key={item.currency}>{formatMinor(item.amountMinor, item.currency, item.exponent)}</strong>)}
       </section>}
-    <InvestmentSummary totals={investmentTotals} /></div>
-    {creditFirst && creditSection}
-    {!regularActive.length ? <section className="surface finance-empty"><h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2><p>{archived.length ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru." : "Buat akun atau aset pertama, lalu catat saldo awalnya."}</p>
-      <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : <section className="surface"><SectionHeading title="Akun & nilai tercatat" eyebrow="ASET AKTIF" action={<div className="section-heading-actions"><span className="count-pill">{regularActive.length} aset</span><ExportMenuButton dataset="assets" label="Ekspor Aset" /></div>} />
-      <div className="asset-list">{regularActive.map((asset) => {
+    <InvestmentSummary totals={investmentTotals} /></div>}
+    <OfficeTabs label="Ruang kerja aset" tabs={sheets} value={activeSheet} onChange={setSheet} idPrefix="asset-sheet" />
+    <div className="asset-sheet-panel" role="tabpanel" id={`asset-sheet-panel-${activeSheet}`} aria-labelledby={`asset-sheet-tab-${activeSheet}`}>
+    {activeSheet === "all" && creditFirst && creditSection}
+    {activeSheet === "all" && !regularActive.length ? <section className="surface finance-empty"><h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2><p>{archived.length ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru." : "Buat akun atau aset pertama, lalu catat saldo awalnya."}</p>
+      <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : activeSheet !== "credit" && activeSheet !== "archive" && <section className="surface"><SectionHeading title={ASSET_SHEET_TITLES[activeSheet]} eyebrow="ASET AKTIF" action={<div className="section-heading-actions"><span className="count-pill">{listRows.length} aset</span><ExportMenuButton dataset="assets" label="Ekspor Aset" /></div>} />
+      {!listRows.length && <p className="finance-empty-inline finance-hint">{ASSET_SHEET_EMPTY[activeSheet]}</p>}
+      <div className="asset-list">{listRows.map((asset) => {
         const isReceivable = isReceivableAsset(asset);
         const mark = resolveProviderMark(
           asset.providerName,
@@ -1781,10 +1827,12 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
         </div></div></article>;
       })}</div></section>}
 
-    {!creditFirst && creditSection}
+    {showCredit && (activeSheet === "credit" || !creditFirst) && creditSection}
+    {activeSheet === "credit" && !creditActive.length && <section className="surface finance-empty"><h2>Belum ada fasilitas kredit</h2><p>Tambahkan kartu kredit atau PayLater sebagai aset kredit untuk memantau limit dan tagihan jatuh tempo.</p>
+      <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section>}
 
-    {archived.length > 0 && <><label className="finance-history-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan ({archived.length})</label>
-      {showArchived && <section className="surface finance-archived"><SectionHeading title="Aset diarsipkan" />
+    {archived.length > 0 && (activeSheet === "all" || activeSheet === "archive") && <>{activeSheet === "all" && <label className="finance-history-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan ({archived.length})</label>}
+      {showArchivedList && <section className="surface finance-archived"><SectionHeading title="Aset diarsipkan" />
       <div className="asset-list">{archived.map((asset) => {
         const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
         return <div
@@ -1795,7 +1843,14 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
           }}
         ><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}><strong>{asset.displayName}</strong></button><small>Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
       })}</div><details className="context-help"><summary>Tentang aset diarsipkan</summary><p className="finance-hint supporting-prose">Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk menggunakannya kembali.</p></details></section>}</>}
-    {error && <p className="finance-error" role="alert">{error}</p>}
+    <footer className="office-status-bar asset-status-bar" role="status" aria-live="polite" aria-label="Ringkasan lembar aset">
+      <span>Jumlah Akun Ditampilkan: <strong>{displayedCount} akun</strong></span>
+      <span>Total Kas Likuid: <strong>{formatCurrencyTotals(statusLiquid)}</strong></span>
+      <span>Total Piutang: <strong>{formatCurrencyTotals(statusReceivable)}</strong></span>
+      <span>Total Tagihan Kredit: <strong data-tone={statusCredit.some((item) => item.amountMinor > 0n) ? "negative" : undefined}>{formatCurrencyTotals(statusCredit)}</strong></span>
+    </footer>
+    </div>
+    {error &&<p className="finance-error" role="alert">{error}</p>}
     <details className="context-help"><summary>Cara membaca aset &amp; fasilitas kredit</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Klik nama atau baris aset untuk melihat rincian ketentuan akun, bunga simpanan, biaya admin, dan mutasi terakhir.</p></details>
     {liveViewingAsset && (
       <AssetDetailDialog
