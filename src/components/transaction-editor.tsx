@@ -65,7 +65,13 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
     ? minorToInput(initial.charges[0].amountMinor, initial.exponent) : "");
   const [chargesEnabled, setChargesEnabled] = useState(initial?.kind === "expense" && initial.charges.length > 0);
   const [feeEnabled, setFeeEnabled] = useState(initial?.kind === "transfer" && initial.charges.length > 0);
-  const [feeMode, setFeeMode] = useState<"addon" | "deducted">("addon");
+  const [feeMode, setFeeMode] = useState<"addon" | "deducted" | "both">("addon");
+  const [deductedFee, setDeductedFee] = useState("");
+
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [reimburseAmount, setReimburseAmount] = useState("");
+  const [reimbursePerson, setReimbursePerson] = useState("");
+  const [receivableAssetId, setReceivableAssetId] = useState("");
 
   const active = options?.assets ?? [];
   const account = accountId ? active.find((item) => item.id === accountId) : active[0];
@@ -119,33 +125,51 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   }
 
   let transferFeeSummaryHint: string | null = null;
-  if (kind === "transfer" && feeEnabled && fee.trim()) {
+  if (kind === "transfer" && feeEnabled && (fee.trim() || (feeMode === "both" && deductedFee.trim()))) {
     try {
-      const rawFeeMinor = inputToMinor(fee.trim(), exponent);
-      const feeBig = BigInt(rawFeeMinor);
-      const feeFormatted = formatMinor(feeBig.toString(), currency, exponent);
+      const addonFeeBig =
+        (feeMode === "addon" || feeMode === "both") && fee.trim()
+          ? BigInt(inputToMinor(fee.trim(), exponent))
+          : 0n;
+      const deductedFeeBig =
+        feeMode === "deducted"
+          ? (fee.trim() ? BigInt(inputToMinor(fee.trim(), exponent)) : 0n)
+          : feeMode === "both"
+            ? (deductedFee.trim() ? BigInt(inputToMinor(deductedFee.trim(), exponent)) : 0n)
+            : 0n;
+      const totalFeeBig = addonFeeBig + deductedFeeBig;
+
       if (amount.trim()) {
         const rawAmtMinor = inputToMinor(amount.trim(), exponent);
         const amtBig = BigInt(rawAmtMinor);
-        if (feeMode === "addon") {
-          const totalSource = amtBig + feeBig;
-          transferFeeSummaryHint = `Keluar dari sumber: ${formatMinor(totalSource.toString(), currency, exponent)} · Masuk ke tujuan: ${formatMinor(amtBig.toString(), currency, exponent)}`;
+        const totalSource = amtBig + addonFeeBig;
+        if (amtBig > deductedFeeBig) {
+          const netDest = amtBig - deductedFeeBig;
+          transferFeeSummaryHint = `Keluar dari sumber: ${formatMinor(totalSource.toString(), currency, exponent)} · Masuk bersih ke tujuan: ${formatMinor(netDest.toString(), currency, exponent)} · Total biaya admin: ${formatMinor(totalFeeBig.toString(), currency, exponent)}`;
         } else {
-          if (amtBig > feeBig) {
-            const netDest = amtBig - feeBig;
-            transferFeeSummaryHint = `Keluar dari sumber: ${formatMinor(amtBig.toString(), currency, exponent)} · Masuk bersih ke tujuan: ${formatMinor(netDest.toString(), currency, exponent)} · Biaya terpotong: ${feeFormatted}`;
-          } else {
-            transferFeeSummaryHint = `Biaya terpotong: ${feeFormatted} (Perhatian: Biaya melebihi atau sama dengan nominal transaksi)`;
-          }
+          transferFeeSummaryHint = `Total biaya admin: ${formatMinor(totalFeeBig.toString(), currency, exponent)} (Perhatian: Potongan di tujuan melebihi atau sama dengan nominal)`;
         }
       } else {
-        transferFeeSummaryHint =
-          feeMode === "addon"
-            ? `Keluar dari sumber: pokok + ${feeFormatted} · Masuk ke tujuan: pokok`
-            : `Keluar dari sumber: pokok · Masuk bersih ke tujuan: pokok - ${feeFormatted} · Biaya terpotong: ${feeFormatted}`;
+        transferFeeSummaryHint = `Biaya sumber: ${formatMinor(addonFeeBig.toString(), currency, exponent)} · Potongan tujuan: ${formatMinor(deductedFeeBig.toString(), currency, exponent)} · Total biaya: ${formatMinor(totalFeeBig.toString(), currency, exponent)}`;
       }
     } catch {
       transferFeeSummaryHint = null;
+    }
+  }
+
+  let splitSummaryHint: string | null = null;
+  if (kind === "expense" && splitEnabled && amount.trim() && reimburseAmount.trim()) {
+    try {
+      const totalBayarBig = BigInt(inputToMinor(amount.trim(), exponent));
+      const talanganBig = BigInt(inputToMinor(reimburseAmount.trim(), exponent));
+      if (talanganBig > 0n && talanganBig <= totalBayarBig) {
+        const porsiPribadiBig = totalBayarBig - talanganBig;
+        splitSummaryHint = `Total keluar dari rekening: ${formatMinor(totalBayarBig.toString(), currency, exponent)} · Pengeluaran pribadi Anda: ${formatMinor(porsiPribadiBig.toString(), currency, exponent)} · Masuk ke Piutang/Talangan: ${formatMinor(talanganBig.toString(), currency, exponent)}`;
+      } else if (talanganBig > totalBayarBig) {
+        splitSummaryHint = "Perhatian: Nominal talangan melebihi total nominal pembayaran.";
+      }
+    } catch {
+      splitSummaryHint = null;
     }
   }
 
@@ -174,6 +198,85 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
           })
         : null;
 
+      if (splitEnabled && !initial && kind === "expense" && reimburseAmount.trim()) {
+        const totalPrincipalBig = BigInt(rawPrincipalMinor);
+        const talanganBig = BigInt(inputToMinor(reimburseAmount.trim(), exponent));
+        if (talanganBig <= 0n || talanganBig > totalPrincipalBig) {
+          throw new Error("Nominal talangan harus di antara 1 dan total nominal pembayaran.");
+        }
+
+        let targetReceivableId = receivableAssetId;
+        if (!targetReceivableId) {
+          const existingReceivable = active.find(
+            (item) =>
+              item.currency === currency &&
+              item.id !== account.id &&
+              /\b(piutang|talangan|reimburse)\b/i.test(item.displayName),
+          );
+          if (existingReceivable) {
+            targetReceivableId = existingReceivable.id;
+          } else {
+            const created = await financeRequest<{ id: string }>("asset-create", {
+              displayName: currency === "IDR" ? "Piutang & Talangan" : `Piutang & Talangan (${currency})`,
+              currency,
+              openingAmountMinor: "0",
+              openingEffectiveAt: new Date().toISOString(),
+              assetTypeId: account.assetTypeId,
+              assetGroupId: account.assetGroupId || undefined,
+              normallyLiquid: false,
+              normallySpendable: false,
+              note: "Akun penampung uang talangan / split bill yang belum diganti.",
+            });
+            targetReceivableId = created.id;
+          }
+        }
+
+        const personalShareBig = totalPrincipalBig - talanganBig;
+        const transferNote = `Talangan${reimbursePerson.trim() ? ` ${reimbursePerson.trim()}` : ""}${note.trim() ? ` · ${note.trim()}` : ""}`.slice(0, 1000);
+
+        if (personalShareBig > 0n) {
+          const personalDraft: ActivityDraft = {
+            kind: "expense",
+            amountMinor: personalShareBig.toString(),
+            occurredAt: new Date(occurredAt).toISOString(),
+            note: note.trim() || undefined,
+            sourceAssetId: account.id,
+            categoryId: categoryId || undefined,
+            charges: (chargesEnabled ? charges : []).map((charge) => ({
+              typeId: charge.typeId,
+              amountMinor: inputToMinor(charge.amount, exponent),
+            })),
+          };
+          await financeRequest("post", { draft: personalDraft, idempotencyKey: crypto.randomUUID() });
+
+          const splitTransferDraft: ActivityDraft = {
+            kind: "transfer",
+            amountMinor: talanganBig.toString(),
+            occurredAt: new Date(occurredAt).toISOString(),
+            note: transferNote,
+            sourceAssetId: account.id,
+            destinationAssetId: targetReceivableId,
+          };
+          await financeRequest("post", { draft: splitTransferDraft, idempotencyKey: crypto.randomUUID() });
+        } else {
+          // 100% talangan milik teman
+          const splitTransferDraft: ActivityDraft = {
+            kind: "transfer",
+            amountMinor: talanganBig.toString(),
+            occurredAt: new Date(occurredAt).toISOString(),
+            note: transferNote,
+            sourceAssetId: account.id,
+            destinationAssetId: targetReceivableId,
+          };
+          await financeRequest("post", { draft: splitTransferDraft, idempotencyKey: crypto.randomUUID() });
+        }
+
+        refresh();
+        notify("Transaksi berhasil dicatat (Porsi talangan dialihkan ke akun Piutang).");
+        onClose();
+        return;
+      }
+
       let finalAmountMinor = rawPrincipalMinor;
       let finalTransferFeeMinor: string | undefined = undefined;
 
@@ -185,24 +288,27 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
               : (BigInt(plan.monthlyPrincipalMinor) + (BigInt(rawPrincipalMinor) % BigInt(tenorMonths))).toString()
             : rawPrincipalMinor;
 
-        let baseTransferFee = 0n;
-        if (feeEnabled && fee.trim()) {
-          const feeMinorBig = BigInt(inputToMinor(fee, exponent));
-          baseTransferFee = feeMinorBig;
-          if (feeMode === "deducted") {
-            if (feeMinorBig >= BigInt(transferPrincipalMinor)) {
-              throw new Error("Biaya potong di dalam tidak boleh melebihi atau sama dengan nominal transaksi.");
-            }
-            finalAmountMinor = (BigInt(transferPrincipalMinor) - feeMinorBig).toString();
-          } else {
-            finalAmountMinor = transferPrincipalMinor;
-          }
-        } else {
-          finalAmountMinor = transferPrincipalMinor;
+        const addonFeeBig =
+          (feeMode === "addon" || feeMode === "both") && feeEnabled && fee.trim()
+            ? BigInt(inputToMinor(fee.trim(), exponent))
+            : 0n;
+        const deductedFeeBig =
+          feeEnabled
+            ? feeMode === "deducted"
+              ? (fee.trim() ? BigInt(inputToMinor(fee.trim(), exponent)) : 0n)
+              : feeMode === "both"
+                ? (deductedFee.trim() ? BigInt(inputToMinor(deductedFee.trim(), exponent)) : 0n)
+                : 0n
+            : 0n;
+
+        if (deductedFeeBig > 0n && deductedFeeBig >= BigInt(transferPrincipalMinor)) {
+          throw new Error("Biaya potong di tujuan tidak boleh melebihi atau sama dengan nominal transaksi.");
         }
 
+        finalAmountMinor = (BigInt(transferPrincipalMinor) - deductedFeeBig).toString();
+
         const creditInterest = isCreditPurchase && plan ? BigInt(plan.monthlyInterestMinor) : 0n;
-        const totalFee = baseTransferFee + creditInterest;
+        const totalFee = addonFeeBig + deductedFeeBig + creditInterest;
         if (totalFee > 0n) {
           finalTransferFeeMinor = totalFee.toString();
         }
@@ -440,28 +546,58 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
           </label>
           <OptionalFormSection label="Ada biaya transfer" enabled={feeEnabled} onChange={setFeeEnabled}>
             <label className="field">
-              <span>Biaya transfer ({currency})</span>
-              <input
-                inputMode="decimal"
-                value={fee}
-                onChange={(event) => setFee(event.target.value)}
-                placeholder="0"
-              />
-            </label>
-            <label className="field">
               <span>Skema potongan biaya</span>
               <select
                 value={feeMode}
-                onChange={(event) => setFeeMode(event.target.value as "addon" | "deducted")}
+                onChange={(event) => setFeeMode(event.target.value as "addon" | "deducted" | "both")}
               >
                 <option value="addon">
-                  Tambah di luar nominal (Saldo sumber terpotong pokok + biaya, tujuan terima utuh)
+                  Tambah di luar nominal (Potong dari akun sumber)
                 </option>
                 <option value="deducted">
-                  Potong di dalam / di jalan (Saldo sumber keluar pas nominal di atas, saldo tujuan terima bersih setelah dipotong biaya)
+                  Potong di dalam / di jalan (Mengurangi saldo masuk di tujuan)
+                </option>
+                <option value="both">
+                  Biaya ganda (Kena admin di akun sumber + dipotong lagi di tujuan)
                 </option>
               </select>
             </label>
+            {feeMode === "both" ? (
+              <div className="field-grid">
+                <label className="field">
+                  <span>Biaya di akun sumber ({currency})</span>
+                  <input
+                    inputMode="decimal"
+                    value={fee}
+                    onChange={(event) => setFee(event.target.value)}
+                    placeholder="0"
+                  />
+                </label>
+                <label className="field">
+                  <span>Potongan di akun tujuan ({currency})</span>
+                  <input
+                    inputMode="decimal"
+                    value={deductedFee}
+                    onChange={(event) => setDeductedFee(event.target.value)}
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+            ) : (
+              <label className="field">
+                <span>
+                  {feeMode === "deducted"
+                    ? `Biaya potong di tujuan (${currency})`
+                    : `Biaya di akun sumber (${currency})`}
+                </span>
+                <input
+                  inputMode="decimal"
+                  value={fee}
+                  onChange={(event) => setFee(event.target.value)}
+                  placeholder="0"
+                />
+              </label>
+            )}
             {transferFeeSummaryHint && (
               <small className="finance-hint">{transferFeeSummaryHint}</small>
             )}
@@ -480,6 +616,50 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
       />}
       {kind === "expense" && <OptionalChargesEditor enabled={chargesEnabled} onEnabledChange={setChargesEnabled}
         rows={charges} onChange={setCharges} chargeTypes={chargeTypes} maxRows={20} onChargeTypeCreated={() => void reload()} />}
+      {!initial && kind === "expense" && !isCreditPurchase && (
+        <OptionalFormSection
+          label="Ada porsi talangan / bayarin orang lain (Split Bill)"
+          enabled={splitEnabled}
+          onChange={setSplitEnabled}
+        >
+          <div className="field-grid">
+            <label className="field">
+              <span>Nominal yang ditalangi / porsi orang lain ({currency})</span>
+              <input
+                inputMode="decimal"
+                value={reimburseAmount}
+                onChange={(event) => setReimburseAmount(event.target.value)}
+                placeholder="0"
+              />
+            </label>
+            <label className="field">
+              <span>Nama teman / keterangan talangan (opsional)</span>
+              <input
+                value={reimbursePerson}
+                onChange={(event) => setReimbursePerson(event.target.value)}
+                placeholder="Mis. Budi & Siti"
+              />
+            </label>
+          </div>
+          <label className="field">
+            <span>Akun penampung piutang/talangan</span>
+            <select
+              value={receivableAssetId}
+              onChange={(event) => setReceivableAssetId(event.target.value)}
+            >
+              <option value="">Buat/gunakan akun &apos;Piutang &amp; Talangan&apos; otomatis</option>
+              {destinationOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {formatAssetOptionLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {splitSummaryHint && (
+            <small className="finance-hint">{splitSummaryHint}</small>
+          )}
+        </OptionalFormSection>
+      )}
       <details className="transaction-optional" open={Boolean(initial) || isCreditPurchase || undefined}><summary>Waktu & catatan <span>opsional</span></summary>
         <div className="field-grid"><label className="field"><span>Waktu</span><input required type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} /></label>
           <label className="field"><span>Catatan</span><textarea rows={2} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Tambahkan keterangan bila perlu" /></label></div>
