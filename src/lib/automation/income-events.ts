@@ -1,5 +1,6 @@
 import "server-only";
 import { allocationDiscoveryFilter, readAllocationSummaries } from "./allocation-service";
+import { importDiscoveryFilter } from "./import-filter";
 import { readAutomationReviewContexts } from "./review-service";
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
@@ -194,8 +195,11 @@ export async function reconcileIncomeEvents(): Promise<{ready:boolean;created:nu
   });
   const genericReady = (await database().query<{ready:boolean}>("SELECT to_regclass('automation_action_results') IS NOT NULL AS ready")).rows[0].ready;
   const filterClient = await database().connect();
-  let allocationFilter: string;
-  try { allocationFilter = await allocationDiscoveryFilter(filterClient); } finally { filterClient.release(); }
+  let allocationFilter: string, importFilter: string;
+  try {
+    allocationFilter = await allocationDiscoveryFilter(filterClient);
+    importFilter = await importDiscoveryFilter(filterClient);
+  } finally { filterClient.release(); }
   const candidates = await database().query<Candidate>(`SELECT s.root_activity_id,p.rule_id,p.version_no,v.title,v.percentage_bps,v.output_kind,
       v.destination_asset_id,v.category_id,v.transfer_fee_minor,v.charges,v.note
     FROM income_automation_sources s
@@ -204,6 +208,7 @@ export async function reconcileIncomeEvents(): Promise<{ready:boolean;created:nu
     WHERE NOT EXISTS(SELECT 1 FROM income_event_instances i WHERE i.rule_id=p.rule_id AND i.root_activity_id=s.root_activity_id)
     ${genericReady ? "AND NOT EXISTS(SELECT 1 FROM automation_action_results a WHERE a.activity_id=s.root_activity_id AND a.origin='transaction_automation')" : ""}
     ${allocationFilter}
+    ${importFilter}
     ORDER BY s.eligible_at,s.root_activity_id,p.rule_id LIMIT 50`);
   for (const candidate of candidates.rows) await inDatabaseTransaction(async (client) => captureCandidate(client,candidate));
   return {ready:true,created:candidates.rows.length,refreshed:changed.rows.length};

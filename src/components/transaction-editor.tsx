@@ -14,13 +14,14 @@ import { isDedicatedCategory } from "@/lib/domain/catalog";
 import {
   calculateCreditInstallmentPlan,
   computeCreditBills,
-  encodeCreditNote,
   formatShortDueIso,
   isAfterCutoffDay,
   isCreditAsset,
+  isReceivableAsset,
   nextMonthlyDueDayIso,
   parseCreditMeta,
 } from "@/lib/domain/credit";
+import { planSplitBill } from "@/lib/domain/split-bill";
 import type { ActivityDraft, ActivityKind, FinanceActivity, FinanceAsset } from "@/lib/finance/types";
 
 function localDate(iso?: string) {
@@ -43,6 +44,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   const { refresh, notify } = useFinanceFeedback();
   const dialog = useFinanceDialog(onClose);
   const replay = useRef<{ payload: string; key: string } | null>(null);
+  // A retried split bill must reuse its keys and receivable account, or a retry after a partial failure
+  // would post the personal share twice or create a second receivable account.
+  const splitReplay = useRef<{ payload: string; personalKey: string; transferKey: string; receivableId?: string } | null>(null);
   const { options, optionsError, retry, reload } = useFinanceOptions();
   const [error, setError] = useState("");
   const { pending, begin, finish } = useMutationPending();
@@ -199,19 +203,32 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         : null;
 
       if (splitEnabled && !initial && kind === "expense" && reimburseAmount.trim()) {
-        const totalPrincipalBig = BigInt(rawPrincipalMinor);
-        const talanganBig = BigInt(inputToMinor(reimburseAmount.trim(), exponent));
-        if (talanganBig <= 0n || talanganBig > totalPrincipalBig) {
-          throw new Error("Nominal talangan harus di antara 1 dan total nominal pembayaran.");
+        const splitCharges = (chargesEnabled ? charges : []).map((charge) => ({
+          typeId: charge.typeId,
+          amountMinor: inputToMinor(charge.amount, exponent),
+        }));
+        const split = planSplitBill({
+          totalMinor: BigInt(rawPrincipalMinor),
+          reimbursedMinor: BigInt(inputToMinor(reimburseAmount.trim(), exponent)),
+          chargesMinor: splitCharges.reduce((sum, charge) => sum + BigInt(charge.amountMinor), 0n),
+        });
+        const personalShareBig = split.personalMinor;
+        const talanganBig = split.reimbursedMinor;
+        const splitPayload = JSON.stringify({ amount, reimburseAmount, reimbursePerson, receivableAssetId, accountId: account.id,
+          categoryId, occurredAt, note, splitCharges });
+        if (splitReplay.current?.payload !== splitPayload) {
+          splitReplay.current = { payload: splitPayload, personalKey: crypto.randomUUID(), transferKey: crypto.randomUUID() };
         }
+        const splitKeys = splitReplay.current;
 
-        let targetReceivableId = receivableAssetId;
+        let targetReceivableId = receivableAssetId || splitKeys.receivableId || "";
         if (!targetReceivableId) {
           const existingReceivable = active.find(
             (item) =>
               item.currency === currency &&
               item.id !== account.id &&
-              /\b(piutang|talangan|reimburse)\b/i.test(item.displayName),
+              !isCreditAsset(item) &&
+              isReceivableAsset(item),
           );
           if (existingReceivable) {
             targetReceivableId = existingReceivable.id;
@@ -229,9 +246,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
             });
             targetReceivableId = created.id;
           }
+          splitKeys.receivableId = targetReceivableId;
         }
 
-        const personalShareBig = totalPrincipalBig - talanganBig;
         const transferNote = `Talangan${reimbursePerson.trim() ? ` ${reimbursePerson.trim()}` : ""}${note.trim() ? ` · ${note.trim()}` : ""}`.slice(0, 1000);
 
         if (personalShareBig > 0n) {
@@ -242,12 +259,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
             note: note.trim() || undefined,
             sourceAssetId: account.id,
             categoryId: categoryId || undefined,
-            charges: (chargesEnabled ? charges : []).map((charge) => ({
-              typeId: charge.typeId,
-              amountMinor: inputToMinor(charge.amount, exponent),
-            })),
+            charges: splitCharges,
           };
-          await financeRequest("post", { draft: personalDraft, idempotencyKey: crypto.randomUUID() });
+          await financeRequest("post", { draft: personalDraft, idempotencyKey: splitKeys.personalKey });
 
           const splitTransferDraft: ActivityDraft = {
             kind: "transfer",
@@ -257,7 +271,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
             sourceAssetId: account.id,
             destinationAssetId: targetReceivableId,
           };
-          await financeRequest("post", { draft: splitTransferDraft, idempotencyKey: crypto.randomUUID() });
+          await financeRequest("post", { draft: splitTransferDraft, idempotencyKey: splitKeys.transferKey });
         } else {
           // 100% talangan milik teman
           const splitTransferDraft: ActivityDraft = {
@@ -268,7 +282,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
             sourceAssetId: account.id,
             destinationAssetId: targetReceivableId,
           };
-          await financeRequest("post", { draft: splitTransferDraft, idempotencyKey: crypto.randomUUID() });
+          await financeRequest("post", { draft: splitTransferDraft, idempotencyKey: splitKeys.transferKey });
         }
 
         refresh();
@@ -347,60 +361,14 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
       };
       const payload = JSON.stringify({ id: initial?.id, draft, tenorMonths: isCreditPurchase ? tenorMonths : 1, targetCycle });
       if (replay.current?.payload !== payload) replay.current = { payload, key: crypto.randomUUID() };
-      await financeRequest(initial ? "replace" : "post", { id: initial?.id, draft, idempotencyKey: replay.current.key });
-
-      const totalChargesMinor =
-        kind === "expense"
-          ? (chargesEnabled ? charges : []).reduce(
-              (acc, c) => acc + BigInt(inputToMinor(c.amount, exponent)),
-              0n,
-            )
-          : 0n;
-
-      const deferredAmountMinor =
-        kind === "transfer"
-          ? BigInt(draft.amountMinor) + BigInt(draft.transferFeeMinor ?? "0")
-          : BigInt(postedAmountMinor) + totalChargesMinor;
-
-      // If transaction is deferred to the next billing cycle (e.g. bought after cutoff day 20), update deferredMinor on the credit asset
-      if (isCreditPurchase && targetCycle === "next") {
-        const currentBills = computeCreditBills(account);
-        const hasShifted = Boolean(
-          creditMeta.anchorDueIso && currentBills.currentDueIso > creditMeta.anchorDueIso,
-        );
-        const updatedCarryCurrent = hasShifted
-          ? currentBills.currentBillMinor + BigInt(account.balanceMinor)
-          : creditMeta.carryCurrentMinor;
-        const updatedCarryNext = hasShifted ? 0n : creditMeta.carryNextMinor;
-        const updatedDeferred = hasShifted
-          ? deferredAmountMinor
-          : creditMeta.deferredMinor + deferredAmountMinor;
-        const updatedAnchorDueIso = hasShifted
-          ? currentBills.currentDueIso
-          : creditMeta.anchorDueIso ?? currentBills.currentDueIso;
-
-        const updatedNote = encodeCreditNote(creditMeta.cleanNote, true, {
-          dueDay: creditMeta.dueDay,
-          cutoffDay: creditMeta.cutoffDay,
-          limitMinor: creditMeta.limitMinor,
-          carryCurrentMinor: updatedCarryCurrent,
-          carryNextMinor: updatedCarryNext,
-          deferredMinor: updatedDeferred,
-          anchorDueIso: updatedAnchorDueIso,
-        });
-        await financeRequest("asset-update", {
-          id: account.id,
-          displayName: account.displayName,
-          assetTypeId: account.assetTypeId,
-          assetGroupId: account.assetGroupId || undefined,
-          providerId: account.providerId || undefined,
-          paymentNetworkId: account.paymentNetworkId || undefined,
-          normallyLiquid: false,
-          normallySpendable: false,
-          safeSuffix: account.safeSuffix || undefined,
-          note: updatedNote,
-        });
-      }
+      // The server assigns a credit outflow to the next billing cycle in the same database transaction as
+      // the posting, using the authoritative ledger impact and the freshly locked account note.
+      await financeRequest(initial ? "replace" : "post", {
+        id: initial?.id,
+        draft,
+        idempotencyKey: replay.current.key,
+        ...(isCreditPurchase && targetCycle === "next" ? { creditCycle: "next" } : {}),
+      });
 
       if (isCreditPurchase && plan && plan.futureInstallmentsMinor.length > 0) {
         const startOffset = targetCycle === "next" ? 2 : 1;

@@ -1,4 +1,5 @@
 import { financeSnapshot } from "@/lib/finance/summary";
+import { isReserveSourceAsset } from "@/lib/domain/credit";
 import { listPlanning } from "@/lib/planning/repository";
 import { PlanningManager } from "@/components/planning-manager";
 
@@ -13,7 +14,7 @@ export default async function PlanningPage() {
   for (const plan of [...planning.budgets,...planning.goals,...planning.reserves,...planning.obligations]) {
     if (!positions.some((row) => row.currency === plan.currency)) positions.push({ currency: plan.currency,exponent: plan.exponent,liquidMinor: "0",eligibleMinor: "0" });
   }
-  const sources = snapshot.assets.filter((asset) => asset.isActive && asset.normallyLiquid && asset.normallySpendable)
+  const sources = snapshot.assets.filter(isReserveSourceAsset)
     .map((asset) => ({ id: asset.id,name: asset.displayName,currency: asset.currency,balanceMinor: asset.balanceMinor }));
   return <PlanningManager data={planning} positions={positions} sources={sources} throughDay={snapshot.throughDay} />;
 }

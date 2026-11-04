@@ -161,3 +161,24 @@ test("P8 workbook migration parser: parses Accounts sheet from Monitor_Keuangan_
   assert.equal(rdpu.assetGroupSystemKey, "investment");
   assert.equal(rdpu.normallyLiquid, false);
 });
+
+test("export summaries total every currency separately instead of dropping non-IDR rows", async () => {
+  const { currencyLabelSuffix, formatCurrencyTotals, sumByCurrency } = await import("../src/lib/exports/summary.ts");
+  const rows = [
+    { currency: "USD", exponent: 2, amountMinor: 50000n },
+    { currency: "IDR", exponent: 0, amountMinor: 10000000n },
+    { currency: "USD", exponent: 2, amountMinor: 25n },
+    { currency: "EUR", exponent: 2, amountMinor: 100n },
+    { currency: "IDR", exponent: 0, amountMinor: -500n },
+  ];
+  const totals = sumByCurrency(rows, (row) => row);
+  assert.deepEqual(totals.map((t) => [t.currency, t.amountMinor]), [["IDR", 9999500n], ["EUR", 100n], ["USD", 50025n]]);
+  assert.equal(formatCurrencyTotals(totals), "Rp9.999.500 · EUR 1,00 · USD 500,25");
+  assert.equal(currencyLabelSuffix(totals), "");
+  const idrOnly = sumByCurrency(rows, (row) => (row.currency === "IDR" ? row : null));
+  assert.equal(currencyLabelSuffix(idrOnly), " (IDR)");
+  assert.equal(formatCurrencyTotals(sumByCurrency([], () => null)), "Rp0");
+  const { readFileSync } = await import("node:fs");
+  const service = readFileSync(new URL("../src/lib/exports/service.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(service, /currency !== "IDR"|currency === "IDR"/);
+});

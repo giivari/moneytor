@@ -59,6 +59,11 @@ export type AnalyticsCreditFacility = {
   cutoffDay: number;
   periodSpendingMinor: string;
   periodExpenseCount: string;
+  /** Principal moved out of the facility by transfer (e.g. e-money top-up via PayLater); fees stay in spending. */
+  periodDrawdownMinor: string;
+  periodDrawdownCount: string;
+  /** Everything the facility financed in the period: spending (incl. fees/interest) plus transfer principal. */
+  periodUsageMinor: string;
   periodRepaymentMinor: string;
   periodRepaymentCount: string;
 };
@@ -84,6 +89,9 @@ export type AnalyticsCreditAndBills = {
   exponent: number;
   cashSpendingMinor: string;
   creditSpendingMinor: string;
+  /** Transfer principal drawn from credit facilities; not spending, but it raises the credit bill. */
+  creditDrawdownMinor: string;
+  creditDrawdownCount: string;
   creditExpenseCount: string;
   creditRepaymentMinor: string;
   creditRepaymentCount: string;

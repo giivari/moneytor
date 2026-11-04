@@ -135,6 +135,8 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
             .map((asset) => {
               const bills = computeCreditBills(asset);
               const acct = acctMap.get(asset.id);
+              const spendingMinor = acct?.spendingMinor ?? "0";
+              const drawdownMinor = acct?.transferPrincipalMinor ?? "0";
               return {
                 id: asset.id,
                 name: asset.displayName,
@@ -149,8 +151,11 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
                 availableLimitMinor: bills.availableLimitMinor !== null ? bills.availableLimitMinor.toString() : null,
                 dueDay: bills.dueDay,
                 cutoffDay: bills.cutoffDay,
-                periodSpendingMinor: acct?.spendingMinor ?? "0",
+                periodSpendingMinor: spendingMinor,
                 periodExpenseCount: acct?.expenseCount ?? "0",
+                periodDrawdownMinor: drawdownMinor,
+                periodDrawdownCount: acct?.transferCount ?? "0",
+                periodUsageMinor: (BigInt(spendingMinor) + BigInt(drawdownMinor)).toString(),
                 periodRepaymentMinor: acct?.transferInMinor ?? "0",
                 periodRepaymentCount: acct?.transferInCount ?? "0",
               };
@@ -160,11 +165,14 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
                 f.isActive ||
                 BigInt(f.totalUnpaidMinor) > 0n ||
                 BigInt(f.periodSpendingMinor) > 0n ||
+                BigInt(f.periodDrawdownMinor) > 0n ||
                 BigInt(f.periodRepaymentMinor) > 0n,
             );
 
           const creditSpendingBig = facilities.reduce((s, f) => s + BigInt(f.periodSpendingMinor), 0n);
           const creditExpenseCountBig = facilities.reduce((s, f) => s + BigInt(f.periodExpenseCount), 0n);
+          const creditDrawdownBig = facilities.reduce((s, f) => s + BigInt(f.periodDrawdownMinor), 0n);
+          const creditDrawdownCountBig = facilities.reduce((s, f) => s + BigInt(f.periodDrawdownCount), 0n);
           const creditRepaymentBig = facilities.reduce((s, f) => s + BigInt(f.periodRepaymentMinor), 0n);
           const creditRepaymentCountBig = facilities.reduce((s, f) => s + BigInt(f.periodRepaymentCount), 0n);
           const totalSpendBig = BigInt(sumRow.spendingMinor);
@@ -199,6 +207,8 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
             exponent: c.exponent,
             cashSpendingMinor: cashSpendingBig.toString(),
             creditSpendingMinor: creditSpendingBig.toString(),
+            creditDrawdownMinor: creditDrawdownBig.toString(),
+            creditDrawdownCount: creditDrawdownCountBig.toString(),
             creditExpenseCount: creditExpenseCountBig.toString(),
             creditRepaymentMinor: creditRepaymentBig.toString(),
             creditRepaymentCount: creditRepaymentCountBig.toString(),

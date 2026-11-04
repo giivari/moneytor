@@ -8,7 +8,7 @@ import { assertUuid } from "@/lib/domain/catalog";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { postActivityInTransaction, voidActivityInTransaction } from "@/lib/finance/service";
 import type { ActivityDraft, ActivityKind } from "@/lib/finance/types";
-import { addDays, dateOnly, jakartaToday, occursOn, scheduledAt, type Frequency, type Schedule } from "./schedule";
+import { addDays, catchUpWindow, dateOnly, jakartaToday, occursOn, scheduledAt, type Frequency, type Schedule } from "./schedule";
 
 export type RuleInput = Schedule & {
   title: string; kind: ActivityKind; amountMode: "fixed" | "confirm_amount"; amountMinor?: string;
@@ -18,7 +18,6 @@ export type RuleInput = Schedule & {
 };
 type Row = Record<string, unknown>;
 export class AutomationError extends Error {}
-const maximumDailyScan = 31;
 const maximumPostsPerVisit = 10;
 const genericFailure = "Transaksi belum dapat dicatat. Periksa aset, kategori, dan biaya, lalu coba lagi.";
 
@@ -146,9 +145,10 @@ function sqlDay(value: unknown): string { return value instanceof Date ? jakarta
 async function materializeRule(client: PoolClient, rule: Row, now: Date) {
   const today = jakartaToday(now);
   const horizon = addDays(today,30);
-  const start = addDays(sqlDay(rule.materialized_through),1);
-  const end = addDays(start,maximumDailyScan-1) < horizon ? addDays(start,maximumDailyScan-1) : horizon;
-  if (start > end) return;
+  // One pass covers up to maximumCatchUpDays, so months without a visit are caught up at once.
+  const scan = catchUpWindow(addDays(sqlDay(rule.materialized_through),1), horizon);
+  if (!scan) return;
+  const { start, end } = scan;
   const schedule = scheduleFrom(rule);
   const charges = await client.query<{ ordinal: number; type_id: string; amount_minor: string }>(
     "SELECT ordinal,type_id,amount_minor::text FROM recurring_rule_charges WHERE rule_id=$1 ORDER BY ordinal", [rule.id]);

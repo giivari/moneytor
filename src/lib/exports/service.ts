@@ -4,6 +4,7 @@ import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { validateCatalogName } from "@/lib/domain/catalog";
 import { stripAssetMetaTags } from "@/lib/domain/asset-terms";
+import { computeCreditBills, isCreditAsset, isReceivableAsset } from "@/lib/domain/credit";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { formatMinor } from "@/lib/finance/format";
 import { listActivities } from "@/lib/finance/service";
@@ -19,6 +20,7 @@ import {
   toXlsxBuffer,
   type WorkbookAccountMigrationPreview,
 } from "./format";
+import { currencyLabelSuffix, formatCurrencyTotals, sumByCurrency } from "./summary";
 
 export type ExportDatasetKind = "transactions" | "assets" | "investments" | "planning";
 export type ExportFileFormat = "csv" | "xlsx" | "pdf";
@@ -41,17 +43,17 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
 
   if (kind === "transactions") {
     const activities = await listActivities(true);
-    let postedIncome = 0n;
-    let postedExpense = 0n;
-    let postedTransfer = 0n;
-
-    for (const act of activities) {
-      if (act.status !== "posted" || act.currency !== "IDR") continue;
-      const chargesSum = act.charges.reduce((acc, c) => acc + BigInt(c.amountMinor), 0n);
-      if (act.kind === "income") postedIncome += BigInt(act.baseAmountMinor);
-      else if (act.kind === "expense") postedExpense += BigInt(act.baseAmountMinor) + chargesSum;
-      else if (act.kind === "transfer") postedTransfer += BigInt(act.baseAmountMinor);
-    }
+    const posted = activities.filter((act) => act.status === "posted");
+    // Every currency is totalled separately so non-IDR activity is never dropped from the summary.
+    const postedIncome = sumByCurrency(posted, (act) => act.kind === "income"
+      ? { currency: act.currency, exponent: act.exponent, amountMinor: BigInt(act.baseAmountMinor) } : null);
+    const postedExpense = sumByCurrency(posted, (act) => act.kind === "expense"
+      ? { currency: act.currency, exponent: act.exponent,
+        amountMinor: BigInt(act.baseAmountMinor) + act.charges.reduce((acc, c) => acc + BigInt(c.amountMinor), 0n) } : null);
+    const postedTransfer = sumByCurrency(posted, (act) => act.kind === "transfer"
+      ? { currency: act.currency, exponent: act.exponent, amountMinor: BigInt(act.baseAmountMinor) } : null);
+    const activityCurrencies = sumByCurrency(posted, (act) => ({ currency: act.currency, exponent: act.exponent, amountMinor: 0n }));
+    const activitySuffix = currencyLabelSuffix(activityCurrencies);
 
     const csvHeaders = [
       "Tanggal (WIB)",
@@ -131,9 +133,9 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
       title: "Mutasi & Riwayat Transaksi",
       subtitle: `Total ${activities.length} aktivitas tercatat (termasuk riwayat koreksi/pembatalan)`,
       summaryItems: [
-        { label: "Total Pemasukan Aktif (IDR)", value: formatMinor(postedIncome.toString(), "IDR", 0) },
-        { label: "Total Pengeluaran Aktif (IDR)", value: formatMinor(postedExpense.toString(), "IDR", 0) },
-        { label: "Total Pokok Transfer (IDR)", value: formatMinor(postedTransfer.toString(), "IDR", 0) },
+        { label: `Total Pemasukan Aktif${activitySuffix}`, value: formatCurrencyTotals(postedIncome) },
+        { label: `Total Pengeluaran Aktif${activitySuffix}`, value: formatCurrencyTotals(postedExpense) },
+        { label: `Total Pokok Transfer${activitySuffix}`, value: formatCurrencyTotals(postedTransfer) },
         { label: "Jumlah Aktivitas Tercatat", value: `${activities.length} transaksi` },
       ],
       csvHeaders,
@@ -147,12 +149,16 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
   if (kind === "assets") {
     const assets = await listAssets(true);
     const activeCount = assets.filter((a) => a.isActive).length;
-    const totalIdr = assets
-      .filter((a) => a.isActive && a.currency === "IDR")
-      .reduce((acc, a) => acc + BigInt(a.balanceMinor), 0n);
-    const liquidIdr = assets
-      .filter((a) => a.isActive && a.currency === "IDR" && a.normallyLiquid)
-      .reduce((acc, a) => acc + BigInt(a.balanceMinor), 0n);
+    // Same classification as the dashboard: credit lines are debt, not asset balance, and receivables
+    // are owed money, not liquid cash. Each currency is totalled separately.
+    const activeAssets = assets.filter((a) => a.isActive);
+    const totalActive = sumByCurrency(activeAssets, (a) => isCreditAsset(a)
+      ? null : { currency: a.currency, exponent: a.exponent, amountMinor: BigInt(a.balanceMinor) });
+    const liquidActive = sumByCurrency(activeAssets, (a) => !a.normallyLiquid || isCreditAsset(a) || isReceivableAsset(a)
+      ? null : { currency: a.currency, exponent: a.exponent, amountMinor: BigInt(a.balanceMinor) });
+    const creditUnpaid = sumByCurrency(activeAssets, (a) => isCreditAsset(a)
+      ? { currency: a.currency, exponent: a.exponent, amountMinor: computeCreditBills(a).totalUnpaidMinor } : null);
+    const assetSuffix = currencyLabelSuffix(sumByCurrency(activeAssets, (a) => ({ currency: a.currency, exponent: a.exponent, amountMinor: 0n })));
 
     const csvHeaders = [
       "Nama Aset / Rekening",
@@ -209,8 +215,9 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
       title: "Laporan Posisi Aset & Rekening",
       subtitle: `${activeCount} aset aktif dan ${assets.length - activeCount} aset diarsipkan`,
       summaryItems: [
-        { label: "Total Saldo Aset Aktif (IDR)", value: formatMinor(totalIdr.toString(), "IDR", 0) },
-        { label: "Total Dana Likuid (IDR)", value: formatMinor(liquidIdr.toString(), "IDR", 0) },
+        { label: `Total Saldo Aset Aktif${assetSuffix}`, value: formatCurrencyTotals(totalActive) },
+        { label: `Total Dana Likuid${assetSuffix}`, value: formatCurrencyTotals(liquidActive) },
+        ...(creditUnpaid.length ? [{ label: "Total Tagihan Kredit Belum Dibayar", value: formatCurrencyTotals(creditUnpaid) }] : []),
         { label: "Aset Aktif", value: `${activeCount} akun` },
         { label: "Aset Diarsipkan", value: `${assets.length - activeCount} akun` },
       ],
@@ -226,7 +233,10 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
     const inv = await investmentSnapshot();
     const portfolioById = new Map(inv.portfolios.map((p) => [p.id, p]));
     const instrumentById = new Map(inv.instruments.map((i) => [i.id, i]));
-    const idrTotal = inv.totals.find((t) => t.currency === "IDR");
+    const investmentTotals = (pick: (total: (typeof inv.totals)[number]) => string) =>
+      sumByCurrency(inv.totals, (t) => ({ currency: t.currency, exponent: t.exponent, amountMinor: BigInt(pick(t)) }));
+    const marketTotals = investmentTotals((t) => t.marketMinor);
+    const investmentSuffix = currencyLabelSuffix(marketTotals);
 
     const csvHeaders = [
       "Kategori Catatan",
@@ -327,18 +337,9 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
       title: "Laporan Portofolio & Riwayat Investasi",
       subtitle: `${inv.holdings.length} kepemilikan instrumen dan ${inv.trades.length} riwayat transaksi`,
       summaryItems: [
-        {
-          label: "Nilai Pasar Portofolio (IDR)",
-          value: idrTotal ? formatMinor(idrTotal.marketMinor, "IDR", idrTotal.exponent) : "Rp 0",
-        },
-        {
-          label: "Biaya Perolehan Tersisa (IDR)",
-          value: idrTotal ? formatMinor(idrTotal.costBasisMinor, "IDR", idrTotal.exponent) : "Rp 0",
-        },
-        {
-          label: "Unrealized P/L (IDR)",
-          value: idrTotal ? formatMinor(idrTotal.unrealizedMinor, "IDR", idrTotal.exponent) : "Rp 0",
-        },
+        { label: `Nilai Pasar Portofolio${investmentSuffix}`, value: formatCurrencyTotals(marketTotals) },
+        { label: `Biaya Perolehan Tersisa${investmentSuffix}`, value: formatCurrencyTotals(investmentTotals((t) => t.costBasisMinor)) },
+        { label: `Unrealized P/L${investmentSuffix}`, value: formatCurrencyTotals(investmentTotals((t) => t.unrealizedMinor)) },
         {
           label: "Jumlah Posisi & Transaksi",
           value: `${inv.holdings.length} posisi / ${inv.trades.length} trade`,

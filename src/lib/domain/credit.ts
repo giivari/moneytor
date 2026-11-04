@@ -141,6 +141,19 @@ export function isReceivableAsset(
   return /\b(piutang|talangan|reimburse|split\s*bill)\b/i.test(`${asset.displayName} ${asset.note ?? ""}`);
 }
 
+/**
+ * Assets whose balance can back a planning reserve: active, liquid and spendable cash. Credit lines and
+ * receivables are excluded even if their liquid/spendable flags were left on.
+ */
+export function isReserveSourceAsset(
+  asset: Pick<
+    FinanceAsset,
+    "isActive" | "normallyLiquid" | "normallySpendable" | "displayName" | "providerName" | "assetTypeName" | "assetGroupName" | "note"
+  >,
+): boolean {
+  return asset.isActive && asset.normallyLiquid && asset.normallySpendable && !isCreditAsset(asset) && !isReceivableAsset(asset);
+}
+
 export type ComputedCreditBills = Readonly<{
   currentBillMinor: bigint;
   nextBillMinor: bigint;
@@ -155,25 +168,17 @@ export type ComputedCreditBills = Readonly<{
 
 export function computeCreditBills(
   asset: Pick<FinanceAsset, "balanceMinor" | "note">,
+  now: Date = new Date(),
 ): ComputedCreditBills {
   const meta = parseCreditMeta(asset.note);
   const balance = parseBigIntSafe(asset.balanceMinor);
   const rawTotal = meta.carryCurrentMinor + meta.carryNextMinor - balance;
   const totalUnpaidMinor = rawTotal > 0n ? rawTotal : 0n;
 
-  const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0);
-  const nextDueIso = nextMonthlyDueDayIso(meta.dueDay, 1);
+  const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0, now);
+  const nextDueIso = nextMonthlyDueDayIso(meta.dueDay, 1, now);
 
-  let hasShifted = false;
-  if (meta.anchorDueIso && currentDueIso > meta.anchorDueIso) {
-    const [anchorYear, anchorMonth] = meta.anchorDueIso.split("-").map(Number);
-    const [currYear, currMonth] = currentDueIso.split("-").map(Number);
-    const monthDiff = (currYear - anchorYear) * 12 + (currMonth - anchorMonth);
-    if (monthDiff >= 1) {
-      hasShifted = true;
-    }
-  }
-
+  const hasShifted = isCreditCycleShifted(meta, now);
   const scheduledNext = hasShifted ? 0n : meta.carryNextMinor + meta.deferredMinor;
 
   let currentBillMinor = 0n;
@@ -232,7 +237,7 @@ export function closingCutoffIsoForDue(dueIso: string, cutoffDay: number): strin
   return `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
 }
 
-export function isAfterCutoffDay(occurredAtIso: string, cutoffDay: number, dueDay?: number): boolean {
+export function isAfterCutoffDay(occurredAtIso: string, cutoffDay: number, dueDay?: number, now: Date = new Date()): boolean {
   const d = occurredAtIso ? new Date(occurredAtIso) : new Date();
   if (Number.isNaN(d.getTime())) return false;
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -248,7 +253,7 @@ export function isAfterCutoffDay(occurredAtIso: string, cutoffDay: number, dueDa
     const month = parts.find((p) => p.type === "month")?.value ?? "01";
     const dayStr = parts.find((p) => p.type === "day")?.value ?? "01";
     const occurredDateIso = `${year}-${month}-${dayStr}`;
-    const currentDueIso = nextMonthlyDueDayIso(dueDay, 0);
+    const currentDueIso = nextMonthlyDueDayIso(dueDay, 0, now);
     const closingCutoffIso = closingCutoffIsoForDue(currentDueIso, cutoffDay);
     return occurredDateIso > closingCutoffIso;
   }
@@ -256,9 +261,8 @@ export function isAfterCutoffDay(occurredAtIso: string, cutoffDay: number, dueDa
   return day > cutoffDay;
 }
 
-export function nextMonthlyDueDayIso(dueDay: number, monthOffset = 0): string {
+export function nextMonthlyDueDayIso(dueDay: number, monthOffset = 0, now: Date = new Date()): string {
   const safeDay = Math.min(31, Math.max(1, Math.trunc(dueDay || 1)));
-  const now = new Date();
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Jakarta",
     year: "numeric",
@@ -277,6 +281,147 @@ export function nextMonthlyDueDayIso(dueDay: number, monthOffset = 0): string {
   const clampedDay = Math.min(safeDay, daysInTargetMonth);
 
   return `${targetYear}-${String(targetMonthIndex + 1).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
+}
+
+export type CreditNoteState = Readonly<{
+  dueDay: number;
+  cutoffDay: number;
+  limitMinor: bigint;
+  carryCurrentMinor: bigint;
+  carryNextMinor: bigint;
+  deferredMinor: bigint;
+  anchorDueIso: string | null;
+}>;
+
+function noteStateFrom(meta: CreditMeta): CreditNoteState {
+  return {
+    dueDay: meta.dueDay,
+    cutoffDay: meta.cutoffDay,
+    limitMinor: meta.limitMinor,
+    carryCurrentMinor: meta.carryCurrentMinor,
+    carryNextMinor: meta.carryNextMinor,
+    deferredMinor: meta.deferredMinor,
+    anchorDueIso: meta.anchorDueIso,
+  };
+}
+
+function monthIndexOfIso(iso: string): number {
+  const [year, month] = iso.split("-").map(Number);
+  return year * 12 + (month - 1);
+}
+
+/** Calendar date (YYYY-MM-DD) of an instant in Asia/Jakarta, or null for an invalid instant. */
+export function jakartaDateIso(instant: string | Date): string | null {
+  const d = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/**
+ * True once the bill anchored at `anchorDueIso` is no longer the nearest upcoming bill.
+ * From then on every scheduled "next cycle" amount (carryNext + deferred) belongs to the current bill.
+ */
+export function isCreditCycleShifted(
+  meta: Pick<CreditMeta, "dueDay" | "anchorDueIso">,
+  now: Date = new Date(),
+): boolean {
+  if (!meta.anchorDueIso) return false;
+  const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0, now);
+  return monthIndexOfIso(currentDueIso) - monthIndexOfIso(meta.anchorDueIso) >= 1;
+}
+
+/** Amount by which a posted expense/transfer reduces the balance of its source account. */
+export function creditSourceImpactMinor(draft: {
+  kind: "income" | "expense" | "transfer";
+  amountMinor: string;
+  transferFeeMinor?: string;
+  charges?: readonly { amountMinor: string }[];
+}): bigint {
+  if (draft.kind === "income") return 0n;
+  const base = parseBigIntSafe(draft.amountMinor);
+  if (draft.kind === "transfer") return base + parseBigIntSafe(draft.transferFeeMinor);
+  return base + (draft.charges ?? []).reduce((sum, charge) => sum + parseBigIntSafe(charge.amountMinor), 0n);
+}
+
+/**
+ * Credit note state after a new outflow of `impactMinor` (already posted to the ledger) is assigned
+ * to the next billing cycle. The result never reads the account balance, so it cannot be skewed by a
+ * balance read before or after the posting.
+ *
+ * Invariant: the raw unpaid total grows by exactly `impactMinor` and the next bill grows by `impactMinor`.
+ */
+export function deferCreditCharge(meta: CreditMeta, impactMinor: bigint, now: Date = new Date()): CreditNoteState {
+  const impact = impactMinor > 0n ? impactMinor : 0n;
+  const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0, now);
+  const state = noteStateFrom(meta);
+  if (isCreditCycleShifted(meta, now)) {
+    // The old "next" bill has become the current bill. carryNext moves into carryCurrent; the old
+    // deferred amount already lives in the ledger balance, so a fresh next-cycle bucket starts at impact.
+    return {
+      ...state,
+      carryCurrentMinor: meta.carryCurrentMinor + meta.carryNextMinor,
+      carryNextMinor: 0n,
+      deferredMinor: impact,
+      anchorDueIso: currentDueIso,
+    };
+  }
+  return {
+    ...state,
+    deferredMinor: meta.deferredMinor + impact,
+    anchorDueIso: meta.anchorDueIso ?? currentDueIso,
+  };
+}
+
+/**
+ * Credit note state after a credit outflow is voided or corrected, so the next-cycle bucket does not keep
+ * an amount the ledger no longer carries. A reversed outflow counts as deferred when it occurred after the
+ * closing cutoff of the anchored bill, the same rule the editor applies automatically. Returns null when
+ * nothing has to change.
+ */
+export function releaseDeferredCreditCharge(
+  meta: CreditMeta,
+  input: { occurredAtIso: string; reversedImpactMinor: bigint; replacementImpactMinor?: bigint },
+  now: Date = new Date(),
+): CreditNoteState | null {
+  if (!meta.isCreditFlagged || meta.deferredMinor <= 0n || !meta.anchorDueIso) return null;
+  if (isCreditCycleShifted(meta, now)) return null;
+  const occurredDate = jakartaDateIso(input.occurredAtIso);
+  if (!occurredDate || occurredDate <= closingCutoffIsoForDue(meta.anchorDueIso, meta.cutoffDay)) return null;
+  const reversed = input.reversedImpactMinor > 0n ? input.reversedImpactMinor : 0n;
+  const released = reversed > meta.deferredMinor ? meta.deferredMinor : reversed;
+  const replacement = input.replacementImpactMinor && input.replacementImpactMinor > 0n ? input.replacementImpactMinor : 0n;
+  const deferredMinor = meta.deferredMinor - released + replacement;
+  if (deferredMinor === meta.deferredMinor) return null;
+  return { ...noteStateFrom(meta), deferredMinor };
+}
+
+/**
+ * Credit note state that makes computeCreditBills report exactly the bills typed in the asset form,
+ * given the account's current ledger balance.
+ */
+export function creditStateForDesiredBills(input: {
+  balanceMinor: bigint;
+  desiredCurrentMinor: bigint;
+  desiredNextMinor: bigint;
+  dueDay: number;
+  cutoffDay: number;
+  limitMinor: bigint;
+  now?: Date;
+}): CreditNoteState {
+  return {
+    dueDay: input.dueDay,
+    cutoffDay: input.cutoffDay,
+    limitMinor: input.limitMinor,
+    carryCurrentMinor: input.desiredCurrentMinor + input.balanceMinor,
+    carryNextMinor: input.desiredNextMinor,
+    deferredMinor: 0n,
+    anchorDueIso: nextMonthlyDueDayIso(input.dueDay, 0, input.now ?? new Date()),
+  };
 }
 
 export function formatShortDueIso(iso: string): string {

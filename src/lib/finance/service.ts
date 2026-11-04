@@ -6,6 +6,7 @@ import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { assertUuid } from "@/lib/domain/catalog";
+import { deferCreditCharge, encodeCreditNote, parseCreditMeta, releaseDeferredCreditCharge, type CreditNoteState } from "@/lib/domain/credit";
 import { planActivity, type ActivityInput, type AssetReference, type CategoryReference, type ChargeInput } from "@/lib/domain/ledger";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import type { ActivityDraft, FinanceActivity } from "./types";
@@ -138,6 +139,46 @@ async function reversePosted(client: PoolClient, id: string, status: "voided" | 
   await client.query("UPDATE financial_activities SET status=$2,voided_at=now() WHERE id=$1", [id, status]);
 }
 
+/** Billing cycle an outflow from a credit/PayLater account is assigned to. */
+export type CreditCycle = "current" | "next";
+
+/** Balance reduction an activity caused on one asset, from its original (non-reversal) ledger movements. */
+async function sourceImpactMinor(client: PoolClient, activityId: string, assetId: string): Promise<bigint> {
+  const row = await client.query<{ impact: string }>(`SELECT (-COALESCE(sum(amount_minor),0))::text AS impact
+    FROM ledger_movements WHERE activity_id=$1 AND asset_id=$2 AND component <> 'reversal'`, [activityId, assetId]);
+  return parseMinor(row.rows[0]?.impact ?? "0");
+}
+async function writeCreditNote(client: PoolClient, assetId: string, cleanNote: string, state: CreditNoteState): Promise<void> {
+  const note = encodeCreditNote(cleanNote, true, state);
+  if (note && note.length > 1000) throw new Error("Catatan akun kredit terlalu panjang untuk menyimpan periode tagihan");
+  await client.query("UPDATE assets SET note=$2 WHERE id=$1", [assetId, note ?? null]);
+}
+/** Moves a freshly posted credit outflow into the next billing cycle inside the posting transaction. */
+async function deferCreditOutflow(client: PoolClient, activityId: string, assetId: string): Promise<void> {
+  const asset = await client.query<{ note: string | null }>("SELECT note FROM assets WHERE id=$1 FOR UPDATE", [assetId]);
+  if (!asset.rows[0]) return;
+  const impact = await sourceImpactMinor(client, activityId, assetId);
+  if (impact <= 0n) return;
+  const meta = parseCreditMeta(asset.rows[0].note);
+  await writeCreditNote(client, assetId, meta.cleanNote, deferCreditCharge(meta, impact));
+}
+/** Keeps the next-cycle bucket of a credit account in step with a voided or corrected outflow. */
+async function releaseCreditDeferral(client: PoolClient, reversedId: string, replacementId?: string): Promise<void> {
+  const activity = await client.query<{ kind: string; source_asset_id: string | null; occurred_at: Date }>(
+    "SELECT kind,source_asset_id,occurred_at FROM financial_activities WHERE id=$1", [reversedId]);
+  const row = activity.rows[0];
+  if (!row || row.kind === "income" || !row.source_asset_id) return;
+  const asset = await client.query<{ note: string | null }>("SELECT note FROM assets WHERE id=$1 FOR UPDATE", [row.source_asset_id]);
+  const meta = parseCreditMeta(asset.rows[0]?.note);
+  if (!meta.isCreditFlagged || meta.deferredMinor <= 0n) return;
+  const updated = releaseDeferredCreditCharge(meta, {
+    occurredAtIso: row.occurred_at.toISOString(),
+    reversedImpactMinor: await sourceImpactMinor(client, reversedId, row.source_asset_id),
+    replacementImpactMinor: replacementId ? await sourceImpactMinor(client, replacementId, row.source_asset_id) : 0n,
+  });
+  if (updated) await writeCreditNote(client, row.source_asset_id, meta.cleanNote, updated);
+}
+
 async function idempotentOnClient(client: PoolClient, operation: "post" | "replace" | "void", key: string, payload: unknown,
   action: (client: PoolClient) => Promise<string>): Promise<string> {
   assertUuid(key);
@@ -160,9 +201,17 @@ async function withIdempotency(operation: "post" | "replace" | "void", key: stri
   return inDatabaseTransaction((client) => idempotentOnClient(client,operation,key,payload,action));
 }
 
-export async function postActivity(raw: ActivityDraft, key: string): Promise<string> {
+export async function postActivity(raw: ActivityDraft, key: string, options: { creditCycle?: CreditCycle } = {}): Promise<string> {
   const draft = normalizeDraft(raw);
-  return withIdempotency("post", key, draft, (client) => insertPosted(client, draft));
+  const deferToNextCycle = options.creditCycle === "next" && draft.kind !== "income" && Boolean(draft.sourceAssetId);
+  // Plain posts keep their historical request hash; a deferred credit post hashes the cycle as well.
+  const payload = deferToNextCycle ? { draft, creditCycle: "next" } : draft;
+  return withIdempotency("post", key, payload, async (client) => {
+    if (deferToNextCycle) await client.query("SELECT id FROM assets WHERE id=$1 FOR UPDATE", [draft.sourceAssetId]);
+    const id = await insertPosted(client, draft);
+    if (deferToNextCycle) await deferCreditOutflow(client, id, draft.sourceAssetId!);
+    return id;
+  });
 }
 /** Caller must authorize before opening the enclosing transaction. Uses ordinary P3 posting and idempotency. */
 export async function postActivityInTransaction(client: PoolClient, raw: ActivityDraft, key: string): Promise<string> {
@@ -174,18 +223,25 @@ export async function replaceActivity(oldId: string, raw: ActivityDraft, key: st
   const draft = normalizeDraft(raw);
   return withIdempotency("replace", key, { oldId, draft }, async (client) => {
     await reversePosted(client, oldId, "superseded");
-    return insertPosted(client, draft, oldId);
+    const id = await insertPosted(client, draft, oldId);
+    await releaseCreditDeferral(client, oldId, id);
+    return id;
   });
 }
 export async function voidActivity(id: string, key: string): Promise<string> {
   assertUuid(id);
-  return withIdempotency("void", key, { id }, async (client) => { await reversePosted(client, id, "voided"); return id; });
+  return withIdempotency("void", key, { id }, async (client) => {
+    await reversePosted(client, id, "voided");
+    await releaseCreditDeferral(client, id);
+    return id;
+  });
 }
 /** Caller must authorize before opening the enclosing transaction. Uses ordinary P3 voiding and idempotency. */
 export async function voidActivityInTransaction(client: PoolClient, id: string, key: string): Promise<string> {
   assertUuid(id);
   return idempotentOnClient(client, "void", key, { id }, async (connection) => {
     await reversePosted(connection, id, "voided");
+    await releaseCreditDeferral(connection, id);
     return id;
   });
 }

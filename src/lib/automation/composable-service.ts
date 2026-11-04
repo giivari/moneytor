@@ -2,6 +2,7 @@ import "server-only";
 import { allocationDiscoveryFilter, allocationResultOrigin, readAllocationSummaries } from "./allocation-service";
 import type { AllocationSummary } from "./allocation-domain";
 import { readAutomationReviewContexts } from "./review-service";
+import { importDiscoveryFilter } from "./import-filter";
 import type { ReviewContext } from "./review-domain";
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
@@ -9,7 +10,7 @@ import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { postActivityInTransaction } from "@/lib/finance/service";
 import type { ActivityDraft } from "@/lib/finance/types";
-import { addDays, jakartaToday } from "./schedule";
+import { addDays, jakartaToday, maximumCatchUpDays } from "./schedule";
 import { actionDraft, calculateAmount, ComposableError, evaluateConditions, normalizeGeneralRule, resolveAsset, timeOccurrences,
   triggerRegistry, validId, type AssetReference, type Condition, type FinancialAction, type GeneralRuleInput, type TriggerContext } from "./composable-domain";
 
@@ -233,6 +234,7 @@ export interface SourceDiscoveryAdapter { discover(client: PoolClient): Promise<
 async function discoverTransactions(client: PoolClient) {
   let created = 0;
   const allocationFilter = await allocationDiscoveryFilter(client);
+  const importFilter = await importDiscoveryFilter(client);
   const sources = (await client.query<{ root_activity_id: string; eligible_at: Date; rule_id: string; version_no: number }>(`SELECT s.*,p.rule_id,p.version_no
     FROM automation_source_receipts s JOIN automation_active_periods p ON s.eligible_at>=p.opened_at AND (p.closed_at IS NULL OR s.eligible_at<p.closed_at)
     JOIN automation_rule_versions v ON v.rule_id=p.rule_id AND v.version_no=p.version_no AND v.trigger_namespace='transaction_posted'
@@ -240,6 +242,7 @@ async function discoverTransactions(client: PoolClient) {
     AND NOT EXISTS(SELECT 1 FROM automation_action_results a WHERE a.activity_id=s.root_activity_id AND a.origin='transaction_automation')
     AND NOT EXISTS(SELECT 1 FROM income_event_instances e WHERE e.result_activity_id=s.root_activity_id)
     ${allocationFilter}
+    ${importFilter}
     ORDER BY s.eligible_at,s.root_activity_id,p.rule_id LIMIT $1`, [batchSize])).rows;
   for (const source of sources) created += await capture(client, source.rule_id, source.version_no, await readVersion(client, source.rule_id, source.version_no), await sourceContext(client, source.root_activity_id, source.eligible_at, true));
   return created;
@@ -261,7 +264,8 @@ async function discoverTime(client: PoolClient) {
     let from = row.materialized_through ? addDays(row.materialized_through, 1) : schedule.startOn;
     if (from < schedule.startOn) from = schedule.startOn;
     if (row.active_version > 1 && from < today) from = today;
-    const through = [addDays(from, 30), horizon, schedule.frequency === "once" ? schedule.startOn : schedule.endOn ?? horizon].sort()[0];
+    // Catch up a long-unopened app in one pass instead of one 31-day window per visit.
+    const through = [addDays(from, maximumCatchUpDays - 1), horizon, schedule.frequency === "once" ? schedule.startOn : schedule.endOn ?? horizon].sort()[0];
     if (from <= through) {
       for (const at of timeOccurrences(schedule, from, through)) {
         const old = (await client.query<Instance>("SELECT * FROM automation_instances WHERE rule_id=$1 AND trigger_namespace='time' AND trigger_identity=$2", [row.id, at])).rows[0];

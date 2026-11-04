@@ -21,6 +21,7 @@ import {
 } from "@/lib/domain/asset-terms";
 import {
   computeCreditBills,
+  creditStateForDesiredBills,
   encodeCreditNote,
   formatShortDueIso,
   isCreditAsset,
@@ -195,20 +196,15 @@ function AssetForm({
         const desiredNextMinor = nextBillInput.trim()
           ? BigInt(inputToMinor(nextBillInput.trim(), exponent))
           : 0n;
-        const existingBalance = initial ? BigInt(initial.balanceMinor) : 0n;
-
-        const carryCurrentMinor = desiredCurrentMinor + existingBalance;
-        const carryNextMinor = desiredNextMinor;
-
-        encodedNote = encodeCreditNote(note, true, {
+        // carryCurrent absorbs the ledger balance so the saved bills equal what the owner typed.
+        encodedNote = encodeCreditNote(note, true, creditStateForDesiredBills({
+          balanceMinor: initial ? BigInt(initial.balanceMinor) : 0n,
+          desiredCurrentMinor,
+          desiredNextMinor,
           dueDay: parsedDue,
           cutoffDay: parsedCutoff,
           limitMinor,
-          carryCurrentMinor,
-          carryNextMinor,
-          deferredMinor: 0n,
-          anchorDueIso: nextMonthlyDueDayIso(parsedDue, 0),
-        });
+        }));
       } else {
         const parsedAdminMinor = adminFee.trim()
           ? BigInt(inputToMinor(adminFee.trim(), exponent))
