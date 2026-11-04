@@ -8,7 +8,6 @@ import { ListOrderControl, ListSortControl } from "./list-sort-control";
 
 import { useRef, useState } from "react";
 import { ExportMenuButton } from "./export-menu-button";
-import { OfficeTabs } from "./office-tabs";
 import { SectionHeading } from "./section-heading";
 import { ResponsiveDisclosure } from "./responsive-disclosure";
 import { InlineCatalogSelect } from "./inline-catalog-select";
@@ -22,8 +21,6 @@ import { horizonDay, planningPosition, type PlanKind, type ReservePurpose } from
 import { isDedicatedCategory } from "@/lib/domain/catalog";
 import type { PlanningData, PlanningItem, PlanningLabel } from "@/lib/planning/repository";
 
-type PlanningPivot = "all" | "budgets" | "targets" | "obligations";
-const pivotKinds: Record<Exclude<PlanningPivot, "all">, PlanKind[]> = { budgets: ["budget"], targets: ["goal", "reserve"], obligations: ["obligation"] };
 type Position = { currency: string; exponent: number; liquidMinor: string; eligibleMinor: string };
 type Source = { id: string; name: string; currency: string; balanceMinor: string };
 const kinds = [
@@ -267,7 +264,6 @@ export function PlanningManager({ data, positions, sources, throughDay }: {
   const [form,setForm] = useState<{ kind: PlanKind; item?: PlanningItem } | null>(null);
   const [confirm,setConfirm] = useState<{ item: PlanningItem; action: "archive" | "settle" | "cancel" | "delete" } | null>(null);
   const [busy,setBusy] = useState<string | null>(null), [error,setError] = useState("");
-  const [pivot,setPivot] = useState<PlanningPivot>("all");
   const send = usePlanningRequest(), { notify,refresh } = useFinanceFeedback();
   const today = todayFromEnd(throughDay), end = horizonDay(today,horizon);
   const budgetSort = useListPreference("planning.budgets.contextual",planningSortOptions.budget.map(option=>option.value),planningSortOptions.budget[0].value);
@@ -329,17 +325,9 @@ export function PlanningManager({ data, positions, sources, throughDay }: {
     {empty ? <section className="surface planning-first-run"><h2>Belum ada perencanaan</h2><p>Pilih yang paling berguna sekarang. Perencanaan tidak wajib untuk menggunakan moneytor.</p>
       <div className="planning-first-actions">{kinds.map((row) => <button type="button" className="finance-secondary" key={row.kind} onClick={() => setForm({ kind: row.kind })}><Plus size={16} /> {row.kind === "reserve" ? "Sisihkan dana" : row.kind === "obligation" ? "Tambah kewajiban" : `Buat ${row.name.toLowerCase()}`}</button>)}</div></section> : <>
       <label className="finance-history-toggle planning-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan atau dilepaskan</label>
-      <OfficeTabs variant="pivot" label="Kelompok rencana" idPrefix="planning-pivot" value={pivot} onChange={setPivot} tabs={[
-        { id: "all", label: "Semua Rencana" },
-        { id: "budgets", label: `Anggaran Belanja (${data.budgets.length})` },
-        { id: "targets", label: `Target & Dana Cadangan (${data.goals.length + data.reserves.length})` },
-        { id: "obligations", label: `Tagihan & Cicilan (${data.obligations.length})` },
-      ]} />
-      <div className="planning-sections" role="tabpanel" id={`planning-pivot-panel-${pivot}`} aria-labelledby={`planning-pivot-tab-${pivot}`} data-pivot={pivot}>
-        {pivot === "all" ? <>
-          <div className="planning-column">{kinds.filter(({ kind }) => kind === "budget" || kind === "reserve").map(renderSection)}</div>
-          <div className="planning-column">{kinds.filter(({ kind }) => kind === "goal" || kind === "obligation").map(renderSection)}</div>
-        </> : <div className="planning-column">{kinds.filter(({ kind }) => pivotKinds[pivot].includes(kind as PlanKind)).map(renderSection)}</div>}
+      <div className="planning-sections">
+        <div className="planning-column">{kinds.filter(({ kind }) => kind === "budget" || kind === "reserve").map(renderSection)}</div>
+        <div className="planning-column">{kinds.filter(({ kind }) => kind === "goal" || kind === "obligation").map(renderSection)}</div>
       </div></>}
     {error && <p className="finance-error" role="alert">{error}</p>}
     <LabelManager data={data} />

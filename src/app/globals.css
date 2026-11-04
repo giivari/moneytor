@@ -1,41 +1,31 @@
 :root {
-  /* Fluent UI 2 (Microsoft 365) neutral + semantic palette */
-  --ink:#242424;
-  --muted:#616161;
-  --line:#e0e0e0;
-  --line-subtle:#edebe9;
-  --bg:#f5f5f5;
-  --surface:#ffffff;
-  --surface-alt:#faf9f8;
-  --office-blue:#0f6cbd;
-  --office-blue-hover:#115ea3;
-  --office-blue-soft:#ebf3fc;
-  --office-row-hover:#f3f9fd;
-  --positive:#107c41;
-  --positive-light:#e6f4ea;
-  --negative:#c50f1f;
-  --negative-light:#fde7e9;
-  --warning:#d83b01;
-  --warning-light:#fff4ce;
-  --data-blue:#0f6cbd;
+  --ink:#1d2225;
+  --muted:#555e63;
+  --line:#e1e4e6;
+  --bg:#fafafa;
+  --surface:#fff;
+  --positive:#19734b;
+  --positive-light:#edf7f0;
+  --negative:#a9443e;
+  --negative-light:#fff1ef;
+  --warning:#95641e;
+  --warning-light:#fff5e5;
+  --data-blue:#2879bd;
   --data-violet:#8063bf;
   --data-cyan:#168da8;
   --data-teal:#218778;
   --data-amber:#b77b1d;
   --data-coral:#c95f4a;
   --data-rose:#b84f72;
-  --data-blue-soft:#ebf3fc;
+  --data-blue-soft:#eaf3fb;
   --data-violet-soft:#f1edfa;
   --data-cyan-soft:#e8f5f8;
   --data-teal-soft:#e9f5f1;
   --data-amber-soft:#fbf3e5;
   --data-coral-soft:#fbefec;
   --data-rose-soft:#f8edf1;
-  --neutral-soft:#f3f2f1;
-  --radius-sm:4px;
-  --radius-md:6px;
-  --radius-lg:8px;
-  --radius:8px
+  --neutral-soft:#f3f4f5;
+  --radius:22px
 }
 
 * {
@@ -117,7 +107,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   color:#fff;
   background:#23282b;
   border:1px solid #23282b;
-  border-radius:6px;
+  border-radius:999px;
   min-height:40px;
   padding:0 15px
 }
@@ -151,7 +141,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   border:1px solid var(--line);
   background:#fff;
   padding:9px 14px;
-  border-radius:4px;
+  border-radius:999px;
   color:#646b70
 }
 
@@ -161,7 +151,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   gap:30px;
   background:#fff;
   border:1px solid var(--line);
-  border-radius:8px;
+  border-radius:22px;
   padding:30px 34px;
   margin-bottom:18px;
   box-shadow:0 5px 28px #20242706
@@ -226,7 +216,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .metric-card {
   background:#fff;
   border:1px solid var(--line);
-  border-radius:8px;
+  border-radius:16px;
   padding:19px 21px;
   display:flex;
   flex-direction:column;
@@ -310,7 +300,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   width:39px;
   height:39px;
   border:1px solid #dce0e2;
-  border-radius:8px;
+  border-radius:13px;
   display:grid;
   place-items:center;
   color:#4e565b;
@@ -322,7 +312,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .provider-mark-large {
   width:49px;
   height:49px;
-  border-radius:8px;
+  border-radius:15px;
   font-size:12px
 }
 
@@ -359,7 +349,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .transaction-icon {
   width:39px;
   height:39px;
-  border-radius:8px;
+  border-radius:13px;
   display:grid;
   place-items:center;
   flex:none
@@ -434,7 +424,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   place-items:center;
   width:40px;
   height:40px;
-  border-radius:8px;
+  border-radius:13px;
   color:#535b60;
   background:var(--neutral-soft)
 }
@@ -451,7 +441,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   display:flex;
   background:#fff;
   border:1px solid var(--line);
-  border-radius:8px;
+  border-radius:16px;
   margin-bottom:20px
 }
 
@@ -491,16 +481,15 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   background:#fff;
   border:1px solid #dfe2e4;
   color:#434b50;
-  border-radius:6px;
+  border-radius:999px;
   padding:8px 13px;
   white-space:nowrap
 }
 
 .filter-chip.active {
-  background:#ebf3fc;
-  border-color:#0f6cbd;
-  color:#0f6cbd;
-  font-weight:600
+  background:#eceeef;
+  border-color:#d9dddf;
+  color:#1d2225
 }
 
 .transaction-button {
@@ -530,7 +519,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .asset-total {
   background:#fff;
   border:1px solid var(--line);
-  border-radius:8px;
+  border-radius:19px;
   padding:26px 30px;
   margin-bottom:20px
 }
@@ -834,7 +823,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   place-items:center;
   background:#f0f1f2;
   color:#4b5358;
-  border-radius:6px
+  border-radius:11px
 }
 
 .quick-dialog,.detail-dialog {
@@ -842,7 +831,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   width:min(100%,440px);
   max-height:calc(100vh - 30px);
   overflow:auto;
-  border-radius:8px;
+  border-radius:21px;
   padding:25px;
   box-shadow:0 20px 70px #17202424
 }
@@ -855,7 +844,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   border:0;
   background:#f0f1f2;
   color:#30373b;
-  border-radius:6px;
+  border-radius:9px;
   width:34px;
   height:34px;
   display:grid;
@@ -884,7 +873,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .field input,.field select {
   height:42px;
   border:1px solid #d9dddf;
-  border-radius:6px;
+  border-radius:10px;
   background:#fff;
   padding:0 12px;
   color:var(--ink);
@@ -895,7 +884,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   display:flex;
   align-items:center;
   border:1px solid #d9dddf;
-  border-radius:6px;
+  border-radius:10px;
   padding:0 12px
 }
 
@@ -912,7 +901,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   display:flex;
   gap:4px;
   background:#f0f1f2;
-  border-radius:6px;
+  border-radius:10px;
   padding:4px
 }
 
@@ -968,7 +957,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   place-items:center;
   width:50px;
   height:50px;
-  border-radius:8px;
+  border-radius:15px;
   background:#f0f2f3;
   color:#353c40;
   margin:20px 0
