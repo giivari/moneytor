@@ -16,7 +16,7 @@ import {
   parseBpsInput,
   stripAssetMetaTags,
 } from "../src/lib/domain/asset-terms.ts";
-import { encodeCreditNote, parseCreditMeta } from "../src/lib/domain/credit.ts";
+import { encodeCreditNote, isReceivableAsset, parseCreditMeta } from "../src/lib/domain/credit.ts";
 
 const source = { id: "source", currency: "IDR", isActive: true };
 const destination = { id: "destination", currency: "IDR", isActive: true };
@@ -156,4 +156,15 @@ test("dedicated system categories (e.g. bank admin fee) are identified to avoid 
   assert.equal(isDedicatedCategory({ displayName: "Belanja" }), false);
   assert.equal(isDedicatedCategory({ displayName: "Transport" }), false);
   assert.equal(isDedicatedCategory({ displayName: "Rumah Tangga" }), false);
+});
+
+test("receivable / talangan / split bill accounts are identified accurately", () => {
+  assert.equal(isReceivableAsset({ displayName: "Piutang & Talangan", note: "" }), true);
+  assert.equal(isReceivableAsset({ displayName: "Talangan Teman Kantor", note: null }), true);
+  assert.equal(isReceivableAsset({ displayName: "Reimburse Kantor", note: "" }), true);
+  assert.equal(isReceivableAsset({ displayName: "Split Bill Makan", note: "" }), true);
+  assert.equal(isReceivableAsset({ displayName: "Kas Darurat", note: "Dana piutang teman" }), true);
+  assert.equal(isReceivableAsset({ displayName: "BCA Tabungan", note: "" }), false);
+  assert.equal(isReceivableAsset({ displayName: "Mandiri Debit Gold", note: "" }), false);
+  assert.equal(isReceivableAsset({ displayName: "SPayLater", note: "[CREDIT:due=1;cutoff=20]" }), false);
 });

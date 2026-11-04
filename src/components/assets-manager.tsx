@@ -24,6 +24,7 @@ import {
   encodeCreditNote,
   formatShortDueIso,
   isCreditAsset,
+  isReceivableAsset,
   nextMonthlyDueDayIso,
   parseCreditMeta,
 } from "@/lib/domain/credit";
@@ -773,12 +774,14 @@ function AssetDetailDialog({
   onEdit,
   onCorrectOpening,
   onPayBill,
+  onSettleReceivable,
 }: {
   asset: FinanceAsset;
   onClose: () => void;
   onEdit: () => void;
   onCorrectOpening: () => void;
   onPayBill: () => void;
+  onSettleReceivable?: () => void;
 }) {
   const dialog = useFinanceDialog(onClose);
   const [detail, setDetail] = useState<AssetDetailInfo | null>(null);
@@ -808,10 +811,11 @@ function AssetDetailDialog({
   }, [asset.id]);
 
   const isCredit = isCreditAsset(asset);
+  const isReceivable = isReceivableAsset(asset);
   const mark = resolveProviderMark(
     asset.providerName,
     asset.displayName,
-    isCredit ? "coral" : asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet",
+    isCredit ? "coral" : isReceivable ? "teal" : asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet",
   );
   const terms = parseAssetTerms(asset.note);
   const cleanNote = stripAssetMetaTags(asset.note);
@@ -847,7 +851,9 @@ function AssetDetailDialog({
                 ? "ASET DIARSIPKAN"
                 : isCredit
                   ? "DETAIL FASILITAS KREDIT"
-                  : "DETAIL REKENING & ASET"}
+                  : isReceivable
+                    ? "DETAIL PIUTANG & TALANGAN"
+                    : "DETAIL REKENING & ASET"}
             </span>
             <h2 id="asset-detail-title">{asset.displayName}</h2>
             {headerSubtitle && <p className="asset-detail-subtitle">{headerSubtitle}</p>}
@@ -994,11 +1000,13 @@ function AssetDetailDialog({
                     <td>
                       {!asset.isActive
                         ? "Diarsipkan"
-                        : asset.normallySpendable
-                          ? "Dana likuid · Dapat digunakan"
-                          : asset.normallyLiquid
-                            ? "Dana likuid · Cadangan"
-                            : "Aset non-likuid"}
+                        : isReceivable
+                          ? "Piutang / Talangan · Bukan kas langsung"
+                          : asset.normallySpendable
+                            ? "Dana likuid · Dapat digunakan"
+                            : asset.normallyLiquid
+                              ? "Dana likuid · Cadangan"
+                              : "Aset non-likuid"}
                     </td>
                   </tr>
                   <tr>
@@ -1179,10 +1187,22 @@ function AssetDetailDialog({
             Bayar tagihan
           </button>
         )}
-        {asset.isActive && (
+        {!isCredit && isReceivable && balanceBig > 0n && asset.isActive && (
           <button
             type="button"
             className="button-primary"
+            onClick={() => {
+              onClose();
+              onSettleReceivable?.();
+            }}
+          >
+            Terima ganti
+          </button>
+        )}
+        {asset.isActive && (
+          <button
+            type="button"
+            className={!isCredit && isReceivable && balanceBig > 0n ? "finance-secondary" : "button-primary"}
             onClick={() => {
               onClose();
               onEdit();
@@ -1373,6 +1393,178 @@ function PayCreditBillDialog({
   );
 }
 
+function SettleReceivableDialog({
+  receivableAsset,
+  regularAssets,
+  onClose,
+}: {
+  receivableAsset: FinanceAsset;
+  regularAssets: FinanceAsset[];
+  onClose: () => void;
+}) {
+  const dialog = useFinanceDialog(onClose);
+  const { refresh, notify } = useFinanceFeedback();
+  const { pending, begin, finish } = useMutationPending();
+  const replay = useRef<{ payload: string; key: string } | null>(null);
+  const eligibleDestinations = regularAssets.filter(
+    (item) =>
+      item.isActive &&
+      item.id !== receivableAsset.id &&
+      item.currency === receivableAsset.currency &&
+      !isCreditAsset(item) &&
+      !isReceivableAsset(item),
+  );
+  const currentBalanceMinor = BigInt(receivableAsset.balanceMinor);
+  const defaultAmountMinor = currentBalanceMinor > 0n ? currentBalanceMinor : 0n;
+  const [destinationId, setDestinationId] = useState(eligibleDestinations[0]?.id ?? "");
+  const [amount, setAmount] = useState(
+    defaultAmountMinor > 0n ? minorToInput(defaultAmountMinor.toString(), receivableAsset.exponent) : "",
+  );
+  const [fee, setFee] = useState("");
+  const [note, setNote] = useState(
+    `Pengembalian talangan · ${receivableAsset.displayName}`,
+  );
+  const [error, setError] = useState("");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!begin()) return;
+    setError("");
+    try {
+      if (!destinationId) throw new Error("Pilih rekening penerima dana ganti.");
+      const draft: ActivityDraft = {
+        kind: "transfer",
+        amountMinor: inputToMinor(amount, receivableAsset.exponent),
+        sourceAssetId: receivableAsset.id,
+        destinationAssetId: destinationId,
+        transferFeeMinor: fee.trim() ? inputToMinor(fee, receivableAsset.exponent) : undefined,
+        occurredAt: new Date().toISOString(),
+        note: note.trim() || `Pengembalian talangan · ${receivableAsset.displayName}`,
+      };
+      const payload = JSON.stringify({ draft });
+      if (replay.current?.payload !== payload) {
+        replay.current = { payload, key: crypto.randomUUID() };
+      }
+      await financeRequest("post", { draft, idempotencyKey: replay.current.key });
+      refresh();
+      notify(`Pengembalian talangan ${receivableAsset.displayName} berhasil dicatat.`);
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pengembalian talangan gagal disimpan.");
+    } finally {
+      finish();
+    }
+  }
+
+  return (
+    <dialog
+      ref={dialog}
+      className="finance-dialog"
+      aria-labelledby="settle-receivable-title"
+      onCancel={(event) => {
+        if (pending) event.preventDefault();
+      }}
+    >
+      <div className="dialog-heading">
+        <div>
+          <span className="eyebrow">PELUNASAN PIUTANG &amp; TALANGAN</span>
+          <h2 id="settle-receivable-title">Terima ganti {receivableAsset.displayName}</h2>
+        </div>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Tutup"
+          disabled={pending}
+          onClick={() => dialog.current?.close()}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <p className="finance-hint">
+        Pencatatan dilakukan sebagai transfer dari <strong>{receivableAsset.displayName}</strong> ke rekening penerima agar saldo piutang berkurang dan kas bertambah tanpa tercatat sebagai pemasukan ganda di Insights.
+      </p>
+      {!eligibleDestinations.length ? (
+        <p className="finance-error" role="alert">
+          Belum ada rekening/aset aktif dalam mata uang {receivableAsset.currency} untuk menerima dana ganti ini.
+        </p>
+      ) : (
+        <form onSubmit={submit} aria-busy={pending}>
+          <fieldset className="finance-fieldset" disabled={pending}>
+            <dl className="investment-preview">
+              <div>
+                <dt>Sisa piutang berjalan</dt>
+                <dd className={currentBalanceMinor > 0n ? "pnl-positive" : "asset-muted-val"}>
+                  {formatMinor(receivableAsset.balanceMinor, receivableAsset.currency, receivableAsset.exponent)}
+                </dd>
+              </div>
+            </dl>
+            <label className="field">
+              <span>Rekening penerima dana ganti ({receivableAsset.currency})</span>
+              <select
+                required
+                value={destinationId}
+                onChange={(event) => setDestinationId(event.target.value)}
+              >
+                {eligibleDestinations.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.displayName} · {formatMinor(item.balanceMinor, item.currency, item.exponent)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="field-grid">
+              <label className="field">
+                <span>Jumlah diganti ({receivableAsset.currency})</span>
+                <input
+                  required
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  placeholder="0"
+                />
+              </label>
+              <label className="field">
+                <span>Biaya admin / potongan (opsional)</span>
+                <input
+                  inputMode="decimal"
+                  value={fee}
+                  onChange={(event) => setFee(event.target.value)}
+                  placeholder="0"
+                />
+              </label>
+            </div>
+            <label className="field">
+              <span>Catatan</span>
+              <input
+                maxLength={240}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </label>
+            {error && (
+              <p role="alert" className="finance-error">
+                {error}
+              </p>
+            )}
+            <div className="finance-actions">
+              <button
+                type="button"
+                className="finance-secondary"
+                onClick={() => dialog.current?.close()}
+              >
+                Batal
+              </button>
+              <button type="submit" className="button-primary" disabled={pending} aria-busy={pending}>
+                {pending ? <LoadingIndicator>Memproses pelunasan…</LoadingIndicator> : "Terima ganti"}
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      )}
+    </dialog>
+  );
+}
+
 function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClose: () => void }) {
   const dialog = useFinanceDialog(onClose);
   const { refresh, notify } = useFinanceFeedback();
@@ -1429,6 +1621,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
   const [viewingAsset, setViewingAsset] = useState<FinanceAsset | null>(null);
   const [editing, setEditing] = useState<FinanceAsset | "new" | null>(null);
   const [payingCredit, setPayingCredit] = useState<FinanceAsset | null>(null);
+  const [settlingReceivable, setSettlingReceivable] = useState<FinanceAsset | null>(null);
   const [correcting, setCorrecting] = useState<FinanceAsset | null>(null);
   const { pending, begin, finish } = useMutationPending();
   const { refresh, notify, refreshing } = useFinanceFeedback();
@@ -1542,9 +1735,15 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
     {!regularActive.length ? <section className="surface finance-empty"><h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2><p>{archived.length ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru." : "Buat akun atau aset pertama, lalu catat saldo awalnya."}</p>
       <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : <section className="surface"><SectionHeading title="Akun & nilai tercatat" eyebrow="ASET AKTIF" action={<div className="section-heading-actions"><span className="count-pill">{regularActive.length} aset</span><ExportMenuButton dataset="assets" label="Ekspor Aset" /></div>} />
       <div className="asset-list">{regularActive.map((asset) => {
-        const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
+        const isReceivable = isReceivableAsset(asset);
+        const mark = resolveProviderMark(
+          asset.providerName,
+          asset.displayName,
+          isReceivable ? "teal" : asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet",
+        );
         const terms = parseAssetTerms(asset.note);
         const termSummary = [
+          isReceivable ? "Piutang / Talangan" : null,
           !mobile && asset.assetGroupName ? asset.assetGroupName : null,
           terms.interestRateBps > 0 ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.` : null,
           terms.adminFeeMinor > 0n ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln` : null,
@@ -1567,7 +1766,19 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
             {termSummary && <small>{termSummary}</small>}
           </div></div>
         <div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong>
-        <div className="data-list-actions"><button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah</button><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button></div></div></article>;
+        <div className="data-list-actions">
+          {isReceivable && BigInt(asset.balanceMinor) > 0n && (
+            <button
+              type="button"
+              className="row-action"
+              onClick={() => setSettlingReceivable(asset)}
+            >
+              Terima ganti
+            </button>
+          )}
+          <button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah</button>
+          <button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button>
+        </div></div></article>;
       })}</div></section>}
 
     {!creditFirst && creditSection}
@@ -1594,6 +1805,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
         onEdit={() => setEditing(liveViewingAsset)}
         onCorrectOpening={() => setCorrecting(liveViewingAsset)}
         onPayBill={() => setPayingCredit(liveViewingAsset)}
+        onSettleReceivable={() => setSettlingReceivable(liveViewingAsset)}
       />
     )}
     {editing && (
@@ -1609,6 +1821,14 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
         creditAsset={payingCredit}
         regularAssets={regularActive}
         onClose={() => setPayingCredit(null)}
+      />
+    )}
+    {settlingReceivable && (
+      <SettleReceivableDialog
+        key={settlingReceivable.id}
+        receivableAsset={settlingReceivable}
+        regularAssets={regularActive}
+        onClose={() => setSettlingReceivable(null)}
       />
     )}
     {correcting && <AssetOpeningCorrection key={correcting.id} asset={correcting} onClose={() => setCorrecting(null)} />}

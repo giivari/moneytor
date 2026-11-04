@@ -135,6 +135,12 @@ export function isCreditAsset(
   return CREDIT_NAME_RE.test(combined);
 }
 
+export function isReceivableAsset(
+  asset: Pick<FinanceAsset, "displayName" | "note">,
+): boolean {
+  return /\b(piutang|talangan|reimburse|split\s*bill)\b/i.test(`${asset.displayName} ${asset.note ?? ""}`);
+}
+
 export type ComputedCreditBills = Readonly<{
   currentBillMinor: bigint;
   nextBillMinor: bigint;

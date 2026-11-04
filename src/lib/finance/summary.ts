@@ -6,7 +6,7 @@ import { prepareOwnerAssetRead } from "@/lib/repositories/assets";
 import { listActivities } from "./service";
 import { prepareOwnerInvestmentSummaryRead } from "@/lib/investments/read";
 import { horizonDay, planningTotals } from "@/lib/domain/planning";
-import { computeCreditBills, isCreditAsset } from "@/lib/domain/credit";
+import { computeCreditBills, isCreditAsset, isReceivableAsset } from "@/lib/domain/credit";
 import { planningSchemaReady, readPlanningSummary } from "@/lib/planning/repository";
 import { readAutomation } from "@/lib/automation/service";
 import { readIncomeEvents } from "@/lib/automation/income-events";
@@ -103,8 +103,9 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
         }
       } else {
         entry.total += balance;
-        if (asset.isActive && asset.normallyLiquid) entry.liquid += balance;
-        if (asset.isActive && asset.normallySpendable) entry.spendable += balance;
+        const isReceivable = isReceivableAsset(asset);
+        if (asset.isActive && asset.normallyLiquid && !isReceivable) entry.liquid += balance;
+        if (asset.isActive && asset.normallySpendable && !isReceivable) entry.spendable += balance;
       }
       byCurrency.set(asset.currency, entry);
     }
