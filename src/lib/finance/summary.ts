@@ -93,16 +93,12 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
       const entry = byCurrency.get(asset.currency) ?? { currency: asset.currency, exponent: asset.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, unpricedCount: 0 };
       const balance = BigInt(asset.balanceMinor);
       const isCredit = isCreditAsset(asset);
-      if (isCredit || balance < 0n) {
+      if (isCredit) {
         if (asset.isActive) {
-          if (isCredit) {
-            const bills = computeCreditBills(asset);
-            entry.creditDebt += bills.currentBillMinor;
-            if (bills.nextDueIso <= throughDay) {
-              entry.creditDebt += bills.nextBillMinor;
-            }
-          } else if (balance < 0n) {
-            entry.creditDebt += -balance;
+          const bills = computeCreditBills(asset);
+          entry.creditDebt += bills.currentBillMinor;
+          if (bills.nextDueIso <= throughDay) {
+            entry.creditDebt += bills.nextBillMinor;
           }
         }
       } else {

@@ -86,7 +86,8 @@ export function verifySnapshotIntegrity(rawJson: string | Record<string, unknown
     }
   }
 
-  const schemaVersion = typeof parsed.version === "string" ? parsed.version : null;
+  const rawVersion = typeof parsed.schemaVersion === "string" ? parsed.schemaVersion : typeof parsed.version === "string" ? parsed.version : null;
+  const schemaVersion = rawVersion;
   if (schemaVersion !== "moneytor.export.v1") {
     errors.push(`Versi skema snapshot tidak didukung: ${schemaVersion ?? "kosong"}.`);
   }

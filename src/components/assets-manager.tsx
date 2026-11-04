@@ -112,6 +112,7 @@ function AssetForm({
       : "",
   );
   const [adminDay, setAdminDay] = useState<string>(String(initialTerms.adminDay));
+  const [interestDay, setInterestDay] = useState<string>(String(initialTerms.interestDay));
   const [autoPostAdmin, setAutoPostAdmin] = useState<boolean>(initialTerms.autoPostAdminFee);
   const [interestRate, setInterestRate] = useState<string>(bpsToInput(initialTerms.interestRateBps));
   const [interestTax, setInterestTax] = useState<string>(
@@ -228,7 +229,7 @@ function AssetForm({
           interestRateBps: parsedRate,
           interestTaxBps: parsedTax,
           interestCycle,
-          interestDay: parsedAdminDay,
+          interestDay: Number(interestDay),
           adminRuleId: initialTerms.adminRuleId,
         });
       }
@@ -612,6 +613,18 @@ function AssetForm({
                               <option value="maturity">Saat jatuh tempo</option>
                             </select>
                           </label>
+                          {interestCycle === "monthly" && (
+                            <label className="field">
+                              <span>Tanggal cair bunga bulanan</span>
+                              <select value={interestDay} onChange={(event) => setInterestDay(event.target.value)}>
+                                {ADMIN_DAY_CHOICES.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                           <label className="field">
                             <span>Pajak bunga (%)</span>
                             <input

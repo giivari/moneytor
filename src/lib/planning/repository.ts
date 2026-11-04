@@ -324,7 +324,7 @@ export async function listPlanning(): Promise<PlanningData> {
         + COALESCE((SELECT sum(ac.amount_minor) FROM activity_charges ac WHERE ac.activity_id=a.id),0))
         FROM financial_activities a WHERE a.status='posted' AND a.currency_code=b.currency_code
           AND a.occurred_at >= (b.period_start::timestamp AT TIME ZONE 'Asia/Jakarta')
-          AND a.occurred_at < (b.period_end::timestamp AT TIME ZONE 'Asia/Jakarta')
+          AND a.occurred_at < ((b.period_end + 1)::timestamp AT TIME ZONE 'Asia/Jakarta')
           AND ((a.kind='expense' AND (b.category_id IS NULL OR a.category_id=b.category_id))
             OR (b.category_id IS NULL AND a.kind='transfer'))),0)::text AS "spentMinor"
       FROM planning_budgets b JOIN planning_labels l ON l.id=b.label_id JOIN currencies c ON c.code=b.currency_code
