@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import type { ReportingPeriod } from "./periods";
 import type { AnalyticsExpenseItem, AnalyticsObligationItem, ChargeReport, DimensionRow, InvestmentFlows } from "./types";
 import { FEE_SYSTEM_KEYS, TAX_SYSTEM_KEYS } from "./domain";
+import { CREDIT_REMINDER_NOTE_PREFIX } from "@/lib/domain/credit";
 
 export type AggregateRow = DimensionRow & { dimension: "summary" | "category" | "income_category" | "weekday" | "account" | "origin" | "month" | "day" };
 /** One effective activity is one fact. Charges are reduced before any dimension joins. */
@@ -197,8 +198,10 @@ export async function readObligationsForAnalytics(
     ) r ON r.obligation_id = o.id
     WHERE ($3::text IS NULL OR o.currency_code = $3)
       AND (o.status = 'open' OR (o.status = 'settled' AND o.settled_at >= $1 AND o.settled_at < $2))
+      -- Credit installment reminders are already in the credit facility totals.
+      AND (o.note IS NULL OR o.note NOT LIKE $4)
     ORDER BY (o.status = 'open') DESC, o.due_on ASC, o.id ASC`,
-    [period.startAt, period.endAt, currency],
+    [period.startAt, period.endAt, currency, `${CREDIT_REMINDER_NOTE_PREFIX}%`],
   );
   return result.rows;
 }

@@ -4,7 +4,7 @@ import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
-import { isReserveSourceAsset } from "@/lib/domain/credit";
+import { CREDIT_REMINDER_NOTE_PREFIX, isReserveSourceAsset } from "@/lib/domain/credit";
 import type { PlanKind, ObligationStatus, ReservePurpose } from "@/lib/domain/planning";
 
 export class PlanningError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status; } }
@@ -295,6 +295,8 @@ export async function planningSchemaReady(client?: PoolClient) {
     AND to_regclass('planning_obligations') IS NOT NULL AS ready`);
   return result.rows[0].ready;
 }
+/** LIKE pattern of reminders whose amounts already sit in a credit account's bills (counted via creditDebt). */
+export const creditReminderPattern = `${CREDIT_REMINDER_NOTE_PREFIX}%`;
 export async function readPlanningSummary(client: PoolClient, throughDay: string): Promise<Map<string, PlanningAggregate>> {
   const result = await client.query<PlanningAggregate>(`
     WITH reserved AS (
@@ -306,13 +308,14 @@ export async function readPlanningSummary(client: PoolClient, throughDay: string
       SELECT o.currency_code,sum(o.amount_minor)::numeric AS total,
         sum(LEAST(o.amount_minor::numeric,COALESCE(linked.amount,0))) AS covered
       FROM planning_obligations o LEFT JOIN linked ON linked.obligation_id=o.id
-      WHERE o.status='open' AND o.due_on <= $1::date GROUP BY o.currency_code
+      WHERE o.status='open' AND o.due_on <= $1::date AND (o.note IS NULL OR o.note NOT LIKE $2)
+      GROUP BY o.currency_code
     )
     SELECT c.code AS currency,COALESCE(r.amount,0)::text AS "reservedMinor",
       COALESCE(d.total,0)::text AS "dueMinor",COALESCE(d.covered,0)::text AS "coveredMinor",
       (COALESCE(d.total,0)-COALESCE(d.covered,0))::text AS "uncoveredMinor"
     FROM currencies c LEFT JOIN reserved r ON r.currency_code=c.code LEFT JOIN due d ON d.currency_code=c.code
-    WHERE r.currency_code IS NOT NULL OR d.currency_code IS NOT NULL`,[throughDay]);
+    WHERE r.currency_code IS NOT NULL OR d.currency_code IS NOT NULL`,[throughDay,creditReminderPattern]);
   return new Map(result.rows.map((row) => [row.currency,row]));
 }
 

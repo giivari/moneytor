@@ -12,10 +12,10 @@ import { LoadingIndicator } from "./loading-indicator";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
 import { isDedicatedCategory } from "@/lib/domain/catalog";
 import {
+  CREDIT_REMINDER_NOTE_PREFIX,
   calculateCreditInstallmentPlan,
   computeCreditBills,
   formatShortDueIso,
-  installmentFuturePrincipalMinor,
   isAfterCutoffDay,
   isCreditAsset,
   isReceivableAsset,
@@ -294,12 +294,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
 
       let finalAmountMinor = rawPrincipalMinor;
       let finalTransferFeeMinor: string | undefined = undefined;
-      // Installment top-up: the destination gets the full principal now; installments 2..N of the principal
-      // wait in the credit account's next-cycle bucket so the nearest bill only asks for installment 1.
+      // Installment top-up: the destination gets the full principal now; the server schedules the principal
+      // and interest of installments 2..N into their own due months of the credit account.
       const isInstallmentTopUp = kind === "transfer" && isCreditPurchase && Boolean(plan) && tenorMonths > 1;
-      const futurePrincipalMinor = isInstallmentTopUp && plan
-        ? installmentFuturePrincipalMinor(BigInt(rawPrincipalMinor), plan)
-        : 0n;
 
       if (kind === "transfer") {
         const transferPrincipalMinor = rawPrincipalMinor;
@@ -374,7 +371,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         // The effective cycle (automatic or manual override) is stored with the activity so a later void or
         // correction releases exactly what this posting deferred.
         ...(isCreditPurchase ? { creditCycle: targetCycle } : {}),
-        ...(futurePrincipalMinor > 0n ? { creditFuturePrincipalMinor: futurePrincipalMinor.toString() } : {}),
+        ...(isCreditPurchase && plan && tenorMonths > 1
+          ? { creditInstallments: { count: tenorMonths, principalMinor: plan.monthlyPrincipalMinor, interestMinor: plan.monthlyInterestMinor } }
+          : {}),
       });
 
       if (isCreditPurchase && plan && plan.futureInstallmentsMinor.length > 0) {
@@ -384,9 +383,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
           title: `Cicilan ${idx + 2}/${tenorMonths} · ${account.displayName} (${labelBase})`.slice(0, 120),
           amountMinor: amt,
           dueOn: nextMonthlyDueDayIso(dueDay, idx + startOffset),
-          note: isInstallmentTopUp
-            ? `Pengingat cicilan top-up ${account.displayName} (Total ${formatMinor(plan.grandTotalMinor, currency, exponent)}). Pokok cicilan ini sudah tercatat di saldo ${account.displayName} sebagai tagihan bulan berikutnya; bunga bulan ini belum tercatat.`.slice(0, 500)
-            : `Cicilan otomatis dari transaksi ${account.displayName} (Total ${formatMinor(plan.grandTotalMinor, currency, exponent)})`.slice(0, 500),
+          // The amount is already inside the credit account's schedule for that month; the prefix keeps the
+          // reminder out of the planning totals so it is not counted twice.
+          note: `${CREDIT_REMINDER_NOTE_PREFIX} cicilan ini sudah termasuk tagihan ${account.displayName} jatuh tempo ${formatShortDueIso(nextMonthlyDueDayIso(dueDay, idx + startOffset))}. Total ${tenorMonths}x = ${formatMinor(plan.grandTotalMinor, currency, exponent)}.`.slice(0, 500),
         }));
         await requestJson("/api/planning", {
           method: "POST",

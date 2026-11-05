@@ -21,6 +21,13 @@ function str(value: unknown, max = 120): string {
   if (typeof value !== "string" || value.length > max) throw new Error("Invalid text");
   return value;
 }
+function installmentTerms(value: unknown): { count: number; principalMinor: string; interestMinor: string } | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object") throw new Error("Invalid installments");
+  const item = value as Record<string, unknown>;
+  if (typeof item.count !== "number") throw new Error("Invalid installments");
+  return { count: item.count, principalMinor: str(item.principalMinor, 24), interestMinor: str(item.interestMinor, 24) };
+}
 function optional(value: unknown, max = 120): string | undefined {
   return value === undefined || value === null || value === "" ? undefined : str(value, max);
 }
@@ -108,7 +115,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (operation === "post") return json({ id: await postActivity(body.draft as ActivityDraft, str(body.idempotencyKey, 36),
       {
         creditCycle: body.creditCycle === "next" || body.creditCycle === "current" ? body.creditCycle : undefined,
-        creditFuturePrincipalMinor: typeof body.creditFuturePrincipalMinor === "string" ? body.creditFuturePrincipalMinor : undefined,
+        creditInstallments: installmentTerms(body.creditInstallments),
       }) });
     if (operation === "replace") return json({ id: await replaceActivity(str(body.id, 36), body.draft as ActivityDraft, str(body.idempotencyKey, 36)) });
     if (operation === "void") return json({ id: await voidActivity(str(body.id, 36), str(body.idempotencyKey, 36)) });

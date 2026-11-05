@@ -145,6 +145,7 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
                 currentBillMinor: bills.currentBillMinor.toString(),
                 currentDueIso: bills.currentDueIso,
                 nextBillMinor: bills.nextBillMinor.toString(),
+                laterBillMinor: bills.laterBillMinor.toString(),
                 nextDueIso: bills.nextDueIso,
                 totalUnpaidMinor: bills.totalUnpaidMinor.toString(),
                 limitMinor: bills.limitMinor.toString(),

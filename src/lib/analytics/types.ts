@@ -52,6 +52,8 @@ export type AnalyticsCreditFacility = {
   currentDueIso: string;
   nextBillMinor: string;
   nextDueIso: string;
+  /** Installments due after nextDueIso; included in totalUnpaidMinor. */
+  laterBillMinor: string;
   totalUnpaidMinor: string;
   limitMinor: string;
   availableLimitMinor: string | null;

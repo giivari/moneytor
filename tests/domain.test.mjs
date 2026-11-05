@@ -170,106 +170,215 @@ test("receivable / talangan / split bill accounts are identified accurately", ()
 });
 
 // ---------------------------------------------------------------------------------------------
-// Credit / PayLater billing cycles, deferral, rollover, void release, split bill (audit fixes)
+// Credit / PayLater monthly bill schedule, installments, void/replace, split bill, reserve sources
 // ---------------------------------------------------------------------------------------------
 const credit = await import("../src/lib/domain/credit.ts");
 const { planSplitBill } = await import("../src/lib/domain/split-bill.ts");
-// Jakarta Nov 25 2026 12:00, due day 1, cutoff 20: nearest bill is due Dec 1 and closed on Nov 20.
+// Due day 1, cutoff 20. On Nov 25 (Jakarta) the nearest bill is due Dec 1 (closed Nov 20), the next Jan 1.
 const NOV_25 = new Date("2026-11-25T05:00:00Z");
 const DEC_03 = new Date("2026-12-03T05:00:00Z");
 const DEC_25 = new Date("2026-12-25T05:00:00Z");
+const JAN_03 = new Date("2027-01-03T05:00:00Z");
+const ACT_A = "a1b2c3d4-0000-4000-8000-000000000001";
+const ACT_B = "b2c3d4e5-0000-4000-8000-000000000002";
+const ACT_C = "c3d4e5f6-0000-4000-8000-000000000003";
+const ACT_D = "d4e5f6a7-0000-4000-8000-000000000004";
 const creditNote = (state) => credit.encodeCreditNote("PayLater", true, state);
-const billsAt = (balanceMinor, note, now) => {
+const meta = (state, now = NOV_25) => credit.parseCreditMeta(creditNote(state), now);
+const fresh = (limitMinor = 0n) => meta({ dueDay: 1, cutoffDay: 20, limitMinor, carryCurrentMinor: 0n, schedule: [] });
+const billsAt = (balanceMinor, stateOrNote, now) => {
+  const note = typeof stateOrNote === "string" ? stateOrNote : creditNote(stateOrNote);
   const bills = credit.computeCreditBills({ balanceMinor: String(balanceMinor), note }, now);
-  return { current: bills.currentBillMinor, next: bills.nextBillMinor, total: bills.totalUnpaidMinor };
+  return { current: bills.currentBillMinor, next: bills.nextBillMinor, later: bills.laterBillMinor, total: bills.totalUnpaidMinor };
 };
+const plan3x = () => credit.calculateCreditInstallmentPlan({ principalMinorStr: "300000", tenorMonths: 3, interestMode: "percent",
+  interestRatePercent: 2.95, interestFlatMinorStr: "0" });
+const terms = (plan, count) => ({ count, principalMinor: BigInt(plan.monthlyPrincipalMinor), interestMinor: BigInt(plan.monthlyInterestMinor) });
 
-test("credit form round-trips typed bills against the ledger balance (-300k = 100k now + 200k next)", () => {
+test("credit form round-trips typed bills and keeps installments due after the next bill", () => {
   const input = { balanceMinor: -300000n, desiredCurrentMinor: 100000n, desiredNextMinor: 200000n,
     dueDay: 1, cutoffDay: 20, limitMinor: 0n, now: NOV_25 };
   const state = credit.creditStateForDesiredBills(input);
-  assert.equal(state.carryCurrentMinor, -200000n);
-  assert.equal(state.anchorDueIso, "2026-12-01");
-  const note = creditNote(state);
-  assert.deepEqual(billsAt(-300000n, note, NOV_25), { current: 100000n, next: 200000n, total: 300000n });
-  // Re-saving the form unchanged keeps the same bills.
-  const bills = credit.computeCreditBills({ balanceMinor: "-300000", note }, NOV_25);
-  const again = credit.creditStateForDesiredBills({ ...input, desiredCurrentMinor: bills.currentBillMinor, desiredNextMinor: bills.nextBillMinor });
-  assert.deepEqual(billsAt(-300000n, creditNote(again), NOV_25), { current: 100000n, next: 200000n, total: 300000n });
+  assert.deepEqual(billsAt(-300000n, state, NOV_25), { current: 100000n, next: 200000n, later: 0n, total: 300000n });
+  // Saving the form again with what it shows changes nothing.
+  assert.deepEqual(billsAt(-300000n, credit.creditStateForDesiredBills({ ...input, existing: meta(state) }), NOV_25),
+    { current: 100000n, next: 200000n, later: 0n, total: 300000n });
+  // A 3x top-up adds installments in Feb and Mar; editing current/next in the form must not drop them.
+  const plan = plan3x();
+  const withTopUp = credit.scheduleCreditCharge(meta(state), 309850n, NOV_25,
+    { activityId: ACT_A, cycle: "current", kind: "transfer", installments: terms(plan, 3) });
+  const edited = credit.creditStateForDesiredBills({ ...input, balanceMinor: -609850n, desiredCurrentMinor: 150000n, existing: meta(withTopUp) });
+  const bills = billsAt(-609850n, edited, NOV_25);
+  assert.equal(bills.current, 150000n);
+  assert.equal(bills.later, 108850n);
 });
 
-test("PayLater next-cycle deferral does not depend on a stale or fresh balance read", () => {
-  const opening = creditNote(credit.creditStateForDesiredBills({ balanceMinor: 0n, desiredCurrentMinor: 0n, desiredNextMinor: 0n,
-    dueDay: 1, cutoffDay: 20, limitMinor: 1000000n, now: NOV_25 }));
-  // 100k bought before the cutoff goes to the current bill; 50k + 1.5k fee after the cutoff goes to the next bill.
+test("PayLater next-cycle purchase is billed in its own month and rolls over by calendar alone", () => {
   assert.equal(credit.isAfterCutoffDay("2026-11-10T03:00:00.000Z", 20, 1, NOV_25), false);
   assert.equal(credit.isAfterCutoffDay("2026-11-24T03:00:00.000Z", 20, 1, NOV_25), true);
+  assert.equal(credit.autoCreditPeriodFor("2026-11-10T03:00:00.000Z", 1, 20), "2026-12");
+  assert.equal(credit.autoCreditPeriodFor("2026-11-24T03:00:00.000Z", 1, 20), "2027-01");
   const impact = credit.creditSourceImpactMinor({ kind: "transfer", amountMinor: "50000", transferFeeMinor: "1500" });
   assert.equal(impact, 51500n);
-  const deferred = creditNote(credit.deferCreditCharge(credit.parseCreditMeta(opening), impact, NOV_25));
-  assert.deepEqual(billsAt(-151500n, deferred, NOV_25), { current: 100000n, next: 51500n, total: 151500n });
-  assert.equal(credit.computeCreditBills({ balanceMinor: "-151500", note: deferred }, NOV_25).availableLimitMinor, 848500n);
+  const state = credit.scheduleCreditCharge(fresh(1000000n), impact, NOV_25, { activityId: ACT_A, cycle: "next", kind: "transfer" });
+  assert.deepEqual(state.schedule, [{ period: "2027-01", amountMinor: 51500n, ref: "a1b2c3d4", offLedger: false }]);
+  // 100k bought earlier in the current cycle + this 51.5k. The note never reads the balance.
+  assert.deepEqual(billsAt(-151500n, state, NOV_25), { current: 100000n, next: 51500n, later: 0n, total: 151500n });
+  assert.equal(credit.computeCreditBills({ balanceMinor: "-151500", note: creditNote(state) }, NOV_25).availableLimitMinor, 848500n);
+  // After Dec 1 passes, January is the nearest bill: no rewrite needed.
+  assert.deepEqual(billsAt(-151500n, state, DEC_03), { current: 151500n, next: 0n, later: 0n, total: 151500n });
+  // A purchase after the Dec 20 cutoff goes to February without moving January.
+  const feb = credit.scheduleCreditCharge(meta(state, DEC_25), 30000n, DEC_25, { activityId: ACT_B, cycle: "next", kind: "expense" });
+  assert.deepEqual(billsAt(-181500n, feb, DEC_25), { current: 151500n, next: 30000n, later: 0n, total: 181500n });
 });
 
-test("credit rollover folds the old next bill into the current bill and starts a fresh next bucket", () => {
-  const form = creditNote(credit.creditStateForDesiredBills({ balanceMinor: -300000n, desiredCurrentMinor: 100000n, desiredNextMinor: 200000n,
-    dueDay: 1, cutoffDay: 20, limitMinor: 0n, now: NOV_25 }));
-  const withDeferred = creditNote(credit.deferCreditCharge(credit.parseCreditMeta(form), 50000n, NOV_25));
-  assert.deepEqual(billsAt(-350000n, withDeferred, NOV_25), { current: 100000n, next: 250000n, total: 350000n });
-  // After Dec 1 passes, the Jan 1 bill is the nearest one: every scheduled amount is now current.
-  assert.equal(credit.isCreditCycleShifted(credit.parseCreditMeta(withDeferred), DEC_03), true);
-  assert.deepEqual(billsAt(-350000n, withDeferred, DEC_03), { current: 350000n, next: 0n, total: 350000n });
-  // A purchase after the Dec 20 cutoff goes to the Feb 1 bill without moving the Jan 1 bill.
-  const rolled = credit.deferCreditCharge(credit.parseCreditMeta(withDeferred), 30000n, DEC_25);
-  assert.equal(rolled.carryCurrentMinor, 0n);
-  assert.equal(rolled.carryNextMinor, 0n);
-  assert.equal(rolled.deferredMinor, 30000n);
-  assert.equal(rolled.anchorDueIso, "2027-01-01");
-  assert.deepEqual(billsAt(-380000n, creditNote(rolled), DEC_25), { current: 350000n, next: 30000n, total: 380000n });
+test("3x installment top-up: installment 1 now, installment 2 next month, installment 3 stays in its own month", () => {
+  const plan = plan3x();
+  assert.equal(credit.installmentFuturePrincipalMinor(300000n, plan), 200000n);
+  // Transfer of the full 300k to e-money, fee = 1k admin + 8.85k first-month interest.
+  const impact = credit.creditSourceImpactMinor({ kind: "transfer", amountMinor: "300000", transferFeeMinor: String(1000 + 8850) });
+  assert.equal(impact, 309850n);
+  const state = credit.scheduleCreditCharge(fresh(2000000n), impact, NOV_25,
+    { activityId: ACT_A, cycle: "current", kind: "transfer", installments: terms(plan, 3) });
+  // Principal of months 2..3 is in the ledger; their interest is owed on top of it.
+  assert.ok(creditNote(state).includes(`sch=a1b2c3d4@202701~${(100000).toString(36)}*2.a1b2c3d4@202701~${(8850).toString(36)}*2+`));
+  const month1 = billsAt(-309850n, state, NOV_25);
+  assert.deepEqual(month1, { current: 109850n, next: 108850n, later: 108850n, total: 327550n });
+  assert.equal(credit.computeCreditBills({ balanceMinor: "-309850", note: creditNote(state) }, NOV_25).availableLimitMinor, 2000000n - 327550n);
+  // Month 2 after paying installment 1: only installment 2 is current, installment 3 is next.
+  assert.deepEqual(billsAt(-200000n, state, DEC_03), { current: 108850n, next: 108850n, later: 0n, total: 217700n });
+  // Month 2 without paying: installment 1 is in arrears and adds to the current bill.
+  assert.deepEqual(billsAt(-309850n, state, DEC_03), { current: 218700n, next: 108850n, later: 0n, total: 327550n });
+  // Month 3 after paying installment 2 (108.85k incl. interest): installment 3 is the only bill left.
+  assert.deepEqual(billsAt(-200000n + 108850n, state, JAN_03), { current: 108850n, next: 0n, later: 0n, total: 108850n });
+  // Next-cycle top-up: every installment moves one month later.
+  const next = credit.scheduleCreditCharge(fresh(), impact, NOV_25, { activityId: ACT_A, cycle: "next", kind: "transfer", installments: terms(plan, 3) });
+  assert.deepEqual(billsAt(-309850n, next, NOV_25), { current: 0n, next: 109850n, later: 217700n, total: 327550n });
+  assert.deepEqual(billsAt(-309850n, next, DEC_03), { current: 109850n, next: 108850n, later: 108850n, total: 327550n });
 });
 
-test("credit rollover with an overpaid balance keeps the overpayment (stale-balance formula regression)", () => {
-  const meta = credit.parseCreditMeta(creditNote({ dueDay: 1, cutoffDay: 20, limitMinor: 0n, carryCurrentMinor: 0n,
-    carryNextMinor: 0n, deferredMinor: 0n, anchorDueIso: "2026-12-01" }));
-  // Owner overpaid by 50k (balance +50k), then spends 100k after the Dec cutoff: only 50k is really owed.
-  const rolled = creditNote(credit.deferCreditCharge(meta, 100000n, DEC_25));
-  assert.deepEqual(billsAt(-50000n, rolled, DEC_25), { current: 0n, next: 50000n, total: 50000n });
+test("6x installment purchase: future installments are owed off-ledger in their own months", () => {
+  const plan = credit.calculateCreditInstallmentPlan({ principalMinorStr: "600000", tenorMonths: 6, interestMode: "flat_minor",
+    interestRatePercent: 0, interestFlatMinorStr: "5000" });
+  // Only installment 1 (105k) is posted as the expense.
+  const state = credit.scheduleCreditCharge(fresh(), BigInt(plan.firstMonthTotalMinor), NOV_25,
+    { activityId: ACT_C, cycle: "current", kind: "expense", installments: terms(plan, 6) });
+  assert.ok(creditNote(state).includes(`sch=c3d4e5f6@202701~${(105000).toString(36)}*5+`));
+  assert.deepEqual(billsAt(-105000n, state, NOV_25), { current: 105000n, next: 105000n, later: 420000n, total: 630000n });
+  assert.equal(credit.computeCreditBills({ balanceMinor: "-105000", note: creditNote(state) }, NOV_25).totalUnpaidMinor,
+    BigInt(plan.grandTotalMinor));
+  // Paying installment 1, then month 2.
+  assert.deepEqual(billsAt(0n, state, DEC_03), { current: 105000n, next: 105000n, later: 315000n, total: 525000n });
+  assert.throws(() => credit.scheduleCreditCharge(fresh(), 1000n, NOV_25,
+    { activityId: ACT_C, cycle: "current", kind: "transfer", installments: { count: 3, principalMinor: 1000n, interestMinor: 0n } }), /melebihi/);
 });
 
-test("voiding or correcting a deferred credit outflow releases the next-cycle bucket", () => {
-  const opening = creditNote({ dueDay: 1, cutoffDay: 20, limitMinor: 0n, carryCurrentMinor: 0n, carryNextMinor: 0n,
-    deferredMinor: 0n, anchorDueIso: "2026-12-01" });
-  const deferredMeta = credit.parseCreditMeta(creditNote(credit.deferCreditCharge(credit.parseCreditMeta(opening), 50000n, NOV_25)));
-  // Void of the Nov 24 purchase: balance returns to -100k and the next bill must vanish.
-  const voided = credit.releaseDeferredCreditCharge(deferredMeta, { occurredAtIso: "2026-11-24T03:00:00.000Z", reversedImpactMinor: 50000n }, NOV_25);
-  assert.equal(voided.deferredMinor, 0n);
-  assert.deepEqual(billsAt(-100000n, creditNote(voided), NOV_25), { current: 100000n, next: 0n, total: 100000n });
-  // Without the release the void would understate the current bill.
-  assert.deepEqual(billsAt(-100000n, creditNote(deferredMeta), NOV_25), { current: 50000n, next: 50000n, total: 100000n });
-  // Correction 50k to 70k keeps the purchase in the next cycle with its new amount.
-  const corrected = credit.releaseDeferredCreditCharge(deferredMeta, { occurredAtIso: "2026-11-24T03:00:00.000Z",
-    reversedImpactMinor: 50000n, replacementImpactMinor: 70000n }, NOV_25);
-  assert.equal(corrected.deferredMinor, 70000n);
-  // A void of a current-cycle purchase (before the cutoff) leaves the next bucket alone.
-  assert.equal(credit.releaseDeferredCreditCharge(deferredMeta, { occurredAtIso: "2026-11-10T03:00:00.000Z", reversedImpactMinor: 100000n }, NOV_25), null);
-  // After rollover the bucket is part of the current bill, so nothing is released.
-  assert.equal(credit.releaseDeferredCreditCharge(deferredMeta, { occurredAtIso: "2026-11-24T03:00:00.000Z", reversedImpactMinor: 50000n }, DEC_03), null);
+test("void and correction remove or reshape exactly the months an activity owns", () => {
+  const plan = plan3x();
+  const topUp = credit.scheduleCreditCharge(fresh(), 309850n, NOV_25,
+    { activityId: ACT_A, cycle: "current", kind: "transfer", installments: terms(plan, 3) });
+  const withNext = meta(credit.scheduleCreditCharge(meta(topUp), 50000n, NOV_25, { activityId: ACT_B, cycle: "next", kind: "expense" }));
+  // Void the top-up: its principal and interest months go, the other purchase stays.
+  const voided = credit.releaseCreditCharge(withNext, { activityId: ACT_A, occurredAtIso: "2026-11-10T03:00:00.000Z", reversedImpactMinor: 309850n }, NOV_25);
+  assert.deepEqual(voided.schedule.map((entry) => entry.ref), ["b2c3d4e5"]);
+  assert.deepEqual(billsAt(-150000n, voided, NOV_25), { current: 100000n, next: 50000n, later: 0n, total: 150000n });
+  // Correct the next-cycle purchase 50k -> 70k: the replacement owns the January amount.
+  const corrected = credit.releaseCreditCharge(meta(voided), { activityId: ACT_B, occurredAtIso: "2026-11-24T03:00:00.000Z",
+    reversedImpactMinor: 50000n, replacementActivityId: ACT_D, replacementImpactMinor: 70000n }, NOV_25);
+  assert.deepEqual(corrected.schedule, [{ period: "2027-01", amountMinor: 70000n, ref: "d4e5f6a7", offLedger: false }]);
+  // Correct the top-up to a smaller 150k (impact 154.85k): months keep their principal while it fits.
+  const smaller = credit.releaseCreditCharge(withNext, { activityId: ACT_A, occurredAtIso: "2026-11-10T03:00:00.000Z",
+    reversedImpactMinor: 309850n, replacementActivityId: ACT_D, replacementImpactMinor: 154850n }, NOV_25);
+  const owned = smaller.schedule.filter((entry) => entry.ref === "d4e5f6a7" && !entry.offLedger);
+  assert.equal(owned.reduce((sum, entry) => sum + entry.amountMinor, 0n), 154850n);
 });
 
-test("credit deferral counts every charge on the credit account but only the first installment", () => {
+test("manual cycle overrides are honoured on void because the schedule records the effective cycle", () => {
+  // A: after the cutoff, auto -> next (50k). B: after the cutoff, forced to the current bill (30k, not scheduled).
+  // C: before the cutoff, forced to the next bill (20k).
+  let state = credit.scheduleCreditCharge(fresh(), 50000n, NOV_25, { activityId: ACT_A, cycle: "next", kind: "expense" });
+  state = credit.scheduleCreditCharge(meta(state), 30000n, NOV_25, { activityId: ACT_B, cycle: "current", kind: "expense" });
+  state = credit.scheduleCreditCharge(meta(state), 20000n, NOV_25, { activityId: ACT_C, cycle: "next", kind: "expense" });
+  // A form-typed January amount must never be touched by a void.
+  state = { ...state, carryCurrentMinor: state.carryCurrentMinor + 10000n,
+    schedule: [...state.schedule, { period: "2027-01", amountMinor: 10000n, ref: null, offLedger: false }] };
+  assert.deepEqual(billsAt(-200000n, state, NOV_25), { current: 130000n, next: 80000n, later: 0n, total: 210000n });
+  const m = meta(state);
+  assert.equal(credit.releaseCreditCharge(m, { activityId: ACT_B, occurredAtIso: "2026-11-24T03:00:00.000Z", reversedImpactMinor: 30000n }, NOV_25), null);
+  const afterC = credit.releaseCreditCharge(m, { activityId: ACT_C, occurredAtIso: "2026-11-10T03:00:00.000Z", reversedImpactMinor: 20000n }, NOV_25);
+  assert.deepEqual(billsAt(-180000n, afterC, NOV_25), { current: 130000n, next: 60000n, later: 0n, total: 190000n });
+});
+
+test("older single-bucket notes convert to monthly schedules without changing the bills", () => {
+  const legacy = "[CREDIT:due=1,cutoff=20,cur=-200000,next=200000,def=50000,anchor=2026-12-01] PayLater";
+  assert.deepEqual(billsAt(-350000n, legacy, NOV_25), { current: 100000n, next: 250000n, later: 0n, total: 350000n });
+  assert.deepEqual(billsAt(-350000n, legacy, DEC_03), { current: 350000n, next: 0n, later: 0n, total: 350000n });
+  const m = credit.parseCreditMeta(legacy, NOV_25);
+  assert.equal(m.cleanNote, "PayLater");
+  // Converted deferred amounts keep the cutoff-date fallback; the converted "next" amount is left alone.
+  const released = credit.releaseCreditCharge(m, { activityId: ACT_A, occurredAtIso: "2026-11-24T03:00:00.000Z", reversedImpactMinor: 50000n }, NOV_25);
+  assert.deepEqual(billsAt(-300000n, released, NOV_25), { current: 100000n, next: 200000n, later: 0n, total: 300000n });
+  assert.equal(credit.releaseCreditCharge(m, { activityId: ACT_A, occurredAtIso: "2026-11-10T03:00:00.000Z", reversedImpactMinor: 50000n }, NOV_25), null);
+  // Tracked parts from the previous format keep their owner.
+  const tracked = credit.parseCreditMeta(`[CREDIT:due=1,def=70000,dl=a1b2c3d4~${(70000).toString(36)}.b2c3d4e5,anchor=2026-12-01] x`, NOV_25);
+  assert.deepEqual(tracked.schedule.map((e) => [e.ref, e.amountMinor]), [["a1b2c3d4", 70000n]]);
+  // Re-encoding drops the old keys.
+  assert.doesNotMatch(creditNote(m), /next=|def=|anchor=|dl=/);
+});
+
+test("credit note stays within 1000 characters without changing the bills", () => {
+  const longNote = "x".repeat(900);
+  let state = { dueDay: 1, cutoffDay: 20, limitMinor: 0n, carryCurrentMinor: 0n, schedule: [] };
+  for (let i = 0; i < 12; i++) {
+    const id = `${(0x10000000 + i * 7919).toString(16)}-0000-4000-8000-000000000000`;
+    state = credit.scheduleCreditCharge(credit.parseCreditMeta(credit.encodeCreditNote("n", true, state), NOV_25), 1000n + BigInt(i), NOV_25,
+      { activityId: id, cycle: "next", kind: "expense" });
+  }
+  const before = billsAt(-50000n, state, NOV_25);
+  const fitted = credit.fitCreditNote(longNote, state, NOV_25);
+  assert.ok(fitted.length <= 1000);
+  const bills = credit.computeCreditBills({ balanceMinor: "-50000", note: fitted }, NOV_25);
+  assert.deepEqual({ current: bills.currentBillMinor, next: bills.nextBillMinor, later: bills.laterBillMinor, total: bills.totalUnpaidMinor }, before);
+  // Past months fold into carryCurrent once their owners are no longer needed for exact voids.
+  const folded = credit.compactCreditState(state, DEC_03, true);
+  assert.equal(folded.schedule.length, 0);
+  assert.deepEqual(billsAt(-50000n, folded, DEC_03), billsAt(-50000n, state, DEC_03));
+});
+
+test("credit installment reminders are excluded from planning totals so creditDebt counts them once", async () => {
+  const plan = plan3x();
+  const state = credit.scheduleCreditCharge(fresh(), 309850n, NOV_25,
+    { activityId: ACT_A, cycle: "current", kind: "transfer", installments: terms(plan, 3) });
+  // Dec 3, installment 1 paid: installment 2 is the current bill (due Jan 1, inside the 30-day horizon)
+  // and installment 3 is the next bill (due Feb 1, outside it).
+  const bills = credit.computeCreditBills({ balanceMinor: "-200000", note: creditNote(state) }, DEC_03);
+  const throughDay = "2027-01-02";
+  const creditDebt = bills.currentBillMinor + (bills.nextDueIso <= throughDay ? bills.nextBillMinor : 0n);
+  const reminderNote = `${credit.CREDIT_REMINDER_NOTE_PREFIX} cicilan ini sudah termasuk tagihan PayLater jatuh tempo 1 Jan.`;
+  const obligations = [
+    { amountMinor: 108850n, dueOn: "2027-01-01", note: reminderNote },
+    { amountMinor: 108850n, dueOn: "2027-02-01", note: reminderNote },
+    { amountMinor: 75000n, dueOn: "2026-12-20", note: "Listrik" },
+    { amountMinor: 40000n, dueOn: "2026-12-28", note: null },
+  ];
+  const dueMinor = obligations.filter((o) => o.dueOn <= throughDay && !credit.isCreditReminderNote(o.note))
+    .reduce((sum, o) => sum + o.amountMinor, 0n);
+  assert.equal(creditDebt, 108850n);
+  assert.equal(dueMinor + creditDebt, 75000n + 40000n + 108850n);
+  assert.equal(credit.isCreditReminderNote("Cicilan otomatis dari transaksi X"), false);
+  // The SQL used by financeSnapshot and Insights applies the same rule, and the editor writes the prefix.
+  const { readFileSync } = await import("node:fs");
+  const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  assert.match(source("../src/lib/planning/repository.ts"), /o\.note NOT LIKE \$2[\s\S]*\[throughDay,creditReminderPattern\]/);
+  assert.match(source("../src/lib/analytics/queries.ts"), /o\.note NOT LIKE \$4[\s\S]*CREDIT_REMINDER_NOTE_PREFIX/);
+  assert.match(source("../src/components/transaction-editor.tsx"), /note: `\$\{CREDIT_REMINDER_NOTE_PREFIX\}/);
+});
+
+test("credit deferral counts every charge on the credit account", () => {
   assert.equal(credit.creditSourceImpactMinor({ kind: "expense", amountMinor: "100000", charges: [{ amountMinor: "2500" }, { amountMinor: "1000" }] }), 103500n);
   assert.equal(credit.creditSourceImpactMinor({ kind: "income", amountMinor: "100000" }), 0n);
-  // Transfer with dual fees: 100k principal, 1k admin at source, 2.5k cut at destination, 3k PayLater interest.
-  // The editor posts amount = 100k - 2.5k and fee = 1k + 2.5k + 3k; the credit account loses principal + admin + interest.
+  // Dual fees: 100k principal, 1k admin at source, 2.5k cut at destination, 3k interest -> credit loses 104k.
   assert.equal(credit.creditSourceImpactMinor({ kind: "transfer", amountMinor: "97500", transferFeeMinor: "6500" }), 104000n);
-  const plan = credit.calculateCreditInstallmentPlan({ principalMinorStr: "300001", tenorMonths: 3, interestMode: "percent",
-    interestRatePercent: 2.95, interestFlatMinorStr: "0" });
-  // Posted (and deferred) now: first installment only; the rest live in planning obligations.
-  const postedNow = BigInt(plan.firstMonthTotalMinor);
-  const scheduledLater = plan.futureInstallmentsMinor.reduce((sum, value) => sum + BigInt(value), 0n);
-  assert.equal(postedNow + scheduledLater, BigInt(plan.grandTotalMinor));
-  assert.equal(plan.futureInstallmentsMinor.length, 2);
-  assert.equal(postedNow, 100001n + 8850n);
 });
 
 test("split bill keeps personal spending, fronted share, and charges apart", () => {
@@ -291,84 +400,4 @@ test("receivables and credit lines are never reserve sources", () => {
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "SPayLater" }), false);
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "BCA Utama", note: "[CREDIT:due=5,cutoff=25]" }), false);
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "BCA Utama", normallySpendable: false }), false);
-});
-
-// Installment top-up via PayLater and per-activity cycle tracking (manual overrides).
-const ACT_A = "a1b2c3d4-0000-4000-8000-000000000001";
-const ACT_B = "b2c3d4e5-0000-4000-8000-000000000002";
-const ACT_C = "c3d4e5f6-0000-4000-8000-000000000003";
-const ACT_D = "d4e5f6a7-0000-4000-8000-000000000004";
-const freshCredit = () => credit.parseCreditMeta(creditNote({ dueDay: 1, cutoffDay: 20, limitMinor: 0n, carryCurrentMinor: 0n,
-  carryNextMinor: 0n, deferredMinor: 0n, deferredEntries: [], anchorDueIso: "2026-12-01" }));
-const roundTrip = (state) => credit.parseCreditMeta(creditNote(state));
-
-test("installment top-up delivers the full principal and bills only installment 1 in the nearest cycle", () => {
-  const plan = credit.calculateCreditInstallmentPlan({ principalMinorStr: "300000", tenorMonths: 3, interestMode: "percent",
-    interestRatePercent: 2.95, interestFlatMinorStr: "0" });
-  const future = credit.installmentFuturePrincipalMinor(300000n, plan);
-  assert.equal(future, 200000n);
-  // Posted transfer: 300k to e-money, fee = 1k admin + 8.85k first-month interest. Credit impact 309.85k.
-  const impact = credit.creditSourceImpactMinor({ kind: "transfer", amountMinor: "300000", transferFeeMinor: String(1000 + 8850) });
-  assert.equal(impact, 309850n);
-  // Current cycle: nearest bill = installment 1 (100k + 8.85k interest) + 1k admin; future principal waits.
-  const current = roundTrip(credit.deferCreditCharge(freshCredit(), impact, NOV_25, { activityId: ACT_A, deferredMinor: future }));
-  assert.deepEqual(billsAt(-309850n, creditNote(current), NOV_25), { current: 109850n, next: 200000n, total: 309850n });
-  assert.deepEqual(current.deferredEntries, [{ ref: "a1b2c3d4", partMinor: 200000n }]);
-  // Next cycle: the whole impact (future principal + installment 1 + fees) waits for the next bill.
-  const next = roundTrip(credit.deferCreditCharge(freshCredit(), impact, NOV_25, { activityId: ACT_A, deferredMinor: impact }));
-  assert.deepEqual(billsAt(-309850n, creditNote(next), NOV_25), { current: 0n, next: 309850n, total: 309850n });
-  assert.deepEqual(next.deferredEntries, [{ ref: "a1b2c3d4", partMinor: null }]);
-  // Voiding the current-cycle top-up releases only its future principal.
-  const voided = credit.releaseDeferredCreditCharge(current, { activityId: ACT_A, occurredAtIso: "2026-11-10T03:00:00.000Z",
-    reversedImpactMinor: impact }, NOV_25);
-  assert.equal(voided.deferredMinor, 0n);
-  assert.deepEqual(billsAt(0n, creditNote(voided), NOV_25), { current: 0n, next: 0n, total: 0n });
-  // Correcting it to a 600k top-up keeps installment 1 billed now and defers the rest.
-  const corrected = credit.releaseDeferredCreditCharge(current, { activityId: ACT_A, occurredAtIso: "2026-11-10T03:00:00.000Z",
-    reversedImpactMinor: impact, replacementActivityId: ACT_D, replacementImpactMinor: 609850n }, NOV_25);
-  assert.equal(corrected.deferredMinor, 500000n);
-  assert.deepEqual(corrected.deferredEntries, [{ ref: "d4e5f6a7", partMinor: 500000n }]);
-});
-
-test("manual cycle overrides survive void and correction exactly", () => {
-  // A: after the cutoff, auto -> next (50k). B: after the cutoff but forced to the current bill (30k).
-  // C: before the cutoff but forced to the next bill (20k).
-  let meta = roundTrip(credit.deferCreditCharge(freshCredit(), 50000n, NOV_25, { activityId: ACT_A }));
-  meta = roundTrip(credit.deferCreditCharge(meta, 20000n, NOV_25, { activityId: ACT_C }));
-  assert.equal(meta.deferredMinor, 70000n);
-  assert.deepEqual(meta.deferredEntries.map((entry) => entry.ref), ["a1b2c3d4", "c3d4e5f6"]);
-  assert.match(creditNote(meta), /dl=a1b2c3d4\.c3d4e5f6/);
-  // Balance: 100k earlier + A 50k + B 30k + C 20k = -200k. Current = 100k + B 30k, next = A + C.
-  assert.deepEqual(billsAt(-200000n, creditNote(meta), NOV_25), { current: 130000n, next: 70000n, total: 200000n });
-  // Void B (after the cutoff, but recorded as current): the next bucket must not move.
-  assert.equal(credit.releaseDeferredCreditCharge(meta, { activityId: ACT_B, occurredAtIso: "2026-11-24T03:00:00.000Z",
-    reversedImpactMinor: 30000n }, NOV_25), null);
-  assert.deepEqual(billsAt(-170000n, creditNote(meta), NOV_25), { current: 100000n, next: 70000n, total: 170000n });
-  // Void C (before the cutoff, but recorded as next): its 20k leaves the next bucket.
-  const afterC = credit.releaseDeferredCreditCharge(meta, { activityId: ACT_C, occurredAtIso: "2026-11-10T03:00:00.000Z",
-    reversedImpactMinor: 20000n }, NOV_25);
-  assert.equal(afterC.deferredMinor, 50000n);
-  assert.deepEqual(afterC.deferredEntries, [{ ref: "a1b2c3d4", partMinor: null }]);
-  assert.deepEqual(billsAt(-150000n, creditNote(afterC), NOV_25), { current: 100000n, next: 50000n, total: 150000n });
-  // Correct A from 50k to 45k: the replacement inherits the next cycle.
-  const afterA = credit.releaseDeferredCreditCharge(roundTrip(afterC), { activityId: ACT_A, occurredAtIso: "2026-11-24T03:00:00.000Z",
-    reversedImpactMinor: 50000n, replacementActivityId: ACT_D, replacementImpactMinor: 45000n }, NOV_25);
-  assert.equal(afterA.deferredMinor, 45000n);
-  assert.deepEqual(afterA.deferredEntries, [{ ref: "d4e5f6a7", partMinor: null }]);
-});
-
-test("credit tag keeps older untracked notes on the cutoff-date rule", () => {
-  const legacy = credit.parseCreditMeta("[CREDIT:due=1,cutoff=20,def=50000,anchor=2026-12-01] PayLater");
-  assert.equal(legacy.deferredEntries, null);
-  // A tracked deferral on top of an untracked bucket stays untracked until the next rollover.
-  assert.equal(credit.deferCreditCharge(legacy, 10000n, NOV_25, { activityId: ACT_A }).deferredEntries, null);
-  const released = credit.releaseDeferredCreditCharge(legacy, { activityId: ACT_A, occurredAtIso: "2026-11-24T03:00:00.000Z",
-    reversedImpactMinor: 50000n }, NOV_25);
-  assert.equal(released.deferredMinor, 0n);
-  // After rollover the bucket restarts tracked.
-  assert.deepEqual(credit.deferCreditCharge(legacy, 10000n, DEC_25, { activityId: ACT_A }).deferredEntries, [{ ref: "a1b2c3d4", partMinor: null }]);
-  // Malformed entries are treated as untracked rather than trusted.
-  assert.equal(credit.parseCreditMeta("[CREDIT:due=1,def=5,dl=zz] x").deferredEntries, null);
-  // The meta tag, including the entry list, never leaks into the visible note.
-  assert.equal(credit.parseCreditMeta("[CREDIT:due=1,def=5,dl=a1b2c3d4~5] Kartu").cleanNote, "Kartu");
 });

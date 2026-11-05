@@ -204,6 +204,8 @@ function AssetForm({
           dueDay: parsedDue,
           cutoffDay: parsedCutoff,
           limitMinor,
+          // Installments due after the next bill are not on the form; keep them.
+          existing: initial ? initialMeta : undefined,
         }));
       } else {
         const parsedAdminMinor = adminFee.trim()
