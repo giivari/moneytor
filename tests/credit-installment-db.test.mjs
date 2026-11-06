@@ -76,7 +76,7 @@ test("(d) pembelian cicilan 12x membukukan seluruh pokok dan bunga (PostgreSQL t
       return next(specifier, context);
     } });
     const { insertAssetWithOpening, listAssets } = await import("../src/lib/repositories/assets.ts");
-    const { postActivity, replaceActivity, voidActivity } = await import("../src/lib/finance/service.ts");
+    const { listActivities, postActivity, replaceActivity, voidActivity } = await import("../src/lib/finance/service.ts");
     const { calculateCreditInstallmentPlan, computeCreditBills, encodeCreditNote } = await import("../src/lib/domain/credit.ts");
     const { installmentPurchaseRequest } = await import("../src/lib/domain/credit-purchase.ts");
     const { database } = await import("../src/lib/db/pool.ts");
@@ -145,6 +145,10 @@ test("(d) pembelian cicilan 12x membukukan seluruh pokok dan bunga (PostgreSQL t
       const bills = computeCreditBills(asset);
       assert.equal(bills.totalUnpaidMinor, 1059300n);
       assert.equal(bills.currentBillMinor + bills.nextBillMinor + bills.laterBillMinor, 1059300n);
+      // The editor restores a correction from these: tenor, base principal, monthly interest, and the interest charge kind.
+      const listed = (await listActivities()).find((item) => item.id === replacement);
+      assert.deepEqual(listed.creditInstallments, { count: 6, principalMinor: "150000", interestMinor: "26550" });
+      assert.deepEqual(listed.charges.map((charge) => [charge.systemKey, charge.amountMinor]), [["installment_interest", "159300"]]);
     });
     hooks.deregister();
   } finally {

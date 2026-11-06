@@ -1,4 +1,4 @@
-import type { CreditInstallment } from "@/lib/finance/types";
+import type { CreditInstallment, InstallmentTerms } from "@/lib/finance/types";
 import {
   addCreditPeriods,
   creditPeriodOf,
@@ -104,4 +104,18 @@ export function applyCreditVoid(
   const released = releaseCreditCharge(meta, input, now);
   if (!released) return null;
   return { ...state, note: fitCreditNote(meta.cleanNote, released, now) ?? null };
+}
+
+/**
+ * Editor fields that reproduce a stored installment purchase when it is corrected: its tenor and the monthly
+ * interest as a flat amount (the stored rows keep the amount, not the rate). Null for anything else.
+ */
+export function installmentEditDefaults(terms: InstallmentTerms | undefined): { tenorMonths: number; interestMode: "flat_minor"; interestFlatMinor: string } | null {
+  if (!terms || !Number.isInteger(terms.count) || terms.count < 2) return null;
+  return { tenorMonths: terms.count, interestMode: "flat_minor", interestFlatMinor: terms.interestMinor };
+}
+
+/** Charges the owner edits on an installment purchase: the interest charge is rebuilt from the plan, so it is left out. */
+export function editableInstallmentCharges<T extends { typeId: string; systemKey?: string | null }>(charges: readonly T[], interestChargeTypeId?: string): T[] {
+  return charges.filter((charge) => charge.systemKey !== "installment_interest" && (!interestChargeTypeId || charge.typeId !== interestChargeTypeId));
 }

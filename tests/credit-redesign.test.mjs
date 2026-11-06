@@ -116,3 +116,32 @@ test("(e) void satu dari 60 pembelian 12x tidak meninggalkan cicilan masa depann
   assert.equal(bills.totalUnpaidMinor, 59n * 12n * 8300n);
   assert.equal(bills.nextBillMinor + bills.laterBillMinor, 59n * 11n * 8300n);
 });
+
+test("koreksi pembelian cicilan: editor mengirim ulang tenor dan seluruh request cicilan", () => {
+  const original = purchase.installmentPurchaseRequest(plan12x(1200000, 2.95), 12, "interest-type");
+  assert.deepEqual(original, { amountMinor: "1200000", charges: [{ typeId: "interest-type", amountMinor: "424800" }],
+    creditInstallments: { count: 12, principalMinor: "100000", interestMinor: "35400" } });
+  // What listActivities returns for the stored purchase: tenor, month-2 principal, monthly interest.
+  const rows = purchase.installmentRowsFor("act", 1624800n, { count: 12, principalMinor: 100000n, interestMinor: 35400n }, "2026-12");
+  const stored = { count: rows.length, principalMinor: rows[1].principalMinor, interestMinor: rows[0].interestMinor };
+  const defaults = purchase.installmentEditDefaults(stored);
+  assert.deepEqual(defaults, { tenorMonths: 12, interestMode: "flat_minor", interestFlatMinor: "35400" });
+  const replan = (principal, tenor) => credit.calculateCreditInstallmentPlan({ principalMinorStr: String(principal), tenorMonths: tenor,
+    interestMode: defaults.interestMode, interestRatePercent: 0, interestFlatMinorStr: defaults.interestFlatMinor });
+  // Unchanged correction reproduces the original request exactly.
+  assert.deepEqual(purchase.installmentPurchaseRequest(replan(1200000, defaults.tenorMonths), defaults.tenorMonths, "interest-type"), original);
+  // New principal and tenor: a complete new request, from which the server builds the new schedule.
+  assert.deepEqual(purchase.installmentPurchaseRequest(replan(900000, 6), 6, "interest-type"), { amountMinor: "900000",
+    charges: [{ typeId: "interest-type", amountMinor: "212400" }], creditInstallments: { count: 6, principalMinor: "150000", interestMinor: "35400" } });
+  assert.deepEqual(purchase.installmentRowsFor("act2", 1112400n, { count: 6, principalMinor: 150000n, interestMinor: 35400n }, "2026-12")
+    .map((row) => [row.period, row.principalMinor, row.interestMinor]), [
+    ["2026-12", "150000", "35400"], ["2027-01", "150000", "35400"], ["2027-02", "150000", "35400"],
+    ["2027-03", "150000", "35400"], ["2027-04", "150000", "35400"], ["2027-05", "150000", "35400"]]);
+  // The stored interest charge is rebuilt, never sent twice; other charges stay editable.
+  const charges = [{ typeId: "interest-type", systemKey: "installment_interest" }, { typeId: "admin", systemKey: "admin_fee" }];
+  assert.deepEqual(purchase.editableInstallmentCharges(charges).map((charge) => charge.typeId), ["admin"]);
+  assert.deepEqual(purchase.editableInstallmentCharges([{ typeId: "interest-type" }], "interest-type"), []);
+  assert.equal(purchase.installmentEditDefaults(undefined), null);
+  assert.equal(purchase.installmentEditDefaults({ count: 1, principalMinor: "0", interestMinor: "0" }), null);
+  assert.throws(() => purchase.installmentPurchaseRequest(plan12x(1200000, 2.95), 12), /Bunga cicilan/);
+});

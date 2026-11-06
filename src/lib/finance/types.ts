@@ -53,5 +53,9 @@ export type FinanceActivity = {
   originalAutomationResultId?: string;
   automationSourceActivityId?: string;
   automationSourceKind?: ActivityKind;
-  charges: { id: string; typeId: string; typeName: string; amountMinor: string }[];
+  charges: { id: string; typeId: string; typeName: string; systemKey?: string | null; amountMinor: string }[];
+  /** Installment terms of an installment purchase (from credit_installments), so a correction can keep them. */
+  creditInstallments?: InstallmentTerms;
 };
+/** Per-month terms of an installment purchase; month 1 also takes the principal remainder. */
+export type InstallmentTerms = { count: number; principalMinor: string; interestMinor: string };

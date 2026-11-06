@@ -10,7 +10,7 @@ import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./fin
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
-import { installmentPurchaseRequest } from "@/lib/domain/credit-purchase";
+import { editableInstallmentCharges, installmentEditDefaults, installmentPurchaseRequest } from "@/lib/domain/credit-purchase";
 import { isDedicatedCategory } from "@/lib/domain/catalog";
 import {
   CREDIT_REMINDER_NOTE_PREFIX,
@@ -59,17 +59,21 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [occurredAt, setOccurredAt] = useState(localDate(initial?.occurredAt));
   const [note, setNote] = useState(initial?.note ?? "");
-  const [tenorMonths, setTenorMonths] = useState<number>(1);
-  const [interestMode, setInterestMode] = useState<"percent" | "flat_minor">("percent");
-  const [interestValue, setInterestValue] = useState<string>("");
+  // Correcting an installment purchase starts from its stored tenor and monthly interest.
+  const initialInstallment = initial?.kind === "expense" ? installmentEditDefaults(initial.creditInstallments) : null;
+  const [tenorMonths, setTenorMonths] = useState<number>(initialInstallment?.tenorMonths ?? 1);
+  const [interestMode, setInterestMode] = useState<"percent" | "flat_minor">(initialInstallment?.interestMode ?? "percent");
+  const [interestValue, setInterestValue] = useState<string>(
+    initialInstallment && initial ? minorToInput(initialInstallment.interestFlatMinor, initial.exponent) : "");
   const [cycleOverride, setCycleOverride] = useState<"auto" | "current" | "next">("auto");
   const [charges, setCharges] = useState<ChargeEditorRow[]>(
-    initial?.kind === "expense" ? initial.charges.map((charge) => ({
+    initial?.kind === "expense" ? (initialInstallment ? editableInstallmentCharges(initial.charges) : initial.charges).map((charge) => ({
       id: charge.id, typeId: charge.typeId, amount: minorToInput(charge.amountMinor, initial.exponent),
     })) : []);
   const [fee, setFee] = useState(initial?.kind === "transfer" && initial.charges[0]
     ? minorToInput(initial.charges[0].amountMinor, initial.exponent) : "");
-  const [chargesEnabled, setChargesEnabled] = useState(initial?.kind === "expense" && initial.charges.length > 0);
+  const [chargesEnabled, setChargesEnabled] = useState(initial?.kind === "expense"
+    && (initialInstallment ? editableInstallmentCharges(initial.charges) : initial.charges).length > 0);
   const [feeEnabled, setFeeEnabled] = useState(initial?.kind === "transfer" && initial.charges.length > 0);
   const [feeMode, setFeeMode] = useState<"addon" | "deducted" | "both">("addon");
   const [deductedFee, setDeductedFee] = useState("");
@@ -92,7 +96,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   const chargeTypes = options?.catalogs.chargeTypes.filter((item) => item.systemKey !== "transfer_fee") ?? [];
 
   const isCreditPurchase =
-    !initial &&
+    (!initial || Boolean(initialInstallment)) &&
     (kind === "expense" || (kind === "transfer" && Boolean(destination && !isCreditAsset(destination)))) &&
     Boolean(account && isCreditAsset(account));
   const creditMeta = parseCreditMeta(account?.note);
@@ -328,8 +332,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         }
       }
       // Installment purchase: what is posted now and what the server schedules for the later months.
+      const interestChargeTypeId = options?.catalogs.chargeTypes.find((item) => item.systemKey === "installment_interest")?.id;
       const purchase = kind === "expense" && isCreditPurchase && plan && tenorMonths > 1
-        ? installmentPurchaseRequest(plan, tenorMonths, options?.catalogs.chargeTypes.find((item) => item.systemKey === "installment_interest")?.id)
+        ? installmentPurchaseRequest(plan, tenorMonths, interestChargeTypeId)
         : null;
       if (kind === "expense") finalAmountMinor = purchase ? purchase.amountMinor : plan ? plan.firstMonthTotalMinor : rawPrincipalMinor;
 
@@ -358,7 +363,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         ...(kind === "expense"
           ? {
               charges: [
-                ...(chargesEnabled ? charges : []).map((charge) => ({
+                ...(chargesEnabled ? (purchase ? editableInstallmentCharges(charges, interestChargeTypeId) : charges) : []).map((charge) => ({
                   typeId: charge.typeId,
                   amountMinor: inputToMinor(charge.amount, exponent),
                 })),
@@ -385,7 +390,8 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
             : {}),
       });
 
-      if (isCreditPurchase && plan && plan.futureInstallmentsMinor.length > 0) {
+      // Reminders were created with the original purchase; a correction does not add a second set.
+      if (!initial && isCreditPurchase && plan && plan.futureInstallmentsMinor.length > 0) {
         const startOffset = targetCycle === "next" ? 2 : 1;
         const labelBase = note.trim() || categories.find((c) => c.id === categoryId)?.displayName || account.displayName;
         const installments = plan.futureInstallmentsMinor.map((amt, idx) => ({

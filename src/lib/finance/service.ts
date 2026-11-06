@@ -316,10 +316,16 @@ export async function listActivities(includeHistory = false, limit: number | nul
       AND ($4::timestamptz IS NULL OR (f.occurred_at,f.id) ${ordering.operator} ($4::timestamptz,$5::uuid))
     ORDER BY ${temporalOrderSql("f.occurred_at", "f.id", ordering.direction)} LIMIT $2`, [includeHistory, limit,ordering.kind,ordering.after?.at??null,ordering.after?.id??null]);
   const ids = result.rows.map((row) => row.id);
-  const charges = ids.length ? await database().query<{ id: string; activity_id: string; charge_type_id: string; display_name: string; amount_minor: string }>(
-    `SELECT ac.id,ac.activity_id,ac.charge_type_id,t.display_name,ac.amount_minor::text
+  const charges = ids.length ? await database().query<{ id: string; activity_id: string; charge_type_id: string; display_name: string; system_key: string | null; amount_minor: string }>(
+    `SELECT ac.id,ac.activity_id,ac.charge_type_id,t.display_name,t.system_key,ac.amount_minor::text
      FROM activity_charges ac JOIN additional_charge_types t ON t.id=ac.charge_type_id
      WHERE ac.activity_id=ANY($1::uuid[]) ORDER BY ac.created_at,ac.id`, [ids]) : { rows: [] };
+  // Terms are the same in every month except month 1's principal remainder, so month 2 carries the base principal.
+  const installmentTerms = ids.length ? await database().query<{ activity_id: string; count: number; principal: string; interest: string }>(
+    `SELECT activity_id,count(*)::int AS count,(max(principal_minor) FILTER (WHERE seq=2))::text AS principal,max(interest_minor)::text AS interest
+     FROM credit_installments WHERE activity_id=ANY($1::uuid[]) GROUP BY activity_id`, [ids]) : { rows: [] };
+  const termsByActivity = new Map(installmentTerms.rows.map((row) => [row.activity_id,
+    { count: row.count, principalMinor: row.principal ?? "0", interestMinor: row.interest }]));
   const ready = ids.length ? (await database().query<{
     recurring: boolean; event: boolean; general: boolean; allocation: boolean;
   }>(`SELECT
@@ -382,7 +388,8 @@ export async function listActivities(includeHistory = false, limit: number | nul
     eventSourceOccurredAt:allocationNames.get(row.id)?.occurred_at.toISOString() ?? eventNames.get(row.id)?.occurred_at.toISOString() ?? generalNames.get(row.id)?.occurred_at?.toISOString(),
     eventSourceExponent:allocationNames.get(row.id)?.source_exponent ?? eventNames.get(row.id)?.source_exponent??generalNames.get(row.id)?.source_exponent??undefined,
     charges: charges.rows.filter((charge) => charge.activity_id === row.id).map((charge) => ({
-      id: charge.id, typeId: charge.charge_type_id, typeName: charge.display_name, amountMinor: charge.amount_minor,
+      id: charge.id, typeId: charge.charge_type_id, typeName: charge.display_name, systemKey: charge.system_key, amountMinor: charge.amount_minor,
     })),
+    ...(termsByActivity.has(row.id) ? { creditInstallments: termsByActivity.get(row.id) } : {}),
   }));
 }
