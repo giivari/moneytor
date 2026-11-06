@@ -6,10 +6,7 @@
     ".next/**",
     "src/app/auth.css",
     "src/app/automation.css",
-    "src/app/data-presentation.css",
-    "src/app/density.css",
     "src/app/finance.css",
-    "src/app/forms.css",
     "src/app/interaction.css",
     "src/app/investments.css",
     "src/app/onboarding.css",
@@ -40,7 +37,7 @@
     ],
     "declaration-property-value-allowed-list": {
       "font-size": [
-        "/^var\\(--text-[a-z0-9]+\\)$/",
+        "/^var\\(--(text|type)-[a-z0-9-]+\\)$/",
         "inherit",
         "100%",
         "1em"

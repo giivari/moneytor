@@ -182,3 +182,13 @@
   .ui-kpi .financial-value.financial-value--summary { font-size: var(--text-lg); }
   .ui-kpi h2 { font-size: var(--text-xs); }
 }
+
+/* Two-KPI rows stay two columns on wide pages */
+@container page (min-width: 900px) {
+  .ui-kpis[data-columns="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Tables that run edge to edge inside a card keep the card's inner gutter */
+.ui-card .financial-data-table tr > :is(th, td):first-child { padding-left: var(--space-4); }
+.ui-card .financial-data-table tr > :is(th, td):last-child { padding-right: var(--space-4); }
+.ui-card .financial-data-table thead th { background: var(--neutral-soft); }

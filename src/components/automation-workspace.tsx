@@ -113,7 +113,7 @@ export function AutomationWorkspace({ schedules, income, general }: { schedules:
             details={errorId===item.id&&error?<p id={`${item.id}-amount-error`} className="finance-error" role="alert">{error}</p>:undefined} />;
   };
   return <div className="page automation-page">
-    <header className="page-heading"><div><span className="eyebrow">TRANSACTIONS</span><h1>Otomatisasi</h1><p>Atur kapan, syarat, dan tindakan untuk transaksi kamu.</p></div>
+    <header className="page-heading"><div><span className="eyebrow">MUTASI</span><h1>Otomatisasi</h1><p>Atur kapan, syarat, dan tindakan untuk transaksi kamu.</p></div>
       {general.ready ? <AppLink href="/transactions/automation/new" className="button-primary" aria-disabled={pending || refreshing} onClick={(event) => { if (pending || refreshing) event.preventDefault(); }}>Tambah otomatisasi</AppLink> : <button type="button" className="button-primary" disabled>Tambah otomatisasi</button>}</header>
     {!general.ready && <p className="finance-hint">Pembuatan aturan umum menunggu aktivasi lokal. Aturan yang sudah ada tetap dapat dikelola.</p>}
     <ResponsiveDisclosure label="Filter otomatisasi" desktopExpanded className="list-filter-disclosure"

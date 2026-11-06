@@ -73,3 +73,11 @@ tidak ada laporan), bukan KPI kelima. SVG dashboard disembunyikan dengan ruang t
 - Keputusan kecil: tidak ada tombol "Bayar tagihan" per kartu (bayar lewat Catat → Transfer ke akun kredit); status bayar per
   bulan tidak ditampilkan karena diturunkan dari saldo; jadwal lama di catatan (top-up) tidak tampil di tab Cicilan.
 - DB lokal tidak punya akun kredit/piutang: screenshot nyata = keadaan kosong; tampilan berisi diperiksa dengan fixture statis.
+
+### Mutasi
+- Kepala "Mutasi" (impor, otomatisasi), KPI belanja bulan ini (monthlyExpenses) dan jumlah aktivitas, riwayat dalam satu kartu.
+- Rincian transaksi pindah dari dialog ke inspector bersama; Koreksi membuka editor, Batalkan tetap void (reversal) dengan
+  idempotency key per transaksi. Filter, urutan, paginasi, ekspor tidak berubah.
+- CSS data-presentation, density, forms dimigrasi ke token (keluar dari ignoreFiles). Skrip migrasi memetakan hex ke token
+  terdekat (jarak warna Lab); perbedaan > dE 12 dicatat: #557ba0, #284b61, #4b91c1 -> data-cyan/ink-soft.
+- Keputusan kecil: `var(--type-*)` diizinkan stylelint karena alias skala.

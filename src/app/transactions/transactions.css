@@ -1,0 +1,6 @@
+/* Mutasi: list toolbar and pager sit inside the history card; the table runs edge to edge. */
+.transactions-kpis { margin-bottom: var(--space-5); }
+.transactions-toolbar, .transactions-pager { padding: var(--space-3) var(--space-4); }
+.transactions-pager { border-top: 1px solid var(--line-soft); }
+.transactions-toolbar .list-toolbar, .transactions-pager .list-toolbar { margin: 0; }
+.transactions-history .list-content, .transactions-history .list-state { margin-inline: var(--space-4); }

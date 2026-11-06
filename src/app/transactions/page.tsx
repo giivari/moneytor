@@ -1,4 +1,5 @@
 import { TransactionsView } from "@/components/transactions-view";
+import "./transactions.css";
 import { listActivities } from "@/lib/finance/service";
 import { monthlyExpenses } from "@/lib/finance/summary";
 import { reconcileAllAutomation } from "@/lib/automation/reconcile";
