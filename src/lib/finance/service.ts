@@ -6,7 +6,8 @@ import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { assertUuid } from "@/lib/domain/catalog";
-import { fitCreditNote, parseCreditMeta, releaseCreditCharge, scheduleCreditCharge, type CreditInstallmentTerms, type CreditNoteState } from "@/lib/domain/credit";
+import { parseCreditMeta, type CreditInstallmentTerms } from "@/lib/domain/credit";
+import { applyCreditPost, applyCreditVoid } from "@/lib/domain/credit-purchase";
 import { planActivity, type ActivityInput, type AssetReference, type CategoryReference, type ChargeInput } from "@/lib/domain/ledger";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import type { ActivityDraft, FinanceActivity } from "./types";
@@ -148,10 +149,8 @@ async function sourceImpactMinor(client: PoolClient, activityId: string, assetId
     FROM ledger_movements WHERE activity_id=$1 AND asset_id=$2 AND component <> 'reversal'`, [activityId, assetId]);
   return parseMinor(row.rows[0]?.impact ?? "0");
 }
-async function writeCreditNote(client: PoolClient, assetId: string, cleanNote: string, state: CreditNoteState): Promise<void> {
-  // fitCreditNote sheds detail (never amounts) to stay within the 1000-character note limit.
-  const note = fitCreditNote(cleanNote, state);
-  await client.query("UPDATE assets SET note=$2 WHERE id=$1", [assetId, note ?? null]);
+async function writeCreditNote(client: PoolClient, assetId: string, note: string | null): Promise<void> {
+  await client.query("UPDATE assets SET note=$2 WHERE id=$1", [assetId, note]);
 }
 /** How a credit outflow is billed: its cycle, and for installments the per-month principal and interest. */
 export type CreditPosting = {
@@ -180,10 +179,9 @@ async function scheduleCreditOutflow(client: PoolClient, activityId: string, kin
   if (!asset.rows[0]) return;
   const impact = await sourceImpactMinor(client, activityId, assetId);
   if (impact <= 0n) return;
-  const now = new Date();
-  const meta = parseCreditMeta(asset.rows[0].note, now);
-  await writeCreditNote(client, assetId, meta.cleanNote,
-    scheduleCreditCharge(meta, impact, now, { activityId, cycle: plan.cycle, kind, installments: plan.installments }));
+  const next = applyCreditPost({ note: asset.rows[0].note, installments: [] },
+    { activityId, impactMinor: impact, cycle: plan.cycle, kind, installments: plan.installments });
+  await writeCreditNote(client, assetId, next.note);
 }
 /** Keeps a credit account's monthly schedule in step with a voided or corrected outflow. */
 async function releaseCreditSchedule(client: PoolClient, reversedId: string, replacementId?: string): Promise<void> {
@@ -192,17 +190,16 @@ async function releaseCreditSchedule(client: PoolClient, reversedId: string, rep
   const row = activity.rows[0];
   if (!row || row.kind === "income" || !row.source_asset_id) return;
   const asset = await client.query<{ note: string | null }>("SELECT note FROM assets WHERE id=$1 FOR UPDATE", [row.source_asset_id]);
-  const now = new Date();
-  const meta = parseCreditMeta(asset.rows[0]?.note, now);
-  if (!meta.isCreditFlagged || meta.schedule.length === 0) return;
-  const updated = releaseCreditCharge(meta, {
+  const meta = parseCreditMeta(asset.rows[0]?.note);
+  if (!asset.rows[0] || !meta.isCreditFlagged || meta.schedule.length === 0) return; // skips the impact reads
+  const updated = applyCreditVoid({ note: asset.rows[0].note, installments: [] }, {
     activityId: reversedId,
     occurredAtIso: row.occurred_at.toISOString(),
     reversedImpactMinor: await sourceImpactMinor(client, reversedId, row.source_asset_id),
     replacementActivityId: replacementId,
     replacementImpactMinor: replacementId ? await sourceImpactMinor(client, replacementId, row.source_asset_id) : 0n,
-  }, now);
-  if (updated) await writeCreditNote(client, row.source_asset_id, meta.cleanNote, updated);
+  });
+  if (updated) await writeCreditNote(client, row.source_asset_id, updated.note);
 }
 
 async function idempotentOnClient(client: PoolClient, operation: "post" | "replace" | "void", key: string, payload: unknown,

@@ -6,7 +6,7 @@ import { prepareOwnerAssetRead } from "@/lib/repositories/assets";
 import { listActivities } from "./service";
 import { prepareOwnerInvestmentSummaryRead } from "@/lib/investments/read";
 import { horizonDay, planningTotals } from "@/lib/domain/planning";
-import { computeCreditBills, isCreditAsset, isReceivableAsset } from "@/lib/domain/credit";
+import { emptyCurrencyBalances, summarizeBalances } from "@/lib/domain/net-worth";
 import { planningSchemaReady, readPlanningSummary } from "@/lib/planning/repository";
 import { readAutomation } from "@/lib/automation/service";
 import { readIncomeEvents } from "@/lib/automation/income-events";
@@ -88,32 +88,7 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
     const throughDay = planningHorizon();
     const planningReady = await planningSchemaReady(client);
     const planning = planningReady ? await readPlanningSummary(client, throughDay) : new Map();
-    const byCurrency = new Map<string, { currency: string; exponent: number; total: bigint; liquid: bigint; spendable: bigint; expense: bigint; creditDebt: bigint; unpricedCount: number }>();
-    for (const asset of assets) {
-      const entry = byCurrency.get(asset.currency) ?? { currency: asset.currency, exponent: asset.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, unpricedCount: 0 };
-      const balance = BigInt(asset.balanceMinor);
-      const isCredit = isCreditAsset(asset);
-      if (isCredit) {
-        if (asset.isActive) {
-          const bills = computeCreditBills(asset);
-          entry.creditDebt += bills.currentBillMinor;
-          if (bills.nextDueIso <= throughDay) {
-            entry.creditDebt += bills.nextBillMinor;
-          }
-        }
-      } else {
-        entry.total += balance;
-        const isReceivable = isReceivableAsset(asset);
-        if (asset.isActive && asset.normallyLiquid && !isReceivable) entry.liquid += balance;
-        if (asset.isActive && asset.normallySpendable && !isReceivable) entry.spendable += balance;
-      }
-      byCurrency.set(asset.currency, entry);
-    }
-    for (const total of investment.totals) {
-      const entry = byCurrency.get(total.currency) ?? { currency: total.currency, exponent: total.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, unpricedCount: 0 };
-      entry.total += BigInt(total.marketMinor); entry.unpricedCount = total.unpricedCount;
-      byCurrency.set(total.currency, entry);
-    }
+    const byCurrency = summarizeBalances(assets, investment.totals, throughDay);
     for (const row of expense) {
       const entry = byCurrency.get(row.currency);
       if (entry) entry.expense = BigInt(row.expenseMinor);
@@ -121,7 +96,7 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
     const missing = [...planning.keys()].filter((currency) => !byCurrency.has(currency));
     if (missing.length) {
       const rows = await client.query<{ currency: string; exponent: number }>("SELECT code AS currency,minor_unit_exponent AS exponent FROM currencies WHERE code = ANY($1::text[])", [missing]);
-      for (const row of rows.rows) byCurrency.set(row.currency, { currency: row.currency, exponent: row.exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, unpricedCount: 0 });
+      for (const row of rows.rows) byCurrency.set(row.currency, emptyCurrencyBalances(row.currency, row.exponent));
     }
     return { assets, recent, pendingAutomations, investment, planningReady, throughDay, currencies: [...byCurrency.values()].map((entry) => {
       const commitmentsForCurrency = planning.get(entry.currency);
@@ -131,7 +106,7 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
         totalDue, commitmentsForCurrency?.coveredMinor ?? "0", totalUncovered);
       return { currency: entry.currency, exponent: entry.exponent, totalMinor: entry.total.toString(),
         liquidMinor: entry.liquid.toString(), eligibleMinor: entry.spendable.toString(),
-        creditDebtMinor: entry.creditDebt.toString(), ...position,
+        creditDebtMinor: entry.creditDebt.toString(), netWorthMinor: entry.netWorth.toString(), ...position,
         expenseMinor: entry.expense.toString(), unpricedCount: entry.unpricedCount };
     }) };
   };

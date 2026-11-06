@@ -395,6 +395,17 @@ export function computeCreditBills(
   };
 }
 
+/** Settlement state of a credit account shown next to its bills. */
+export type CreditAccountStatus = "belum-lunas" | "lunas" | "lebih-bayar";
+export const CREDIT_STATUS_LABEL: Readonly<Record<CreditAccountStatus, string>> = {
+  "belum-lunas": "Belum lunas",
+  lunas: "Lunas",
+  "lebih-bayar": "Lebih bayar",
+};
+export function creditAccountStatus(bills: Pick<ComputedCreditBills, "totalUnpaidMinor">): CreditAccountStatus {
+  return bills.totalUnpaidMinor > 0n ? "belum-lunas" : "lunas";
+}
+
 export type CreditInstallmentTerms = Readonly<{ count: number; principalMinor: bigint; interestMinor: bigint }>;
 
 /**

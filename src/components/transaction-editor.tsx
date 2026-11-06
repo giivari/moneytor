@@ -10,6 +10,7 @@ import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./fin
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
+import { installmentPurchaseRequest } from "@/lib/domain/credit-purchase";
 import { isDedicatedCategory } from "@/lib/domain/catalog";
 import {
   CREDIT_REMINDER_NOTE_PREFIX,
@@ -325,9 +326,12 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         if (totalFee > 0n) {
           finalTransferFeeMinor = totalFee.toString();
         }
-      } else {
-        finalAmountMinor = plan ? plan.firstMonthTotalMinor : rawPrincipalMinor;
       }
+      // Installment purchase: what is posted now and what the server schedules for the later months.
+      const purchase = kind === "expense" && isCreditPurchase && plan && tenorMonths > 1
+        ? installmentPurchaseRequest(plan, tenorMonths)
+        : null;
+      if (kind === "expense") finalAmountMinor = purchase ? purchase.amountMinor : plan ? plan.firstMonthTotalMinor : rawPrincipalMinor;
 
       const postedAmountMinor = finalAmountMinor;
 
@@ -353,10 +357,13 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         ...(kind !== "transfer" ? { categoryId: categoryId || undefined } : {}),
         ...(kind === "expense"
           ? {
-              charges: (chargesEnabled ? charges : []).map((charge) => ({
-                typeId: charge.typeId,
-                amountMinor: inputToMinor(charge.amount, exponent),
-              })),
+              charges: [
+                ...(chargesEnabled ? charges : []).map((charge) => ({
+                  typeId: charge.typeId,
+                  amountMinor: inputToMinor(charge.amount, exponent),
+                })),
+                ...(purchase?.charges ?? []),
+              ],
             }
           : {}),
       };
@@ -371,9 +378,11 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         // The effective cycle (automatic or manual override) is stored with the activity so a later void or
         // correction releases exactly what this posting deferred.
         ...(isCreditPurchase ? { creditCycle: targetCycle } : {}),
-        ...(isCreditPurchase && plan && tenorMonths > 1
-          ? { creditInstallments: { count: tenorMonths, principalMinor: plan.monthlyPrincipalMinor, interestMinor: plan.monthlyInterestMinor } }
-          : {}),
+        ...(purchase
+          ? { creditInstallments: purchase.creditInstallments }
+          : isCreditPurchase && plan && tenorMonths > 1
+            ? { creditInstallments: { count: tenorMonths, principalMinor: plan.monthlyPrincipalMinor, interestMinor: plan.monthlyInterestMinor } }
+            : {}),
       });
 
       if (isCreditPurchase && plan && plan.futureInstallmentsMinor.length > 0) {

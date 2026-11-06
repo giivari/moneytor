@@ -21,6 +21,8 @@ import {
 } from "@/lib/domain/asset-terms";
 import {
   computeCreditBills,
+  CREDIT_STATUS_LABEL,
+  creditAccountStatus,
   creditStateForDesiredBills,
   encodeCreditNote,
   formatShortDueIso,
@@ -873,7 +875,7 @@ function AssetDetailDialog({
             <div className="asset-detail-hero-main">
               <span>Total kewajiban belum lunas</span>
               <strong className={`financial-value financial-value--summary ${hasBill ? "pnl-negative" : "pnl-positive"}`}>
-                {hasBill ? money(bills.totalUnpaidMinor) : "Lunas"}
+                {hasBill ? money(bills.totalUnpaidMinor) : CREDIT_STATUS_LABEL[creditAccountStatus(bills)]}
               </strong>
             </div>
             <div className="asset-detail-hero-pair">
@@ -1710,7 +1712,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
                   )}
                 </div>
               ) : (
-                <strong className="pnl-positive credit-settled-pill"><CheckCircle size={15} weight="fill" /> Lunas</strong>
+                <strong className="pnl-positive credit-settled-pill"><CheckCircle size={15} weight="fill" /> {CREDIT_STATUS_LABEL[creditAccountStatus(bills)]}</strong>
               )}
               <div className="credit-card-actions">
                 {hasBill && <button type="button" className="button-primary credit-pay-button" onClick={() => setPayingCredit(asset)}>Bayar tagihan</button>}
