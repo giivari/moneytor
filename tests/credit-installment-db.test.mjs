@@ -25,13 +25,48 @@ test("(d) pembelian cicilan 12x membukukan seluruh pokok dan bunga (PostgreSQL t
     await admin.query("CREATE TABLE schema_migrations(name text PRIMARY KEY,checksum text NOT NULL)");
     const files = (await readdir(new URL("../db/migrations/", import.meta.url))).filter((file) => file.endsWith(".sql")).sort();
     const migrations = await Promise.all(files.map(async (file) => ({ file, sql: await readFile(new URL(`../db/migrations/${file}`, import.meta.url), "utf8") })));
-    for (let pass = 0; pass < 2; pass++) for (const { file, sql } of migrations) {
+    const notices = [];
+    admin.on("notice", (notice) => notices.push(notice.message));
+    const apply = async (list) => { for (const { file, sql } of list) {
       const checksum = createHash("sha256").update(sql).digest("hex");
       const prior = await admin.query("SELECT checksum FROM schema_migrations WHERE name=$1", [file]);
       if (prior.rowCount) { assert.equal(prior.rows[0].checksum, checksum); continue; }
       await admin.query(sql); await admin.query("INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)", [file, checksum]);
+    } };
+    // Existing data before 015, to check its asset_class backfill.
+    await apply(migrations.filter(({ file }) => file < "015"));
+    const bank = (await admin.query("SELECT id FROM asset_types WHERE system_key='bank_account'")).rows[0].id;
+    const legacy = {};
+    for (const [key, name, opening, note] of [["tagged", "Kartu Utama", 0, "[CREDIT:due=1,cutoff=20] lama"], ["kredivo", "Kredivo", 0, null],
+      ["kreditZero", "Kartu Kredit Baru", 0, null], ["mahasiswa", "Dana Kredit Mahasiswa", 500000, null], ["motor", "Dana Cicilan Motor", 0, null],
+      ["budi", "Piutang Pinjaman ke Budi", 300000, null], ["bank", "Rekening Utama", 100000, null]]) {
+      legacy[key] = randomUUID();
+      await admin.query("INSERT INTO assets (id,display_name,asset_type_id,currency_code,normally_liquid,normally_spendable,note) VALUES ($1,$2,$3,'IDR',false,false,$4)", [legacy[key], name, bank, note]);
+      await admin.query("INSERT INTO asset_opening_states (asset_id,amount_minor,effective_at) VALUES ($1,$2,now())", [legacy[key], opening]);
     }
+    for (const key of ["kredivo", "motor"]) { // Kredivo owes 75.000; the motor fund saved 50.000.
+      const activity = randomUUID(), outflow = key === "kredivo";
+      await admin.query(`INSERT INTO financial_activities (id,kind,base_amount_minor,currency_code,source_asset_id,destination_asset_id,occurred_at)
+        VALUES ($1,$2,$3,'IDR',$4,$5,now())`, [activity, outflow ? "expense" : "income", outflow ? 75000 : 50000, outflow ? legacy[key] : null, outflow ? null : legacy[key]]);
+      await admin.query("INSERT INTO ledger_movements (id,activity_id,asset_id,currency_code,component,amount_minor) VALUES ($1,$2,$3,'IDR','principal',$4)",
+        [randomUUID(), activity, legacy[key], outflow ? -75000 : 50000]);
+    }
+    for (let pass = 0; pass < 2; pass++) await apply(migrations);
     assert.equal((await admin.query("SELECT count(*)::int AS n FROM schema_migrations")).rows[0].n, files.length);
+
+    await t.test("015 menandai liability hanya dari tag [CREDIT] atau nama kredit bersaldo negatif dengan movement", async () => {
+      const classOf = async (key) => (await admin.query("SELECT asset_class FROM assets WHERE id=$1", [legacy[key]])).rows[0].asset_class;
+      assert.equal(await classOf("tagged"), "liability");
+      assert.equal(await classOf("kredivo"), "liability");
+      assert.equal(await classOf("kreditZero"), "asset");
+      assert.equal(await classOf("mahasiswa"), "asset");
+      assert.equal(await classOf("motor"), "asset");
+      assert.equal(await classOf("budi"), "receivable");
+      assert.equal(await classOf("bank"), "asset");
+      const reported = notices.filter((message) => message.startsWith("asset_class "));
+      assert.equal(reported.length, Object.keys(legacy).length);
+      assert.ok(reported.some((message) => message.includes(legacy.kredivo) && message.includes("-> liability") && message.includes("saldo -75000")));
+    });
 
     target.searchParams.set("options", `-c search_path=${schema}`); process.env.DATABASE_URL = target.toString();
     const hooks = registerHooks({ resolve(specifier, context, next) {
@@ -41,7 +76,7 @@ test("(d) pembelian cicilan 12x membukukan seluruh pokok dan bunga (PostgreSQL t
       return next(specifier, context);
     } });
     const { insertAssetWithOpening, listAssets } = await import("../src/lib/repositories/assets.ts");
-    const { postActivity, voidActivity } = await import("../src/lib/finance/service.ts");
+    const { postActivity, replaceActivity, voidActivity } = await import("../src/lib/finance/service.ts");
     const { calculateCreditInstallmentPlan, computeCreditBills, encodeCreditNote } = await import("../src/lib/domain/credit.ts");
     const { installmentPurchaseRequest } = await import("../src/lib/domain/credit-purchase.ts");
     const { database } = await import("../src/lib/db/pool.ts");
@@ -88,6 +123,28 @@ test("(d) pembelian cicilan 12x membukukan seluruh pokok dan bunga (PostgreSQL t
       const asset = await creditAsset();
       assert.equal(asset.balanceMinor, "0");
       assert.equal(computeCreditBills(asset).totalUnpaidMinor, 0n);
+    });
+    await t.test("replace dengan pokok/tenor baru: jadwal lama batal, jadwal baru dari request pengganti", async () => {
+      const buy = async (principal, tenor, id) => {
+        const p = calculateCreditInstallmentPlan({ principalMinorStr: String(principal), tenorMonths: tenor, interestMode: "percent", interestRatePercent: 2.95, interestFlatMinorStr: "0" });
+        const r = installmentPurchaseRequest(p, tenor, interestTypeId);
+        const draft = { kind: "expense", amountMinor: r.amountMinor, sourceAssetId: creditId, charges: r.charges, occurredAt: new Date().toISOString(), note: "Pembelian sintetis" };
+        const options = { creditCycle: "current", creditInstallments: r.creditInstallments };
+        return id ? replaceActivity(id, draft, randomUUID(), options) : postActivity(draft, randomUUID(), options);
+      };
+      const original = await buy(1200000, 12);
+      const replacement = await buy(900000, 6, original); // 900.000 + 6 x 26.550 bunga = 1.059.300
+      const old = (await admin.query(`SELECT count(*)::int AS n, bool_and(status='cancelled' AND cancelled_by_activity_id=$2) AS cancelled
+        FROM credit_installments WHERE activity_id=$1`, [original, replacement])).rows[0];
+      assert.deepEqual(old, { n: 12, cancelled: true });
+      const fresh = (await admin.query(`SELECT count(*)::int AS n, sum(principal_minor)::text AS principal, sum(interest_minor)::text AS interest,
+        bool_and(status='scheduled') AS scheduled FROM credit_installments WHERE activity_id=$1`, [replacement])).rows[0];
+      assert.deepEqual(fresh, { n: 6, principal: "900000", interest: "159300", scheduled: true });
+      const asset = await creditAsset();
+      assert.equal(asset.balanceMinor, "-1059300");
+      const bills = computeCreditBills(asset);
+      assert.equal(bills.totalUnpaidMinor, 1059300n);
+      assert.equal(bills.currentBillMinor + bills.nextBillMinor + bills.laterBillMinor, 1059300n);
     });
     hooks.deregister();
   } finally {

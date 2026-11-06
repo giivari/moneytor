@@ -2,8 +2,6 @@ import type { FinanceAsset } from "@/lib/finance/types";
 import { stripAssetMetaTags } from "./asset-terms.ts";
 
 const CREDIT_TAG_RE = /^\[CREDIT(?::([^\]]*))?\]\s*/i;
-const CREDIT_NAME_RE =
-  /(?:spaylater|shopee\s*pay\s*later|gopay\s*later|pay\s*later|paylater|\b(?:kredivo|akulaku|indodana|atome|home\s*credit|kartu\s+kredit|credit\s+card|fasilitas\s+kredit|pinjaman|cicilan|kta|kredit)\b)/i;
 
 /**
  * One amount of a credit account that is billed in a specific due month (`period`, YYYY-MM).
@@ -287,25 +285,14 @@ export function fitCreditNote(cleanNote: string, state: CreditNoteState, now: Da
   return note;
 }
 
-export function isCreditAsset(
-  asset: Pick<FinanceAsset, "displayName" | "providerName" | "assetTypeName" | "assetGroupName" | "note">,
-): boolean {
-  if (parseCreditMeta(asset.note).isCreditFlagged) return true;
-  const combined = [
-    asset.displayName,
-    asset.providerName,
-    asset.assetTypeName,
-    asset.assetGroupName,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  return CREDIT_NAME_RE.test(combined);
+/** Credit lines and loans: classified by the stored asset class only, never by the account name. */
+export function isCreditAsset(asset: Pick<FinanceAsset, "assetClass">): boolean {
+  return asset.assetClass === "liability";
 }
 
-export function isReceivableAsset(
-  asset: Pick<FinanceAsset, "displayName" | "note">,
-): boolean {
-  return /\b(piutang|talangan|reimburse|split\s*bill)\b/i.test(`${asset.displayName} ${asset.note ?? ""}`);
+/** Money owed to the owner (loans given, bills paid on someone's behalf): by the stored asset class only. */
+export function isReceivableAsset(asset: Pick<FinanceAsset, "assetClass">): boolean {
+  return asset.assetClass === "receivable";
 }
 
 /**
@@ -313,10 +300,7 @@ export function isReceivableAsset(
  * receivables are excluded even if their liquid/spendable flags were left on.
  */
 export function isReserveSourceAsset(
-  asset: Pick<
-    FinanceAsset,
-    "isActive" | "normallyLiquid" | "normallySpendable" | "displayName" | "providerName" | "assetTypeName" | "assetGroupName" | "note"
-  >,
+  asset: Pick<FinanceAsset, "isActive" | "normallyLiquid" | "normallySpendable" | "assetClass">,
 ): boolean {
   return asset.isActive && asset.normallyLiquid && asset.normallySpendable && !isCreditAsset(asset) && !isReceivableAsset(asset);
 }
@@ -330,6 +314,8 @@ export type ComputedCreditBills = Readonly<{
   laterBillMinor: bigint;
   /** Everything still owed, including later installments. */
   totalUnpaidMinor: bigint;
+  /** Paid beyond everything owed; the account then holds the owner's money. */
+  overpaidMinor: bigint;
   limitMinor: bigint;
   availableLimitMinor: bigint | null;
   currentDueIso: string;
@@ -339,10 +325,15 @@ export type ComputedCreditBills = Readonly<{
 }>;
 
 export function computeCreditBills(
-  asset: Pick<FinanceAsset, "balanceMinor" | "note">,
+  asset: Pick<FinanceAsset, "balanceMinor" | "note"> & Partial<Pick<FinanceAsset, "creditInstallments">>,
   now: Date = new Date(),
 ): ComputedCreditBills {
-  const meta = parseCreditMeta(asset.note, now);
+  const parsed = parseCreditMeta(asset.note, now);
+  // Installment rows are already in the ledger balance; they only say in which due month each part is billed.
+  const rows: ScheduledCharge[] = (asset.creditInstallments ?? []).filter((row) => row.status === "scheduled").map((row) => ({
+    period: row.period, amountMinor: parseBigIntSafe(row.principalMinor) + parseBigIntSafe(row.interestMinor), ref: null, offLedger: false,
+  }));
+  const meta = rows.length ? { ...parsed, schedule: [...parsed.schedule, ...rows] } : parsed;
   const balance = parseBigIntSafe(asset.balanceMinor);
   const currentDueIso = nextMonthlyDueDayIso(meta.dueDay, 0, now);
   const nextDueIso = nextMonthlyDueDayIso(meta.dueDay, 1, now);
@@ -359,6 +350,7 @@ export function computeCreditBills(
 
   const rawTotal = meta.carryCurrentMinor + offLedger - balance;
   const totalUnpaidMinor = rawTotal > 0n ? rawTotal : 0n;
+  const overpaidMinor = rawTotal < 0n ? -rawTotal : 0n;
 
   let currentBillMinor: bigint;
   let nextBillMinor: bigint;
@@ -386,6 +378,7 @@ export function computeCreditBills(
     nextBillMinor,
     laterBillMinor,
     totalUnpaidMinor,
+    overpaidMinor,
     limitMinor: meta.limitMinor,
     availableLimitMinor,
     currentDueIso,
@@ -402,8 +395,9 @@ export const CREDIT_STATUS_LABEL: Readonly<Record<CreditAccountStatus, string>> 
   lunas: "Lunas",
   "lebih-bayar": "Lebih bayar",
 };
-export function creditAccountStatus(bills: Pick<ComputedCreditBills, "totalUnpaidMinor">): CreditAccountStatus {
-  return bills.totalUnpaidMinor > 0n ? "belum-lunas" : "lunas";
+export function creditAccountStatus(bills: Pick<ComputedCreditBills, "totalUnpaidMinor" | "overpaidMinor">): CreditAccountStatus {
+  if (bills.totalUnpaidMinor > 0n) return "belum-lunas";
+  return bills.overpaidMinor > 0n ? "lebih-bayar" : "lunas";
 }
 
 export type CreditInstallmentTerms = Readonly<{ count: number; principalMinor: bigint; interestMinor: bigint }>;

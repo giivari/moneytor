@@ -329,7 +329,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
       }
       // Installment purchase: what is posted now and what the server schedules for the later months.
       const purchase = kind === "expense" && isCreditPurchase && plan && tenorMonths > 1
-        ? installmentPurchaseRequest(plan, tenorMonths)
+        ? installmentPurchaseRequest(plan, tenorMonths, options?.catalogs.chargeTypes.find((item) => item.systemKey === "installment_interest")?.id)
         : null;
       if (kind === "expense") finalAmountMinor = purchase ? purchase.amountMinor : plan ? plan.firstMonthTotalMinor : rawPrincipalMinor;
 
@@ -339,7 +339,7 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
         isCreditPurchase && tenorMonths > 1
           ? isInstallmentTopUp
             ? `${note.trim() || account.displayName} (Dicicil ${tenorMonths}x · tagihan 1/${tenorMonths})`
-            : `${note.trim() || account.displayName} (Cicilan 1/${tenorMonths})`
+            : `${note.trim() || account.displayName} (Dicicil ${tenorMonths}x)`
           : note;
 
       const draft: ActivityDraft = {

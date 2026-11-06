@@ -5,13 +5,16 @@ import { computeCreditBills, isCreditAsset, isReceivableAsset } from "./credit.t
 export type CurrencyBalances = {
   currency: string;
   exponent: number;
-  /** Assets, receivables and investments at market value. */
+  /** Assets, receivables, overpaid credit accounts and investments at market value. */
   total: bigint;
   liquid: bigint;
   spendable: bigint;
   expense: bigint;
   /** Credit bills due within the planning horizon (current bill plus the next one when it falls inside). */
   creditDebt: bigint;
+  /** Everything still owed on credit accounts, including installments due after the next bill. */
+  liabilities: bigint;
+  /** total - liabilities. */
   netWorth: bigint;
   unpricedCount: number;
 };
@@ -19,7 +22,7 @@ export type CurrencyBalances = {
 export type InvestmentMarketTotal = Readonly<{ currency: string; exponent: number; marketMinor: string; unpricedCount: number }>;
 
 export function emptyCurrencyBalances(currency: string, exponent: number): CurrencyBalances {
-  return { currency, exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, netWorth: 0n, unpricedCount: 0 };
+  return { currency, exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, liabilities: 0n, netWorth: 0n, unpricedCount: 0 };
 }
 
 /**
@@ -37,8 +40,11 @@ export function summarizeBalances(
     const entry = byCurrency.get(asset.currency) ?? emptyCurrencyBalances(asset.currency, asset.exponent);
     const balance = BigInt(asset.balanceMinor);
     if (isCreditAsset(asset)) {
+      const bills = computeCreditBills(asset, now);
+      // Archived accounts still owe (or hold) what their balance says, like archived assets still count.
+      entry.liabilities += bills.totalUnpaidMinor;
+      entry.total += bills.overpaidMinor;
       if (asset.isActive) {
-        const bills = computeCreditBills(asset, now);
         entry.creditDebt += bills.currentBillMinor;
         if (bills.nextDueIso <= throughDay) entry.creditDebt += bills.nextBillMinor;
       }
@@ -56,6 +62,6 @@ export function summarizeBalances(
     entry.unpricedCount = total.unpricedCount;
     byCurrency.set(total.currency, entry);
   }
-  for (const entry of byCurrency.values()) entry.netWorth = entry.total - entry.creditDebt;
+  for (const entry of byCurrency.values()) entry.netWorth = entry.total - entry.liabilities;
   return byCurrency;
 }

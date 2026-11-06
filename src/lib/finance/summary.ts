@@ -106,7 +106,7 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
         totalDue, commitmentsForCurrency?.coveredMinor ?? "0", totalUncovered);
       return { currency: entry.currency, exponent: entry.exponent, totalMinor: entry.total.toString(),
         liquidMinor: entry.liquid.toString(), eligibleMinor: entry.spendable.toString(),
-        creditDebtMinor: entry.creditDebt.toString(), netWorthMinor: entry.netWorth.toString(), ...position,
+        creditDebtMinor: entry.creditDebt.toString(), liabilitiesMinor: entry.liabilities.toString(), netWorthMinor: entry.netWorth.toString(), ...position,
         expenseMinor: entry.expense.toString(), unpricedCount: entry.unpricedCount };
     }) };
   };

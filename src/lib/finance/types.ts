@@ -10,12 +10,27 @@ export type ActivityDraft = {
   occurredAt: string;
   note?: string;
 };
+/** What an account is in net worth: something owned, a debt (credit line, loan), or money owed to the owner. */
+export type AssetClass = "asset" | "liability" | "receivable";
+export const ASSET_CLASSES: readonly AssetClass[] = ["asset", "liability", "receivable"];
+/** One month of an installment purchase on a credit account (table credit_installments). */
+export type CreditInstallment = {
+  activityId: string; seq: number;
+  /** Due month, YYYY-MM. */
+  period: string;
+  principalMinor: string; interestMinor: string;
+  status: "scheduled" | "cancelled";
+  cancelledByActivityId?: string;
+};
 export type FinanceAsset = {
   id: string; displayName: string; currency: string; exponent: number;
   assetTypeId: string; assetTypeName: string; assetGroupId: string | null; assetGroupName: string | null;
   providerId: string | null; providerName: string | null; paymentNetworkId: string | null;
   normallyLiquid: boolean; normallySpendable: boolean; safeSuffix: string | null;
   note: string | null; isActive: boolean; openingMinor: string; balanceMinor: string;
+  assetClass: AssetClass;
+  /** Scheduled installment rows of a credit account from the current month on. */
+  creditInstallments?: readonly CreditInstallment[];
 };
 export type FinanceActivity = {
   cursorTime?: string;

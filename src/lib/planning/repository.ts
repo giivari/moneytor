@@ -5,6 +5,7 @@ import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { CREDIT_REMINDER_NOTE_PREFIX, isReserveSourceAsset } from "@/lib/domain/credit";
+import type { AssetClass } from "@/lib/finance/types";
 import type { PlanKind, ObligationStatus, ReservePurpose } from "@/lib/domain/planning";
 
 export class PlanningError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status; } }
@@ -133,9 +134,9 @@ async function savePlan(client: PoolClient, planKind: PlanKind, body: Record<str
     }
     if (source) {
       const asset = await client.query<{ currency: string; isActive: boolean; normallyLiquid: boolean; normallySpendable: boolean;
-        displayName: string; note: string | null; providerName: string | null; assetTypeName: string; assetGroupName: string | null }>(
+        displayName: string; note: string | null; providerName: string | null; assetTypeName: string; assetGroupName: string | null; assetClass: AssetClass }>(
         `SELECT a.currency_code AS currency,a.is_active AS "isActive",a.normally_liquid AS "normallyLiquid",a.normally_spendable AS "normallySpendable",
-          a.display_name AS "displayName",a.note,p.display_name AS "providerName",t.display_name AS "assetTypeName",g.display_name AS "assetGroupName"
+          a.display_name AS "displayName",a.note,a.asset_class AS "assetClass",p.display_name AS "providerName",t.display_name AS "assetTypeName",g.display_name AS "assetGroupName"
         FROM assets a LEFT JOIN financial_providers p ON p.id=a.provider_id JOIN asset_types t ON t.id=a.asset_type_id
           LEFT JOIN asset_groups g ON g.id=a.asset_group_id WHERE a.id=$1 FOR SHARE OF a`,[uuid(source)]);
       // Credit lines and receivables are never cash that can back a reserve, whatever their flags say.

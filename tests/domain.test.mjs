@@ -158,15 +158,13 @@ test("dedicated system categories (e.g. bank admin fee) are identified to avoid 
   assert.equal(isDedicatedCategory({ displayName: "Rumah Tangga" }), false);
 });
 
-test("receivable / talangan / split bill accounts are identified accurately", () => {
-  assert.equal(isReceivableAsset({ displayName: "Piutang & Talangan", note: "" }), true);
-  assert.equal(isReceivableAsset({ displayName: "Talangan Teman Kantor", note: null }), true);
-  assert.equal(isReceivableAsset({ displayName: "Reimburse Kantor", note: "" }), true);
-  assert.equal(isReceivableAsset({ displayName: "Split Bill Makan", note: "" }), true);
-  assert.equal(isReceivableAsset({ displayName: "Kas Darurat", note: "Dana piutang teman" }), true);
-  assert.equal(isReceivableAsset({ displayName: "BCA Tabungan", note: "" }), false);
-  assert.equal(isReceivableAsset({ displayName: "Mandiri Debit Gold", note: "" }), false);
-  assert.equal(isReceivableAsset({ displayName: "SPayLater", note: "[CREDIT:due=1;cutoff=20]" }), false);
+test("receivable accounts are identified by asset class, not by name or note (migration 015)", () => {
+  assert.equal(isReceivableAsset({ displayName: "Piutang & Talangan", note: "", assetClass: "receivable" }), true);
+  assert.equal(isReceivableAsset({ displayName: "Talangan Teman Kantor", note: null, assetClass: "receivable" }), true);
+  assert.equal(isReceivableAsset({ displayName: "Uang di Andi", note: null, assetClass: "receivable" }), true);
+  assert.equal(isReceivableAsset({ displayName: "Kas Darurat", note: "Dana piutang teman", assetClass: "asset" }), false);
+  assert.equal(isReceivableAsset({ displayName: "BCA Tabungan", note: "", assetClass: "asset" }), false);
+  assert.equal(isReceivableAsset({ displayName: "SPayLater", note: "[CREDIT:due=1;cutoff=20]", assetClass: "liability" }), false);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -393,11 +391,11 @@ test("split bill keeps personal spending, fronted share, and charges apart", () 
 
 test("receivables and credit lines are never reserve sources", () => {
   const base = { isActive: true, normallyLiquid: true, normallySpendable: true, providerName: null, assetTypeName: "Rekening bank",
-    assetGroupName: null, note: null };
+    assetGroupName: null, note: null, assetClass: "asset" };
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "BCA Utama" }), true);
-  assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "Piutang & Talangan" }), false);
-  assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "Dompet", note: "Akun penampung split bill" }), false);
-  assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "SPayLater" }), false);
-  assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "BCA Utama", note: "[CREDIT:due=5,cutoff=25]" }), false);
+  assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "Piutang & Talangan", assetClass: "receivable" }), false);
+  assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "Dompet", assetClass: "receivable" }), false);
+  assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "SPayLater", assetClass: "liability" }), false);
+  assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "Dana Cicilan Motor" }), true);
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "BCA Utama", normallySpendable: false }), false);
 });

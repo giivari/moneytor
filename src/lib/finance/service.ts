@@ -10,7 +10,7 @@ import { parseCreditMeta, type CreditInstallmentTerms } from "@/lib/domain/credi
 import { applyCreditPost, applyCreditVoid } from "@/lib/domain/credit-purchase";
 import { planActivity, type ActivityInput, type AssetReference, type CategoryReference, type ChargeInput } from "@/lib/domain/ledger";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
-import type { ActivityDraft, FinanceActivity } from "./types";
+import type { ActivityDraft, CreditInstallment, FinanceActivity } from "./types";
 
 function positive(raw: unknown): bigint {
   if (typeof raw !== "string") throw new Error("Jumlah harus berupa bilangan bulat dalam unit terkecil");
@@ -175,31 +175,53 @@ function creditPlanFor(posting: CreditPosting): CreditSchedulePlan | null {
 /** Schedules a freshly posted credit outflow by due month inside the posting transaction. */
 async function scheduleCreditOutflow(client: PoolClient, activityId: string, kind: "expense" | "transfer", assetId: string,
   plan: CreditSchedulePlan): Promise<void> {
-  const asset = await client.query<{ note: string | null }>("SELECT note FROM assets WHERE id=$1 FOR UPDATE", [assetId]);
+  const asset = await client.query<{ note: string | null; currency_code: string }>("SELECT note,currency_code FROM assets WHERE id=$1 FOR UPDATE", [assetId]);
   if (!asset.rows[0]) return;
   const impact = await sourceImpactMinor(client, activityId, assetId);
   if (impact <= 0n) return;
-  const next = applyCreditPost({ note: asset.rows[0].note, installments: [] },
-    { activityId, impactMinor: impact, cycle: plan.cycle, kind, installments: plan.installments });
-  await writeCreditNote(client, assetId, next.note);
+  const before = { note: asset.rows[0].note, installments: [] };
+  const next = applyCreditPost(before, { activityId, impactMinor: impact, cycle: plan.cycle, kind, installments: plan.installments });
+  if (next.note !== before.note) await writeCreditNote(client, assetId, next.note);
+  for (const row of next.installments) {
+    await client.query(`INSERT INTO credit_installments (id,asset_id,currency_code,activity_id,seq,due_period,principal_minor,interest_minor)
+      VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8)`, [randomUUID(), assetId, asset.rows[0].currency_code, row.activityId, row.seq,
+      `${row.period}-01`, row.principalMinor, row.interestMinor]);
+  }
 }
-/** Keeps a credit account's monthly schedule in step with a voided or corrected outflow. */
-async function releaseCreditSchedule(client: PoolClient, reversedId: string, replacementId?: string): Promise<void> {
+async function scheduledInstallments(client: PoolClient, activityId: string): Promise<CreditInstallment[]> {
+  const rows = await client.query<{ seq: number; period: string; principal: string; interest: string }>(
+    `SELECT seq,to_char(due_period,'YYYY-MM') AS period,principal_minor::text AS principal,interest_minor::text AS interest
+     FROM credit_installments WHERE activity_id=$1 AND status='scheduled' ORDER BY seq FOR UPDATE`, [activityId]);
+  return rows.rows.map((row) => ({ activityId, seq: row.seq, period: row.period, principalMinor: row.principal, interestMinor: row.interest, status: "scheduled" }));
+}
+/**
+ * Keeps a credit account's schedule in step with a voided or corrected outflow. With `rescheduled`, the
+ * replacement brings its own schedule, so everything of the old outflow is released.
+ */
+async function releaseCreditSchedule(client: PoolClient, reversedId: string, replacementId?: string, rescheduled = false): Promise<void> {
   const activity = await client.query<{ kind: string; source_asset_id: string | null; occurred_at: Date }>(
     "SELECT kind,source_asset_id,occurred_at FROM financial_activities WHERE id=$1", [reversedId]);
   const row = activity.rows[0];
   if (!row || row.kind === "income" || !row.source_asset_id) return;
   const asset = await client.query<{ note: string | null }>("SELECT note FROM assets WHERE id=$1 FOR UPDATE", [row.source_asset_id]);
-  const meta = parseCreditMeta(asset.rows[0]?.note);
-  if (!asset.rows[0] || !meta.isCreditFlagged || meta.schedule.length === 0) return; // skips the impact reads
-  const updated = applyCreditVoid({ note: asset.rows[0].note, installments: [] }, {
+  if (!asset.rows[0]) return;
+  const installments = await scheduledInstallments(client, reversedId);
+  const meta = parseCreditMeta(asset.rows[0].note);
+  if (!installments.length && (!meta.isCreditFlagged || meta.schedule.length === 0)) return; // skips the impact reads
+  const keepShape = replacementId && !rescheduled;
+  const updated = applyCreditVoid({ note: asset.rows[0].note, installments }, {
     activityId: reversedId,
     occurredAtIso: row.occurred_at.toISOString(),
     reversedImpactMinor: await sourceImpactMinor(client, reversedId, row.source_asset_id),
-    replacementActivityId: replacementId,
-    replacementImpactMinor: replacementId ? await sourceImpactMinor(client, replacementId, row.source_asset_id) : 0n,
+    replacementActivityId: keepShape ? replacementId : undefined,
+    replacementImpactMinor: keepShape ? await sourceImpactMinor(client, replacementId, row.source_asset_id) : 0n,
   });
-  if (updated) await writeCreditNote(client, row.source_asset_id, updated.note);
+  if (!updated) return;
+  if (updated.note !== asset.rows[0].note) await writeCreditNote(client, row.source_asset_id, updated.note);
+  for (const cancelled of updated.installments.filter((item) => item.status === "cancelled")) {
+    await client.query(`UPDATE credit_installments SET status='cancelled',cancelled_by_activity_id=$3
+      WHERE activity_id=$1 AND seq=$2 AND status='scheduled'`, [cancelled.activityId, cancelled.seq, replacementId ?? reversedId]);
+  }
 }
 
 async function idempotentOnClient(client: PoolClient, operation: "post" | "replace" | "void", key: string, payload: unknown,
@@ -241,13 +263,19 @@ export async function postActivityInTransaction(client: PoolClient, raw: Activit
   const draft = normalizeDraft(raw);
   return idempotentOnClient(client,"post",key,draft,(connection) => insertPosted(connection,draft));
 }
-export async function replaceActivity(oldId: string, raw: ActivityDraft, key: string): Promise<string> {
+export async function replaceActivity(oldId: string, raw: ActivityDraft, key: string, options: CreditPosting = {}): Promise<string> {
   assertUuid(oldId);
   const draft = normalizeDraft(raw);
-  return withIdempotency("replace", key, { oldId, draft }, async (client) => {
+  const plan = draft.kind !== "income" && draft.sourceAssetId ? creditPlanFor(options) : null;
+  // Plain corrections keep their historical request hash; a rescheduled credit correction hashes its billing as well.
+  const payload = plan ? { oldId, draft, creditCycle: plan.cycle, creditInstallments: options.creditInstallments ?? null } : { oldId, draft };
+  return withIdempotency("replace", key, payload, async (client) => {
+    if (plan) await client.query("SELECT id FROM assets WHERE id=$1 FOR UPDATE", [draft.sourceAssetId]);
     await reversePosted(client, oldId, "superseded");
     const id = await insertPosted(client, draft, oldId);
-    await releaseCreditSchedule(client, oldId, id);
+    // The old schedule is cancelled first; a replacement with its own billing then gets fresh rows.
+    await releaseCreditSchedule(client, oldId, id, Boolean(plan));
+    if (plan) await scheduleCreditOutflow(client, id, draft.kind as "expense" | "transfer", draft.sourceAssetId!, plan);
     return id;
   });
 }

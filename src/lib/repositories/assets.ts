@@ -10,7 +10,7 @@ import { encodeAssetTermsNote, parseAssetTerms } from "@/lib/domain/asset-terms"
 import { assertUuid, requireActive, validateCatalogName } from "@/lib/domain/catalog";
 import { parseCreditMeta } from "@/lib/domain/credit";
 import { assertCurrencyCode, assertStoredMinor, money, parseMinor, type Money } from "@/lib/domain/money";
-import type { FinanceAsset } from "@/lib/finance/types";
+import { ASSET_CLASSES, type AssetClass, type CreditInstallment, type FinanceAsset } from "@/lib/finance/types";
 
 export type NewAsset = Readonly<{
   displayName: string;
@@ -25,7 +25,15 @@ export type NewAsset = Readonly<{
   openingEffectiveAt: Date;
   safeSuffix?: string;
   note?: string;
+  /** Defaults to "asset" when created; kept as is when an update leaves it out. */
+  assetClass?: AssetClass;
 }>;
+
+function assetClassOf(value: unknown): AssetClass | undefined {
+  if (value === undefined) return undefined;
+  if (!ASSET_CLASSES.includes(value as AssetClass)) throw new Error("Invalid asset class");
+  return value as AssetClass;
+}
 
 const relationTables = {
   assetTypeId: "asset_types",
@@ -73,11 +81,11 @@ export async function insertAssetWithOpening(input: NewAsset): Promise<string> {
     }
     await client.query(
       `INSERT INTO assets (id, display_name, provider_id, asset_type_id, asset_group_id,
-       payment_network_id, currency_code, normally_liquid, normally_spendable, safe_suffix, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+       payment_network_id, currency_code, normally_liquid, normally_spendable, safe_suffix, note, asset_class)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [id, displayName, input.providerId ?? null, input.assetTypeId, input.assetGroupId ?? null,
         input.paymentNetworkId ?? null, currency, input.normallyLiquid, input.normallySpendable,
-        input.safeSuffix ?? null, input.note ?? null],
+        input.safeSuffix ?? null, input.note ?? null, assetClassOf(input.assetClass) ?? "asset"],
     );
     await client.query(
       "INSERT INTO asset_opening_states (asset_id, amount_minor, effective_at) VALUES ($1,$2,$3)",
@@ -141,8 +149,8 @@ async function readAssets(includeArchived = true, client?: PoolClient): Promise<
     asset_type_id: string; asset_type_name: string; asset_group_id: string | null; asset_group_name: string | null;
     provider_id: string | null; provider_name: string | null; payment_network_id: string | null;
     normally_liquid: boolean; normally_spendable: boolean; safe_suffix: string | null;
-    note: string | null; is_active: boolean; opening_minor: string; balance_minor: string;
-  }>(`SELECT a.id, a.display_name, a.currency_code, c.minor_unit_exponent,
+    note: string | null; is_active: boolean; opening_minor: string; balance_minor: string; asset_class: AssetClass;
+  }>(`SELECT a.id, a.display_name, a.currency_code, c.minor_unit_exponent, a.asset_class,
       a.asset_type_id, t.display_name AS asset_type_name, a.asset_group_id,
       g.display_name AS asset_group_name, a.provider_id, p.display_name AS provider_name,
       a.payment_network_id, a.normally_liquid, a.normally_spendable, a.safe_suffix,
@@ -158,6 +166,7 @@ async function readAssets(includeArchived = true, client?: PoolClient): Promise<
     LEFT JOIN (SELECT asset_id, SUM(amount_minor)::numeric AS delta_minor FROM ledger_movements GROUP BY asset_id) m ON m.asset_id = a.id
     WHERE ($1::boolean OR a.is_active)
     ORDER BY a.is_active DESC, a.sort_order, a.created_at, a.id`, [includeArchived]);
+  const installments = await readScheduledInstallments(client ?? database());
   return result.rows.map((row) => ({
     id: row.id, displayName: row.display_name, currency: row.currency_code, exponent: row.minor_unit_exponent,
     assetTypeId: row.asset_type_id, assetTypeName: row.asset_type_name,
@@ -165,8 +174,25 @@ async function readAssets(includeArchived = true, client?: PoolClient): Promise<
     providerId: row.provider_id, providerName: row.provider_name, paymentNetworkId: row.payment_network_id,
     normallyLiquid: row.normally_liquid, normallySpendable: row.normally_spendable,
     safeSuffix: row.safe_suffix, note: row.note, isActive: row.is_active,
-    openingMinor: row.opening_minor, balanceMinor: row.balance_minor,
+    openingMinor: row.opening_minor, balanceMinor: row.balance_minor, assetClass: row.asset_class,
+    ...(row.asset_class === "liability" ? { creditInstallments: installments.get(row.id) ?? [] } : {}),
   }));
+}
+
+/** Scheduled installment rows from last month on, per asset; earlier months are simply part of the current bill. */
+async function readScheduledInstallments(client: PoolClient | ReturnType<typeof database>): Promise<Map<string, CreditInstallment[]>> {
+  const result = await client.query<{ asset_id: string; activity_id: string; seq: number; period: string; principal: string; interest: string }>(
+    `SELECT asset_id, activity_id, seq, to_char(due_period, 'YYYY-MM') AS period, principal_minor::text AS principal, interest_minor::text AS interest
+     FROM credit_installments
+     WHERE status = 'scheduled' AND due_period >= (date_trunc('month', now() AT TIME ZONE 'Asia/Jakarta') - interval '1 month')::date
+     ORDER BY asset_id, due_period, activity_id, seq`);
+  const byAsset = new Map<string, CreditInstallment[]>();
+  for (const row of result.rows) {
+    const list = byAsset.get(row.asset_id) ?? [];
+    list.push({ activityId: row.activity_id, seq: row.seq, period: row.period, principalMinor: row.principal, interestMinor: row.interest, status: "scheduled" });
+    byAsset.set(row.asset_id, list);
+  }
+  return byAsset;
 }
 
 export async function updateAsset(id: string, input: Omit<NewAsset, "currency" | "openingAmountMinor" | "openingEffectiveAt">): Promise<void> {
@@ -194,10 +220,10 @@ export async function updateAsset(id: string, input: Omit<NewAsset, "currency" |
     }
     const result = await client.query(`UPDATE assets SET display_name=$2, provider_id=$3, asset_type_id=$4,
       asset_group_id=$5, payment_network_id=$6, normally_liquid=$7, normally_spendable=$8,
-      safe_suffix=$9, note=$10 WHERE id=$1 AND is_active RETURNING id`,
+      safe_suffix=$9, note=$10, asset_class=COALESCE($11, asset_class) WHERE id=$1 AND is_active RETURNING id`,
     [id, displayName, input.providerId ?? null, input.assetTypeId, input.assetGroupId ?? null,
       input.paymentNetworkId ?? null, input.normallyLiquid, input.normallySpendable,
-      input.safeSuffix ?? null, input.note ?? null]);
+      input.safeSuffix ?? null, input.note ?? null, assetClassOf(input.assetClass) ?? null]);
     if (!result.rowCount) throw new Error("Aset aktif tidak ditemukan");
   });
   const prevTerms = parseAssetTerms(previousNote);

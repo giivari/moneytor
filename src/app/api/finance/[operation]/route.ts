@@ -6,7 +6,7 @@ import { insertAssetWithOpening, updateAsset, archiveAsset, restoreAsset, listAs
 import { deleteCustomCatalogItem, restoreCustomCatalogItem, archiveCustomCatalogItem, insertCustomCatalogItem, insertCustomCategory, listCatalog, renameCustomCatalogItem, type Catalog } from "@/lib/repositories/catalogs";
 import { postActivity, replaceActivity, voidActivity } from "@/lib/finance/service";
 import { LifecycleError } from "@/lib/repositories/lifecycle";
-import type { ActivityDraft } from "@/lib/finance/types";
+import type { ActivityDraft, AssetClass } from "@/lib/finance/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +46,7 @@ function assetFields(body: Record<string, unknown>) {
     assetGroupId: optional(body.assetGroupId, 36), providerId: optional(body.providerId, 36),
     paymentNetworkId: optional(body.paymentNetworkId, 36), normallyLiquid: bool(body.normallyLiquid),
     normallySpendable: bool(body.normallySpendable), safeSuffix: optional(body.safeSuffix, 4), note: optional(body.note, 1000),
+    assetClass: body.assetClass === undefined ? undefined : str(body.assetClass, 20) as AssetClass,
   };
 }
 export async function GET(request: NextRequest, { params }: { params: Promise<{ operation: string }> }) {
@@ -117,7 +118,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         creditCycle: body.creditCycle === "next" || body.creditCycle === "current" ? body.creditCycle : undefined,
         creditInstallments: installmentTerms(body.creditInstallments),
       }) });
-    if (operation === "replace") return json({ id: await replaceActivity(str(body.id, 36), body.draft as ActivityDraft, str(body.idempotencyKey, 36)) });
+    if (operation === "replace") return json({ id: await replaceActivity(str(body.id, 36), body.draft as ActivityDraft, str(body.idempotencyKey, 36),
+      {
+        creditCycle: body.creditCycle === "next" || body.creditCycle === "current" ? body.creditCycle : undefined,
+        creditInstallments: installmentTerms(body.creditInstallments),
+      }) });
     if (operation === "void") return json({ id: await voidActivity(str(body.id, 36), str(body.idempotencyKey, 36)) });
     return json({ error: "Tidak tersedia" }, 404);
   } catch (error) {
