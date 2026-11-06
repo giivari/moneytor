@@ -9,7 +9,7 @@ import { registerHooks } from "node:module";
 const enabled = process.env.MONETA_AUTH_DB_TEST === "moneta_p2_verify";
 test("P2 disposable PostgreSQL auth lifecycle and constraints", { skip: !enabled }, async (t) => {
   const target = new URL(process.env.DATABASE_URL);
-  assert.equal(target.hostname, "127.0.0.1"); assert.equal(target.port, "55433"); assert.equal(target.pathname, "/moneta_p2_verify");
+  assert.equal(target.hostname, "127.0.0.1"); assert.equal(target.port, process.env.MONEYTOR_DB_TEST_PORT ?? "55433"); assert.equal(target.pathname, "/moneta_p2_verify");
   const admin = new pg.Client({ connectionString: target.toString() }); await admin.connect();
   assert.equal((await admin.query("SELECT current_database() AS name")).rows[0].name, "moneta_p2_verify");
   const schema = `p2_test_${randomUUID().replaceAll("-", "")}`;

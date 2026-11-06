@@ -10,7 +10,7 @@ const confirmedDatabase = process.env.MONEYTOR_P4_DB_TEST;
 const enabled = ["moneytor_p4_verify", "moneytor_p5_verify", "moneytor_p51a_verify", "moneytor_p51b_verify"].includes(confirmedDatabase) || /^moneytor_composable_verify_\d+$/.test(confirmedDatabase ?? "");
 test("P4 isolated disposable PostgreSQL investment engine", { skip: !enabled }, async (t) => {
   const target = new URL(process.env.DATABASE_URL);
-  assert.equal(target.hostname, "127.0.0.1"); assert.equal(target.port, confirmedDatabase === "moneytor_p4_verify" ? "55434" : "55433"); assert.equal(target.pathname, `/${confirmedDatabase}`);
+  assert.equal(target.hostname, "127.0.0.1"); assert.equal(target.port, process.env.MONEYTOR_DB_TEST_PORT ?? (confirmedDatabase === "moneytor_p4_verify" ? "55434" : "55433")); assert.equal(target.pathname, `/${confirmedDatabase}`);
   const admin = new pg.Client({ connectionString: target.toString() }); await admin.connect();
   assert.equal((await admin.query("SELECT current_database() AS name")).rows[0].name, confirmedDatabase);
   const schema = `p4_test_${randomUUID().replaceAll("-", "")}`;

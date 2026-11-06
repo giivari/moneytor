@@ -9,7 +9,7 @@ const databaseName = process.env.MONEYTOR_EVENT_DB_TEST;
 const enabled = databaseName === "moneytor_p51b_verify" || /^moneytor_composable_verify_\d+$/.test(databaseName ?? "");
 test("P5.1B Income events on isolated PostgreSQL schema",{skip:!enabled},async(t)=>{
   const target = new URL(process.env.DATABASE_URL);
-  assert.equal(target.hostname,"127.0.0.1");assert.equal(target.port,"55433");assert.equal(target.pathname,`/${databaseName}`);
+  assert.equal(target.hostname,"127.0.0.1");assert.equal(target.port,process.env.MONEYTOR_DB_TEST_PORT ?? "55433");assert.equal(target.pathname,`/${databaseName}`);
   const admin = new pg.Client({connectionString:target.toString()});await admin.connect();
   const schema=`p51b_test_${randomUUID().replaceAll("-","")}`;
   let pool, hooks;
@@ -19,7 +19,7 @@ test("P5.1B Income events on isolated PostgreSQL schema",{skip:!enabled},async(t
     await admin.query("CREATE TABLE schema_migrations(name text PRIMARY KEY,checksum text NOT NULL)");
     const migrations=await Promise.all((await readdir(new URL("../db/migrations/",import.meta.url))).filter((file)=>file.endsWith(".sql")).sort()
       .map(async(file)=>({file,sql:await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8")})));
-    assert.equal(migrations.at(-1).file,"013_home_customization.sql");
+    migrations.forEach(({file},index)=>assert.ok(file.startsWith(`${String(index+1).padStart(3,"0")}_`),`migration ${file} out of sequence`));
     for(const {file,sql} of migrations){await admin.query(sql);await admin.query("INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)",[file,createHash("sha256").update(sql).digest("hex")]);}
     target.searchParams.set("options",`-c search_path=${schema}`);process.env.DATABASE_URL=target.toString();
     hooks=registerHooks({resolve(specifier,context,next){

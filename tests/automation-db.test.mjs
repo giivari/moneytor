@@ -8,7 +8,7 @@ import pg from "pg";
 const enabled = ["moneytor_p51a_verify","moneytor_p51b_verify"].includes(process.env.MONEYTOR_AUTOMATION_DB_TEST) || /^moneytor_composable_verify_\d+$/.test(process.env.MONEYTOR_AUTOMATION_DB_TEST ?? "");
 test("P5.1A recurring transactions on isolated PostgreSQL schema",{skip:!enabled},async (t) => {
   const target = new URL(process.env.DATABASE_URL);
-  assert.equal(target.hostname,"127.0.0.1"); assert.equal(target.port,"55433"); assert.equal(target.pathname,`/${process.env.MONEYTOR_AUTOMATION_DB_TEST}`);
+  assert.equal(target.hostname,"127.0.0.1"); assert.equal(target.port,process.env.MONEYTOR_DB_TEST_PORT ?? "55433"); assert.equal(target.pathname,`/${process.env.MONEYTOR_AUTOMATION_DB_TEST}`);
   const admin = new pg.Client({connectionString:target.toString()});
   await admin.connect();
   const schema = `p51a_test_${randomUUID().replaceAll("-","")}`;
@@ -19,14 +19,14 @@ test("P5.1A recurring transactions on isolated PostgreSQL schema",{skip:!enabled
     await admin.query("CREATE TABLE schema_migrations(name text PRIMARY KEY,checksum text NOT NULL)");
     const migrations = await Promise.all((await readdir(new URL("../db/migrations/",import.meta.url))).filter((file)=>file.endsWith(".sql")).sort()
       .map(async (file)=>({file,sql:await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8")})));
-    assert.equal(migrations.at(-1).file,"013_home_customization.sql");
+    migrations.forEach(({file},index)=>assert.ok(file.startsWith(`${String(index+1).padStart(3,"0")}_`),`migration ${file} out of sequence`));
     for (let pass=0;pass<2;pass++) for (const {file,sql} of migrations) {
       const checksum=createHash("sha256").update(sql).digest("hex");
       const prior=await admin.query("SELECT checksum FROM schema_migrations WHERE name=$1",[file]);
       if (prior.rowCount) { assert.equal(prior.rows[0].checksum,checksum); continue; }
       await admin.query(sql); await admin.query("INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)",[file,checksum]);
     }
-    assert.equal((await admin.query("SELECT count(*)::int AS n FROM schema_migrations")).rows[0].n,13);
+    assert.equal((await admin.query("SELECT count(*)::int AS n FROM schema_migrations")).rows[0].n,migrations.length);
     assert.ok((await admin.query("SELECT count(*)::int AS n FROM pg_indexes WHERE schemaname=$1 AND indexname LIKE 'recurring_%'",[schema])).rows[0].n>=3);
     assert.ok((await admin.query("SELECT count(*)::int AS n FROM pg_constraint WHERE connamespace=$1::regnamespace AND contype='f' AND conrelid::regclass::text LIKE 'recurring_%'",[schema])).rows[0].n>=6);
     assert.equal((await admin.query("SELECT count(*)::int AS n FROM recurring_mutation_requests")).rows[0].n,0);

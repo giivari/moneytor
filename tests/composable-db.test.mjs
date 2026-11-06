@@ -8,13 +8,13 @@ import pg from "pg";
 const name=process.env.MONEYTOR_COMPOSABLE_DB_TEST;
 test("Composable Automation V1 on disposable PostgreSQL",{skip:!/^moneytor_composable_verify_\d+$/.test(name ?? "")},async(t)=>{
   const url=new URL(process.env.DATABASE_URL);
-  assert.equal(url.hostname,"127.0.0.1");assert.equal(url.port,"55433");assert.equal(url.pathname,`/${name}`);
+  assert.equal(url.hostname,"127.0.0.1");assert.equal(url.port,process.env.MONEYTOR_DB_TEST_PORT ?? "55433");assert.equal(url.pathname,`/${name}`);
   const admin=new pg.Client({connectionString:url.toString()});await admin.connect();
   const schema=`composable_${randomUUID().replaceAll("-","")}`;let pool,hooks;
   try{
     await admin.query(`CREATE SCHEMA ${schema}`);await admin.query(`SET search_path TO ${schema}`);
     const files=(await readdir(new URL("../db/migrations/",import.meta.url))).filter((item)=>item.endsWith(".sql")).sort();
-    assert.equal(files.at(-1),"013_home_customization.sql");
+    files.forEach((file,index)=>assert.ok(file.startsWith(`${String(index+1).padStart(3,"0")}_`),`migration ${file} out of sequence`));
     for(const file of files)await admin.query(await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8"));
     url.searchParams.set("options",`-c search_path=${schema}`);process.env.DATABASE_URL=url.toString();
     hooks=registerHooks({resolve(specifier,context,next){

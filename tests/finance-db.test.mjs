@@ -10,7 +10,7 @@ const enabled = ["moneta_p2_verify", "moneytor_p4_verify", "moneytor_p5_verify",
 test("P3 isolated PostgreSQL posting and reversal", { skip: !enabled }, async (t) => {
   const target = new URL(process.env.DATABASE_URL);
   assert.equal(target.hostname, "127.0.0.1");
-  assert.equal(target.port, confirmedDatabase === "moneytor_p4_verify" ? "55434" : "55433");
+  assert.equal(target.port, process.env.MONEYTOR_DB_TEST_PORT ?? (confirmedDatabase === "moneytor_p4_verify" ? "55434" : "55433"));
   assert.equal(target.pathname, `/${confirmedDatabase}`);
   const admin = new pg.Client({ connectionString: target.toString() });
   await admin.connect();

@@ -8,7 +8,7 @@ import ts from 'typescript';
 import pg from 'pg';
 const name=process.env.MONEYTOR_ANALYTICS_DB_TEST;
 test('P6A analytics on strictly disposable PostgreSQL',{skip:!/^moneytor_composable_verify_\d+$/.test(name??'')},async t=>{
-  const url=new URL(process.env.DATABASE_URL);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'55433');assert.equal(url.pathname,`/${name}`);
+  const url=new URL(process.env.DATABASE_URL);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,process.env.MONEYTOR_DB_TEST_PORT ?? '55433');assert.equal(url.pathname,`/${name}`);
   const admin=new pg.Client({connectionString:url.toString()});await admin.connect();
   assert.equal((await admin.query('SELECT current_database() AS name')).rows[0].name,name);
   const schema=`analytics_${randomUUID().replaceAll('-','')}`;let pool,hooks;
@@ -152,7 +152,8 @@ test('P6A analytics on strictly disposable PostgreSQL',{skip:!/^moneytor_composa
     });
     await t.test('canonical Home/P3/P4/P5 consistency in a shared read snapshot',async()=>{
       const r=await read(),home=await financeSnapshot({includeRecent:false});assert.deepEqual(r.context.currencies,home.currencies);assert.deepEqual(r.context.investments,home.investment.totals);
-      assert.equal(idr(r).spendingMinor,(await monthlyExpenses()).find(c=>c.currency==='IDR').expenseMinor);
+      // monthlyExpenses() reads the real current month, so compare it with analytics for that same month (not the fixed `now`).
+      assert.equal(idr(await readAnalytics({period:{kind:'current_month'}},new Date())).spendingMinor,(await monthlyExpenses()).find(c=>c.currency==='IDR').expenseMinor);
     });
     for(const storage of ['general','income_event'])await t.test(`${storage}: actual Automation expense and allocation adjustments counted once, including corrected provenance`,async()=>{
       const live=new Date().toISOString();

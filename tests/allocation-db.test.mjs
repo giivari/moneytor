@@ -6,7 +6,7 @@ import {registerHooks} from 'node:module';
 import pg from 'pg';
 const name=process.env.MONEYTOR_ALLOCATION_DB_TEST;
 test('Allocation reconciliation on disposable PostgreSQL',{skip:!/^moneytor_composable_verify_\d+$/.test(name??'')},async t=>{
-  const url=new URL(process.env.DATABASE_URL);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'55433');assert.equal(url.pathname,`/${name}`);
+  const url=new URL(process.env.DATABASE_URL);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,process.env.MONEYTOR_DB_TEST_PORT ?? '55433');assert.equal(url.pathname,`/${name}`);
   const admin=new pg.Client({connectionString:url.toString()});await admin.connect();
   const schema=`allocation_${randomUUID().replaceAll('-','')}`;let pool,hooks;
   try {

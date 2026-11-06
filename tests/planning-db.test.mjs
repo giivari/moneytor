@@ -8,7 +8,7 @@ import pg from "pg";
 const enabled = ["moneytor_p5_verify","moneytor_p51a_verify","moneytor_p51b_verify"].includes(process.env.MONEYTOR_P5_DB_TEST) || /^moneytor_composable_verify_\d+$/.test(process.env.MONEYTOR_P5_DB_TEST ?? "");
 test("P5 planning and Home on a disposable PostgreSQL database", { skip: !enabled }, async (t) => {
   const target = new URL(process.env.DATABASE_URL);
-  assert.equal(target.hostname,"127.0.0.1"); assert.equal(target.port,"55433"); assert.equal(target.pathname,`/${process.env.MONEYTOR_P5_DB_TEST}`);
+  assert.equal(target.hostname,"127.0.0.1"); assert.equal(target.port,process.env.MONEYTOR_DB_TEST_PORT ?? "55433"); assert.equal(target.pathname,`/${process.env.MONEYTOR_P5_DB_TEST}`);
   const schema = `p5_test_${randomUUID().replaceAll("-","")}`;
   const admin = new pg.Client({ connectionString: target.toString() });
   await admin.connect(); let pool;
@@ -17,14 +17,14 @@ test("P5 planning and Home on a disposable PostgreSQL database", { skip: !enable
     await admin.query("CREATE TABLE schema_migrations(name text PRIMARY KEY,checksum text NOT NULL)");
     const migrations = await Promise.all((await readdir(new URL("../db/migrations/",import.meta.url))).filter((item) => item.endsWith(".sql")).sort()
       .map(async (file) => ({ file,sql: await readFile(new URL(`../db/migrations/${file}`,import.meta.url),"utf8") })));
-    assert.equal(migrations.at(-1).file,"013_home_customization.sql");
+    migrations.forEach(({file},index)=>assert.ok(file.startsWith(`${String(index+1).padStart(3,"0")}_`),`migration ${file} out of sequence`));
     for (let pass=0;pass<2;pass++) for (const { file,sql } of migrations) {
       const checksum = createHash("sha256").update(sql).digest("hex");
       const previous = await admin.query("SELECT checksum FROM schema_migrations WHERE name=$1",[file]);
       if (previous.rowCount) { assert.equal(previous.rows[0].checksum,checksum); continue; }
       await admin.query(sql); await admin.query("INSERT INTO schema_migrations(name,checksum) VALUES($1,$2)",[file,checksum]);
     }
-    assert.equal((await admin.query("SELECT count(*)::int AS n FROM schema_migrations")).rows[0].n,13);
+    assert.equal((await admin.query("SELECT count(*)::int AS n FROM schema_migrations")).rows[0].n,migrations.length);
     assert.deepEqual((await admin.query("SELECT count(*)::int AS n FROM planning_budgets")).rows[0].n,0);
     assert.deepEqual((await admin.query("SELECT count(*)::int AS n FROM planning_goals")).rows[0].n,0);
     assert.deepEqual((await admin.query("SELECT count(*)::int AS n FROM planning_reserves")).rows[0].n,0);

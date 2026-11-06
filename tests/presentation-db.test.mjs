@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 import pg from 'pg';
 const name=process.env.MONEYTOR_PRESENTATION_DB_TEST;
 test('Presentation reads on disposable PostgreSQL',{skip:!/^moneytor_composable_verify_\d+$/.test(name??'')},async t=>{
- const url=new URL(process.env.DATABASE_URL);assert.equal(url.pathname,'/'+name);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'55433');
+ const url=new URL(process.env.DATABASE_URL);assert.equal(url.pathname,'/'+name);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,process.env.MONEYTOR_DB_TEST_PORT ?? '55433');
  const admin=new pg.Client({connectionString:url.toString()});await admin.connect();const schema='presentation_'+randomUUID().replaceAll('-','');let pool,hooks;
  try{
   await admin.query(`CREATE SCHEMA ${schema}`);await admin.query(`SET search_path TO ${schema}`);
