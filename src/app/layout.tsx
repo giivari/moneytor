@@ -5,6 +5,7 @@ import { FinanceFeedbackProvider } from "@/components/finance-feedback";
 import "./tokens.css";
 import "./globals.css";
 import "./shell.css";
+import "./ui.css";
 import "./visual.css";
 import "./auth.css";
 import "./finance.css";

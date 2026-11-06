@@ -2,7 +2,7 @@ import type { AnalyticsReport } from "@/lib/analytics/types";
 import { insightsCurrency, periodLabel } from "@/lib/analytics/presentation";
 import { InsightsComposition, InsightsVisualTrend } from "./insights-visuals";
 import { AppLink } from "./app-link";
-import { HomeCard } from "./home-card";
+import { Card } from "./ui";
 import { FinancialAmount } from "./financial-amount";
 import { formatMinor } from "@/lib/finance/format";
 
@@ -17,8 +17,8 @@ function MonthFigures({ report, currency, exponent, expenseMinor }: { report: An
   const money = (value: string) => formatMinor(value, currency, exponent);
   const net = row ? BigInt(row.netMinor) : null;
   return <dl className="home-month-figures">
-    <div><dt>Belanja bulan ini</dt><dd><FinancialAmount value={money(row?.spendingMinor ?? expenseMinor)} as="span" className="home-amount" /></dd></div>
-    {row && net !== null && <div><dt>Selisih dengan pemasukan</dt><dd><FinancialAmount value={`${net > 0n ? "+" : ""}${money(row.netMinor)}`} as="span" className={`home-amount${net < 0n ? " pnl-negative" : net > 0n ? " pnl-positive" : ""}`} /></dd></div>}
+    <div><dt>Belanja bulan ini</dt><dd><FinancialAmount value={money(row?.spendingMinor ?? expenseMinor)} as="span" className="ui-amount" /></dd></div>
+    {row && net !== null && <div><dt>Selisih dengan pemasukan</dt><dd><FinancialAmount value={`${net > 0n ? "+" : ""}${money(row.netMinor)}`} as="span" className={`ui-amount${net < 0n ? " pnl-negative" : net > 0n ? " pnl-positive" : ""}`} /></dd></div>}
   </dl>;
 }
 
@@ -27,17 +27,17 @@ const insightsHref = (currency: string) => `/insights?period=monthly_trend&month
 
 export function HomeTrend({ report, currency, exponent, expenseMinor }: { report: AnalyticsReport | null; currency: string; exponent: number; expenseMinor: string }) {
   const figures = <MonthFigures report={report} currency={currency} exponent={exponent} expenseMinor={expenseMinor} />;
-  if (!report) return <HomeCard className="home-trend" title="Arus kas 6 bulan" figures={figures}><p className="home-muted">Analisis belum tersedia. <AppLink href={insightsHref(currency)}>Buka Analitik</AppLink></p></HomeCard>;
-  return <HomeCard className="home-trend" title="Arus kas 6 bulan" meta={`${periodLabel(report.period)} · ${currency}${report.period.partial ? " · Periode berjalan" : ""}`}
+  if (!report) return <Card className="home-trend" title="Arus kas 6 bulan" figures={figures}><p className="ui-muted">Analisis belum tersedia. <AppLink href={insightsHref(currency)}>Buka Analitik</AppLink></p></Card>;
+  return <Card className="home-trend" title="Arus kas 6 bulan" meta={`${periodLabel(report.period)} · ${currency}${report.period.partial ? " · Periode berjalan" : ""}`}
     action={<AppLink className="text-link" href={insightsHref(currency)}>Analitik lengkap</AppLink>} figures={figures}>
     <div className="home-chart insights-page" aria-label={`Tren ${currency}`}><InsightsVisualTrend report={report} currency={currency} exponent={exponent} dashboard /></div>
-  </HomeCard>;
+  </Card>;
 }
 
 export function HomeComposition({ report, currency }: { report: AnalyticsReport | null; currency: string }) {
   if (!report) return null;
   const data = insightsCurrency(report, currency);
-  return <HomeCard className="home-composition" title="Komposisi belanja" meta={`${periodLabel(report.period)} · ${currency}`}>
+  return <Card className="home-composition" title="Komposisi belanja" meta={`${periodLabel(report.period)} · ${currency}`}>
     <div className="insights-page" aria-label={`Kategori ${currency}`}><InsightsComposition rows={data.categories.rows} charges={data.charges} inlineDetails={false} dashboard /></div>
-  </HomeCard>;
+  </Card>;
 }

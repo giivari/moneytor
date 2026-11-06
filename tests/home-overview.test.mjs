@@ -144,7 +144,7 @@ test('archived accounts and genuine empty states are described accurately', () =
  assert.doesNotMatch(html(snapshot),/Mulai dari aset pertama/); // investment-only owner
  snapshot.investment={hasHoldings:false,totals:[]}; snapshot.currencies=[];
  assert.match(html(snapshot),/Mulai dari aset pertama/);
- assert.doesNotMatch(html(snapshot),/Rp0|home-recent|home-kpis/);
+ assert.doesNotMatch(html(snapshot),/Rp0|home-recent|ui-kpis/);
 });
 
 test('investment zero/unknown price data is never estimated', () => {
@@ -171,7 +171,7 @@ test('large negative money keeps exact group tokens, without focusable scroll co
  snapshot.assets[0].balanceMinor=big; snapshot.investment.totals[0].unrealizedMinor=big;
  const output=html(snapshot), amount=money(big);
  assert.ok(output.includes(amount));
- const kpi=section(output,'home-kpi');
+ const kpi=section(output,'ui-kpi');
  assert.match(kpi,/data-wide="true"/);
  assert.doesNotMatch(kpi,/tabindex|<input|role="spinbutton"/);
  assert.match(section(output,'home-accounts'),/data-wide="true"/);
@@ -179,17 +179,21 @@ test('large negative money keeps exact group tokens, without focusable scroll co
 });
 
 test('responsive contracts: container-driven KPI and column grids, no hidden modules, no scrolling amounts', () => {
- assert.match(css,/\.home-kpis \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
- assert.match(css,/@container home \(min-width: 900px\) \{\s*\.home-kpis \{ grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+ const ui=source('src/app/ui.css');
+ assert.match(ui,/\.page \{ container: page \/ inline-size; \}/);
+ assert.match(ui,/\.ui-kpis \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+ assert.match(ui,/@container page \(min-width: 900px\) \{\s*\.ui-kpis \{ grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+ assert.doesNotMatch(ui,/overflow-x:\s*(auto|scroll|hidden)|user-select/);
  assert.match(css,/\.home-grid \{ grid-template-columns: minmax\(0, 7fr\) minmax\(0, 5fr\)/);
  assert.doesNotMatch(css,/overflow-x:\s*(auto|scroll|hidden)|scale\(|data-density|home-desktop-only|user-select/);
  assert.match(source('src/app/typography.css'),/financial-value\.financial-amount[^}]*overflow: visible; overflow-wrap: normal/);
  assert.match(css,/home-recent-copy strong \{[^}]*-webkit-line-clamp: 2/);
- assert.match(css,/home-recent-copy small, \.home-row-copy small \{[^}]*text-overflow: ellipsis; white-space: nowrap/);
+ assert.match(css,/home-recent-copy small \{[^}]*text-overflow: ellipsis; white-space: nowrap/);
+ assert.match(ui,/\.ui-row-copy small \{[^}]*text-overflow: ellipsis; white-space: nowrap/);
  assert.match(source('src/app/shell.css'),/\.main-content \{ padding: var\(--space-4\) var\(--space-4\) var\(--dock-clearance\)/);
  assert.doesNotMatch(html(fixture()),/home-desktop-only/);
  let hides=false;
- sheet.walkDecls('display', decl => { if (decl.value==='none' && /home-(investments|accounts|recent|due|kpi)(?![-w])/.test(decl.parent.selector)) hides=true; });
+ for (const parsed of [sheet, postcss.parse(ui)]) parsed.walkDecls('display', decl => { if (decl.value==='none' && /(home|ui)-(investments|accounts|recent|due|kpi)(?![-\w])/.test(decl.parent.selector)) hides=true; });
  assert.equal(hides,false);
 });
 
@@ -293,5 +297,5 @@ test('trend card header shows Belanja bulan ini and its difference with income f
  assert.match(withoutReport,/Belanja bulan ini/);
  assert.ok(withoutReport.includes(money('1232500'))); // snapshot expenseMinor
  assert.doesNotMatch(withoutReport,/Selisih dengan pemasukan/);
- assert.doesNotMatch(html(fixture()),/home-kpi" data-tone="[a-z]+"><header><h2>Belanja/); // not a fifth KPI
+ assert.doesNotMatch(html(fixture()),/ui-kpi" data-tone="[a-z]+"><header><h2>Belanja/); // not a fifth KPI
 });

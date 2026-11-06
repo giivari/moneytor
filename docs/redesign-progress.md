@@ -59,3 +59,17 @@ app/credit/page.tsx; tes: home-briefing (baru), home-overview (ditulis ulang unt
 Hasil: typecheck + lint bersih; test:unit 133 lulus 1 skip; test:ui 134 lulus.
 DB lokal: migrasi 015 diterapkan ke moneta_p2_verify (backup .env.local-backups/*before-015*); satu sesi lokal 1 hari untuk screenshot.
 Berikutnya (setelah disetujui): Kredit & Talangan, lalu Mutasi, Aset, Investasi, Rencana, Analitik.
+
+## Langkah 3 (per halaman), 2026-11-06
+Fondasi bersama: `src/app/ui.css` (kartu, KPI, chip, notice, baris, breakdown, meter; `.page` = container `page`) dan
+`components/ui.tsx` (Card, Kpi, Breakdown, Amount, Chip, PageHeading), `components/entity-details.tsx` (detail inspector).
+Beranda: "Belanja bulan ini" + selisih pemasukan di header kartu grafik (dari laporan yang sama dengan grafik; snapshot bila
+tidak ada laporan), bukan KPI kelima. SVG dashboard disembunyikan dengan ruang tetap sampai hidrasi.
+
+### Kredit & Talangan
+- `/credit`: KPI (sisa utang = liabilitiesMinor, tagihan 30 hari = creditDebtMinor, sisa limit, piutang terbuka), tab
+  Kredit & PayLater (kartu per fasilitas, diarsipkan terpisah), Cicilan (kontrak dari `credit_installments`), Piutang & talangan.
+- Domain `lib/domain/credit-overview.ts` (status, kontrak, total; total diuji sama dengan summarizeBalances).
+- Keputusan kecil: tidak ada tombol "Bayar tagihan" per kartu (bayar lewat Catat → Transfer ke akun kredit); status bayar per
+  bulan tidak ditampilkan karena diturunkan dari saldo; jadwal lama di catatan (top-up) tidak tampil di tab Cicilan.
+- DB lokal tidak punya akun kredit/piutang: screenshot nyata = keadaan kosong; tampilan berisi diperiksa dengan fixture statis.

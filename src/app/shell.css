@@ -407,3 +407,19 @@
 /* Wordmark sits on the white header: ink lettering, no aurora (the aurora stays on auth pages). */
 .app-header .brand-wordmark { color: var(--ink); }
 .app-header .brand-identity::before { content: none; }
+.page-heading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
+
+/* Inspector sub-sections (e.g. installment schedule) */
+.inspector-section { display: grid; gap: var(--space-2); }
+.inspector-section h3 { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.inspector-schedule { display: grid; margin: 0; padding: 0; list-style: none; }
+.inspector-schedule li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--text-sm);
+}
+.inspector-note { margin: 0; font-size: var(--text-sm); }
