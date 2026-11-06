@@ -282,3 +282,16 @@ test('shared foundations retain readable type and control targets without maskin
  assert.match(crowdedOutput, /Rutin 3/); assert.doesNotMatch(crowdedOutput, /Rutin 4/);
  assert.match(crowdedOutput, /2 lainnya di Otomatisasi/);
 });
+
+test('trend card header shows Belanja bulan ini and its difference with income from the same report', () => {
+ const withReport=section(html(fixture(),analyticsFixture()),'home-trend');
+ assert.match(withReport,/Belanja bulan ini/);
+ assert.ok(withReport.includes(money('1232500')));
+ assert.match(withReport,/Selisih dengan pemasukan/);
+ assert.ok(withReport.includes(money('-232500')));
+ const withoutReport=section(html(fixture()),'home-trend');
+ assert.match(withoutReport,/Belanja bulan ini/);
+ assert.ok(withoutReport.includes(money('1232500'))); // snapshot expenseMinor
+ assert.doesNotMatch(withoutReport,/Selisih dengan pemasukan/);
+ assert.doesNotMatch(html(fixture()),/home-kpi" data-tone="[a-z]+"><header><h2>Belanja/); // not a fifth KPI
+});

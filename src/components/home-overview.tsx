@@ -217,7 +217,7 @@ export function HomeOverview({ snapshot, date, analytics = null }: { snapshot: S
   const primary = currencies[0];
   const summary = <div className="home-grid">
     <div className="home-main">
-      {primary && <HomeTrend report={analytics} currency={primary.currency} exponent={primary.exponent} />}
+      {primary && <HomeTrend report={analytics} currency={primary.currency} exponent={primary.exponent} expenseMinor={primary.expenseMinor} />}
       <RecentActivity recent={recent} />
     </div>
     <div className="home-side">

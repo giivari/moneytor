@@ -1,6 +1,8 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
+
+const noSubscription = () => () => {};
 import type { AnalyticsGranularity } from "@/lib/analytics/periods";
 import type { AnalyticsReport, ChargeReport, DimensionRow } from "@/lib/analytics/types";
 import {
@@ -46,6 +48,8 @@ export function useInsightsVisualTrend({
   granularity = "auto",
 }: VisualTrendProps) {
   const viewport = useInsightsViewport();
+  // False on the server and during hydration: the dashboard chart stays hidden (its box is reserved) until the real viewport width is known.
+  const hydrated = useSyncExternalStore(noSubscription, () => true, () => false);
   const mobile = dashboard ? false : viewport;
   const duration = Date.parse(report.period.endDayExclusive) - Date.parse(report.period.startDay);
   const maxBins = mobile ? (duration <= 62 * 86400000 ? 6 : 4) : granularity === "day" ? 14 : 12;
@@ -75,7 +79,7 @@ export function useInsightsVisualTrend({
   const axisLeft = 68;
   const step = (width - axisLeft - 12) / Math.max(1, rows.length);
   const money = (amount: string) => formatMinor(amount, currency, exponent);
-  return { report, currency, exponent, mobile, data, rows, active, id, select, maximum, width, bottom, axisLeft, step, money };
+  return { report, currency, exponent, hydrated, mobile, data, rows, active, id, select, maximum, width, bottom, axisLeft, step, money };
 }
 
 export type VisualTrendModel = ReturnType<typeof useInsightsVisualTrend>;
@@ -89,7 +93,7 @@ export function InsightsTrendSummary({ model, inlineDetails = false }: { model: 
 }
 
 function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, dashboard = false) {
-  const { report, currency, exponent, mobile, data, rows, active, id, select, maximum, width, bottom, step, money } = model;
+  const { report, currency, exponent, hydrated, mobile, data, rows, active, id, select, maximum, width, bottom, step, money } = model;
   if (!active) return <p className="insight-empty">Belum ada interval untuk mata uang ini.</p>;
   const helperCopy =
     data.granularity === "day"
@@ -126,6 +130,7 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
       {maximum === 0n && <p className="insight-empty">Pemasukan dan belanja nol. Transfer tetap dilaporkan terpisah.</p>}
       <svg
         className="insight-fit-chart"
+        data-pending={dashboard && !hydrated ? "true" : undefined}
         viewBox={`0 0 ${width} ${dashboard ? 140 : 224}`}
         role="group"
         aria-labelledby={`${id}-title`}
