@@ -13,7 +13,8 @@ import { ListToolbar } from "./list-toolbar";
 import { CompactFinancialRow } from "./compact-financial-row";
 import { ResponsiveDisclosure } from "./responsive-disclosure";
 import { useMobileViewport } from "./use-mobile-viewport";
-import { ArrowLeft, ArrowClockwise, ChartLineUp, Check, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ChartLineUp, Check, Coins, PencilSimple, Plus, Receipt, SpinnerGap, Trash, TrendUp, X } from "@phosphor-icons/react";
+import { Kpi, PageHeading } from "./ui";
 import { useFinanceDialog } from "./finance-form-hooks";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
@@ -311,7 +312,9 @@ export function InvestmentManager(workspace: Workspace) {
     try { await request("price-refresh", { instrumentId, idempotencyKey: crypto.randomUUID() }); refresh(); notify("Harga berhasil diperbarui."); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Harga belum dapat dimuat. Gunakan harga manual."); } finally { finish(); }
   }
-  return <div className="page investment-page"><Link className="settings-back" href="/assets"><ArrowLeft size={17} /> Assets</Link><div className="page-heading finance-heading"><div><span className="eyebrow">KEPEMILIKAN & NILAI</span><h1>Investasi</h1></div><div className="page-heading-actions"><ExportMenuButton dataset="investments" label="Ekspor Portofolio" />{workflow.recorded && workflow.canTrade && <button type="button" className="button-primary" disabled={refreshing} onClick={() => setForm({ mode: "trade" })}><Plus size={17} /> Catat transaksi</button>}</div></div>
+  return <div className="page investment-page">
+    <header className="page-header"><PageHeading title="Investasi" description="Portofolio, instrumen, posisi, dan harga pasar. Kas untuk membeli tetap dicatat di Aset."
+      actions={<><ExportMenuButton dataset="investments" label="Ekspor Portofolio" />{workflow.recorded && workflow.canTrade && <button type="button" className="button-primary" disabled={refreshing} onClick={() => setForm({ mode: "trade" })}><Plus size={17} /> Catat transaksi</button>}</>} /></header>
     {workflow.stage !== "ready" && <section className="surface investment-onboarding" aria-labelledby="investment-start-title">
       <span className="eyebrow">MULAI DARI SINI</span><h2 id="investment-start-title">{workflow.stage === "portfolio" ? "Di mana investasi Anda disimpan?" : workflow.stage === "instrument" ? "Apa yang Anda miliki?" : workflow.stage === "ownership" ? "Sudah dimiliki atau pembelian baru?" : "Lengkapi nilai pasar"}</h2>
       <ol className="investment-steps">{(["portfolio", "instrument", "ownership", "price"] as const).map((step, index) => {
@@ -327,12 +330,19 @@ export function InvestmentManager(workspace: Workspace) {
       </div>
     </section>}
     {error && <p className="finance-error" role="alert">{error}</p>}
-    {!!snapshot.totals.length && <div className="investment-totals">{snapshot.totals.map((total) => <section className="surface" key={total.currency}><span className="eyebrow">{total.currency} · POSISI TERCATAT</span>
-      <div className="investment-aggregate"><dl className="investment-totals-primary"><div><dt>{mobile ? "Nilai pasar" : "Nilai pasar berharga"}</dt><dd className="financial-value financial-value--summary">{formatMinor(total.marketMinor, total.currency, total.exponent)}</dd></div>
-        <div><dt>{mobile ? "Belum terealisasi" : `Laba/rugi belum terealisasi${total.unpricedCount ? " (berharga)" : ""}`}</dt><dd className="financial-value financial-value--summary"><Pnl value={total.unrealizedMinor} currency={total.currency} exponent={total.exponent} /></dd></div></dl>
-        <ResponsiveDisclosure label="Rincian portofolio" desktopExpanded className="investment-aggregate-details"><dl className="investment-totals-secondary"><div><dt>Biaya perolehan tersisa</dt><dd>{formatMinor(total.costBasisMinor, total.currency, total.exponent)}</dd></div>
-          <div><dt>Laba/rugi terealisasi</dt><dd><Pnl value={total.realizedMinor} currency={total.currency} exponent={total.exponent} /></dd></div></dl></ResponsiveDisclosure></div>
-      {total.unpricedCount > 0 && <p className="investment-warning">{total.unpricedCount} posisi belum memiliki harga.</p>}</section>)}</div>}
+    {snapshot.totals.map((total) => {
+      const money = (value: string) => formatMinor(value, total.currency, total.exponent);
+      const tone = (value: string | null) => (value === null ? "" : BigInt(value) < 0n ? "negative" : BigInt(value) > 0n ? "positive" : "") as "" | "negative" | "positive";
+      return <div className="investment-kpis" key={total.currency}>
+        <div className="ui-kpis" aria-label={`Ringkasan investasi ${total.currency}`}>
+          <Kpi title="Nilai pasar" icon={TrendUp} tone="info" value={money(total.marketMinor)} note={total.unpricedCount ? `Hanya posisi berharga · ${total.currency}` : `Semua posisi berharga · ${total.currency}`} />
+          <Kpi title="Laba/rugi belum terealisasi" icon={ChartLineUp} tone="neutral" value={total.unrealizedMinor === null ? "Belum ada harga" : money(total.unrealizedMinor)} valueTone={tone(total.unrealizedMinor)} note="Nilai pasar − biaya perolehan posisi berharga" />
+          <Kpi title="Biaya perolehan tersisa" icon={Coins} tone="neutral" value={money(total.costBasisMinor)} note="Rata-rata tertimbang" />
+          <Kpi title="Laba/rugi terealisasi" icon={Receipt} tone="positive" value={total.realizedMinor === null ? "—" : money(total.realizedMinor)} valueTone={tone(total.realizedMinor)} note="Dari penjualan yang tercatat" />
+        </div>
+        {total.unpricedCount > 0 && <p className="ui-notice" data-tone="warning">{total.unpricedCount} posisi belum memiliki harga dan tidak masuk nilai pasar.</p>}
+      </div>;
+    })}
     {workflow.recorded && <section className="investment-holdings"><SectionHeading title="Posisi instrumen" eyebrow="KEPEMILIKAN" action={<button type="button" className="finance-secondary section-add-action" disabled={!hasPair || refreshing} onClick={() => setForm({ mode: "opening" })}><Plus size={15} /> Posisi awal</button>} />
       {!snapshot.holdings.length ? <div className="finance-empty-inline"><ChartLineUp size={26} /><p>Mulai dengan portofolio dan instrumen di bawah. Catat posisi awal untuk investasi yang sudah dimiliki, atau beli menggunakan aset kas.</p></div> : sortNamed(snapshot.holdings, holding => `${snapshot.portfolios.find(p => p.id === holding.portfolioId)?.displayName ?? ""} ${snapshot.instruments.find(i => i.id === holding.instrumentId)?.displayName ?? ""}`, holding => `${holding.portfolioId}/${holding.instrumentId}`).map((holding) => { const { portfolio, instrument } = identity(holding);
         const priceAction = <button type="button" className="row-action" disabled={!instrument.isActive || refreshing} onClick={() => setForm({ mode: "price", instrumentId: instrument.id })}>{holding.price ? "Ubah harga" : "Tambahkan harga"}</button>;
@@ -341,7 +351,7 @@ export function InvestmentManager(workspace: Workspace) {
           : null;
         return <article className="surface investment-holding" key={`${portfolio.id}/${instrument.id}`}><div className="investment-holding-heading"><div><strong>{instrument.displayName}</strong><span>{portfolio.displayName} · {instrument.typeName}{!portfolio.isActive || !instrument.isActive ? " · Diarsipkan" : ""}</span></div><span className="investment-units">{formatQuantity(holding.quantity)} unit</span></div>
         <dl className="investment-key-metrics" data-priced={holding.marketMinor !== null}><div data-wide={holding.marketMinor === null || formatMinor(holding.marketMinor,instrument.currency,instrument.exponent).length > 16}><dt>Nilai pasar</dt><dd className="financial-value financial-value--entity">{holding.marketMinor===null?"Belum ada harga pasar":formatMinor(holding.marketMinor, instrument.currency, instrument.exponent)}</dd></div>
-          {holding.unrealizedMinor !== null && <div data-wide={formatMinor(holding.unrealizedMinor,instrument.currency,instrument.exponent).length > 16}><dt>{mobile ? "Unrealized P/L" : "Laba/rugi belum terealisasi"}</dt><dd className="financial-value financial-value--entity"><Pnl value={holding.unrealizedMinor} currency={instrument.currency} exponent={instrument.exponent} />{holding.unrealizedPercent !== null && <small>{holding.unrealizedPercent}%</small>}</dd></div>}{(!mobile || holding.marketMinor === null) && <div data-wide={formatMinor(holding.costBasisMinor,instrument.currency,instrument.exponent).length > 16}><dt>Biaya perolehan tersisa</dt><dd className="financial-value financial-value--entity">{formatMinor(holding.costBasisMinor,instrument.currency,instrument.exponent)}</dd></div>}</dl>
+          {holding.unrealizedMinor !== null && <div data-wide={formatMinor(holding.unrealizedMinor,instrument.currency,instrument.exponent).length > 16}><dt>{mobile ? "Belum terealisasi" : "Laba/rugi belum terealisasi"}</dt><dd className="financial-value financial-value--entity"><Pnl value={holding.unrealizedMinor} currency={instrument.currency} exponent={instrument.exponent} />{holding.unrealizedPercent !== null && <small>{holding.unrealizedPercent}%</small>}</dd></div>}{(!mobile || holding.marketMinor === null) && <div data-wide={formatMinor(holding.costBasisMinor,instrument.currency,instrument.exponent).length > 16}><dt>Biaya perolehan tersisa</dt><dd className="financial-value financial-value--entity">{formatMinor(holding.costBasisMinor,instrument.currency,instrument.exponent)}</dd></div>}</dl>
         {!mobile && holding.price ? <p className="investment-price-status">Harga pasar / unit <strong className="financial-value financial-value--supporting">{formatInvestmentPrice(holding.price.price, instrument.currency, instrument.exponent)}</strong>{holding.stale && <span className="investment-warning">Harga terakhir &gt;24 jam</span>}</p>
           : null}
         {mobile && holding.price && holding.stale && <p className="investment-warning investment-price-status">Harga terakhir lebih dari 24 jam.</p>}

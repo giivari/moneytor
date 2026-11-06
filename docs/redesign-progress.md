@@ -88,3 +88,9 @@ tidak ada laporan), bukan KPI kelima. SVG dashboard disembunyikan dengan ruang t
 - finance.css dimigrasi ke token; kartu total lama dihapus; `!important` diganti selektor berulang (spesifisitas setara);
   `user-select: none` pada tombol dihapus. Warna jenuh dipetakan per keluarga (biru→data-blue, hijau→positive, dst.).
 - Label "Unrealized" → "Belum terealisasi".
+
+### Investasi
+- Kepala "Investasi" (tanpa tautan balik ke Assets; modul sendiri di rail), KPI per mata uang: nilai pasar, laba/rugi belum
+  terealisasi, biaya perolehan tersisa, laba/rugi terealisasi (dari investmentSnapshot). Onboarding, posisi, riwayat tetap.
+- investments.css bertoken; `.pnl-*` tanpa `!important` (kelas berulang). Label "Unrealized" diterjemahkan.
+- Belum: label ekspor (lib/exports) masih memuat "Unrealized P/L" di berkas ekspor; tidak diubah karena format ekspor.
