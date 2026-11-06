@@ -1,50 +1,5 @@
 /* Interactive First-Time Feature Callout & Spotlight Tutorial */
 
-@media (min-width: 1021px) {
-  .site-header .header-inner {
-    grid-template-columns: minmax(90px, 1fr) auto minmax(max-content, 1fr);
-  }
-}
-
-.header-actions {
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.onboarding-help-trigger {
-  display: inline-grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  flex: none;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
-  cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
-}
-
-.onboarding-help-trigger:hover {
-  background: rgba(255, 255, 255, 0.26);
-  border-color: rgba(255, 255, 255, 0.52);
-}
-
-.onboarding-help-trigger:active {
-  transform: translateY(1px);
-}
-
-.onboarding-help-trigger:focus-visible {
-  outline: 2px solid #ffffff;
-  outline-offset: 2px;
-}
-
-.privacy-toggle-trigger[aria-pressed="true"] {
-  background: rgba(255, 255, 255, 0.28);
-  border-color: rgba(255, 255, 255, 0.65);
-}
-
 html[data-privacy="hidden"] .financial-amount .financial-amount-group ~ .financial-amount-group,
 html[data-privacy="hidden"] .financial-amount wbr {
   display: none;
@@ -53,37 +8,6 @@ html[data-privacy="hidden"] .financial-amount wbr {
 html[data-privacy="hidden"] .financial-value,
 html[data-privacy="hidden"] .financial-amount {
   letter-spacing: 0.02em;
-}
-
-@media (max-width: 1020px) {
-  /* Round buttons continue the brand capsule's gradient tail (soft periwinkle). */
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .onboarding-help-trigger {
-    width: 46px;
-    height: 46px;
-    border: 0;
-    border-radius: 999px;
-    background: #627cce;
-    color: #ffffff;
-    box-shadow: none;
-    transition: background-color 0.15s ease, transform 0.12s ease;
-  }
-  .privacy-toggle-trigger { background: #6082ca; }
-  .onboarding-help-trigger:hover { background: #5670c4; border-color: transparent; }
-  .onboarding-help-trigger:active { transform: scale(0.95); }
-  .onboarding-help-trigger:focus-visible { outline: 2px solid #4b4fcc; outline-offset: 2px; }
-  .privacy-toggle-trigger[aria-pressed="true"] { background: #4b5fb8; border-color: transparent; }
-}
-
-@media (max-width: 390px) {
-  .onboarding-help-trigger {
-    width: 44px;
-    height: 44px;
-  }
 }
 
 .onboarding-layer {

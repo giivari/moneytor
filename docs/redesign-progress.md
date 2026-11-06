@@ -41,3 +41,21 @@ File: `src/app/{tokens,globals,shell,density,typography,interaction,responsive}.
 `tests/home-overview.test.mjs` (asersi token pindah ke tokens.css).
 Hasil: typecheck, lint (eslint + stylelint) bersih; test:unit 129 lulus 1 skip; test:ui 142 lulus.
 Berikutnya: shell baru (rail 7 modul, header, inspector) dan Beranda.
+
+## Fase shell + Beranda (langkah 2), 2026-11-06 — menunggu persetujuan arah, belum di-commit
+Keputusan:
+- Shell grid: header (brand, privasi, panduan, "Catat"), rail 7 modul + Pengaturan (224px; 72px ikon-atas-label di 768-1279),
+  dock mobile (Beranda, Mutasi, Catat, Aset, Lainnya). Daftar modul tunggal di `components/navigation.ts`.
+- Inspector tunggal (`components/inspector.tsx`): kolom ketiga >=1280, drawer + scrim <1280, bottom sheet <=767; Escape,
+  fokus kembali ke pemicu. Baris membuka inspector lewat tombol judul; klik baris tidak membuka saat teks sedang diseleksi.
+- Beranda: 4 KPI (Kekayaan bersih = netWorthMinor, Dana siap pakai = availableMinor, Tagihan kredit terdekat, Piutang),
+  tab Ringkasan / Rincian kalkulasi (`components/page-tabs.tsx`), container query mengikuti lebar halaman (inspector terbuka).
+- Domain baru `lib/domain/home-briefing.ts`: netWorthComponents (jumlahnya = summarizeBalances.netWorth), creditBillsDue,
+  receivablesSummary. Mutasi terakhir 6 baris (`listActivities(false, 6)`). Konfirmasi otomatisasi dibatasi 3 + tautan.
+- `/credit` sementara placeholder. Grafik dashboard memakai viewBox 340 di ponsel agar teks sumbu >= 12px.
+File: shell.css, home.css, tokens.css (aksen modul), app-shell, inspector, inspector-facts, navigation, page-tabs, home-card,
+home-overview, home-analytics, home-automation-confirmations, quick-add, feature-onboarding, insights-visuals, summary.ts,
+app/credit/page.tsx; tes: home-briefing (baru), home-overview (ditulis ulang untuk kontrak baru), list-order.
+Hasil: typecheck + lint bersih; test:unit 133 lulus 1 skip; test:ui 134 lulus.
+DB lokal: migrasi 015 diterapkan ke moneta_p2_verify (backup .env.local-backups/*before-015*); satu sesi lokal 1 hari untuk screenshot.
+Berikutnya (setelah disetujui): Kredit & Talangan, lalu Mutasi, Aset, Investasi, Rencana, Analitik.

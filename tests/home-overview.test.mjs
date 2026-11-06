@@ -46,13 +46,14 @@ const {reportingPeriod, previousPeriod, monthKeys} = await import('../src/lib/an
 const {default: HomePage} = await import('../src/app/page.tsx');
 const {GET, POST} = await import('../src/app/api/home/preferences/route.ts');
 const {formatMinor} = await import('../src/lib/finance/format.ts');
+const credit = await import('../src/lib/domain/credit.ts');
 const postcss = createRequire(import.meta.url)('postcss');
 const sheet = postcss.parse(source('src/app/home.css'));
 const css = source('src/app/home.css');
 const html = (snapshot,analytics=null) => readableMoneyMarkup(renderToStaticMarkup(React.createElement(HomeOverview, {snapshot,analytics,date:'Minggu, 11 Oktober 2026'})));
 const section = (output, name) => output.match(new RegExp(`<section[^>]*class="[^"]*${name}[^"]*"[\\s\\S]*?</section>`))?.[0] ?? '';
 const money = value => formatMinor(value,'IDR',0);
-const entry = overrides => ({currency:'IDR',exponent:0,totalMinor:'23778769',liquidMinor:'10767500',spendableMinor:'-1232500',expenseMinor:'1232500',availableMinor:'-1732500',dueMinor:'500000',uncoveredMinor:'500000',unpricedCount:1,...overrides});
+const entry = overrides => ({currency:'IDR',exponent:0,totalMinor:'23778769',netWorthMinor:'23778769',liabilitiesMinor:'0',creditDebtMinor:'0',eligibleMinor:'10767500',reservedMinor:'12000000',coveredMinor:'0',liquidMinor:'10767500',spendableMinor:'-1232500',expenseMinor:'1232500',availableMinor:'-1732500',dueMinor:'500000',uncoveredMinor:'500000',unpricedCount:1,...overrides});
 const activity = (id, kind, overrides={}) => ({id,kind,currency:'IDR',exponent:0,baseAmountMinor:'100000',charges:[],note:null,categoryName:null,sourceName:'BNI',destinationName:null,recurringRuleName:null,occurredAt:'2026-10-10T17:30:00Z',...overrides});
 const fixture = () => ({throughDay:'2026-11-10',planningReady:true,currencies:[entry()],assets:[{id:'account',displayName:'BNI',providerName:'Bank',assetTypeName:'Rekening',currency:'IDR',exponent:0,balanceMinor:'10767500',normallyLiquid:true,normallySpendable:true,isActive:true}],
  investment:{hasHoldings:true,totals:[{currency:'IDR',exponent:0,marketMinor:'13011269',unrealizedMinor:'-230000',unpricedCount:1}]},
@@ -74,83 +75,89 @@ test('ordinary Home lifecycle reads once, without preferences or additional reco
  assert.deepEqual(p.calls,['scheduled','composable','snapshot','analytics']);
  assert.deepEqual(p.inputs,[{period:{kind:'monthly_trend',months:6},includeContext:false}]);
  assert.deepEqual(snapshot,before);
- assert.match(output,/Keuangan hari ini/);
+ assert.match(output,/<h1>Beranda<\/h1>/);
  assert.doesNotMatch(output,/Atur tampilan|data-density|Comfortable|Compact|Tampilan Home tersimpan|<dialog|type="radio"/);
  assert.doesNotMatch(source('src/app/page.tsx'),/preferences|refresh\(|fetch\(|use client/);
 });
 
-test('position, financial warnings and all desktop modules retain exact values and links', () => {
+test('KPIs, warnings and every Beranda module show exact snapshot values and links', () => {
  const output=html(fixture());
- for (const label of ['Dapat digunakan','Dana likuid','Total aset diketahui','Pengeluaran bulan ini','Setelah kewajiban','Investasi','Akun &amp; aset','Transaksi terkini','Cara membaca posisi keuangan']) assert.ok(output.includes(label),label);
- for (const value of ['-1232500','10767500','23778769','1232500','-1732500','500000']) assert.ok(output.includes(money(value)),value);
+ for (const label of ['Kekayaan bersih','Dana siap pakai','Tagihan kredit terdekat','Piutang belum kembali','Arus kas 6 bulan','Mutasi terakhir','Jatuh tempo terdekat','Akun &amp; aset','Investasi','Rincian kalkulasi']) assert.ok(output.includes(label),label);
+ for (const value of ['23778769','-1732500','500000']) assert.ok(output.includes(money(value)),value);
  assert.match(output,/1 posisi tanpa harga belum termasuk/);
  assert.match(output,/Kewajiban belum tercakup cadangan/);
- assert.match(output,/Posisi setelah kewajiban negatif/);
- for (const target of ['/assets','/assets/investments','/transactions','/planning']) assert.ok(output.includes(`href="${target}"`));
+ assert.match(output,/Dana siap pakai negatif/);
+ for (const target of ['/assets','/assets/investments','/transactions','/credit']) assert.ok(output.includes(`href="${target}"`),target);
  assert.match(section(output,'home-investments'),/posisi berharga/);
  assert.ok(section(output,'home-investments').includes(money('-230000')));
 });
 
-test('mobile priority has shared warnings and exactly three recent rows, without redundant asset navigation', () => {
- const output=html(fixture()), recent=section(output,'home-recent');
- assert.equal((recent.match(/<li[ >]/g)||[]).length,3);
- assert.doesNotMatch(recent,/Keempat/);
- assert.ok(output.indexOf('home-hero')<output.indexOf('home-obligations'));
- assert.ok(output.indexOf('home-obligations')<output.indexOf('home-recent'));
- assert.match(output,/home-investments home-desktop-only/);
- assert.match(output,/home-accounts home-desktop-only/);
- assert.doesNotMatch(output,/home-mobile-access/);
- assert.match(output,/home-warnings"><p class="investment-warning home-warning">1 posisi tanpa harga/);
- assert.doesNotMatch(output,/<details open|carousel|scroll-snap/);
+test('Rincian kalkulasi reconciles net worth and Dana siap pakai from the same snapshot', () => {
+ const output=html(fixture());
+ assert.match(output,/role="tab"[^>]*aria-selected="true"[^>]*>Ringkasan</);
+ assert.match(output,/Komponen kekayaan bersih · IDR/);
+ assert.match(output,/Rumus dana siap pakai · IDR/);
+ // cash 10.767.500 + investments 13.011.269 − liabilities 0 = 23.778.769 (netWorthMinor)
+ for (const value of ['10767500','13011269','23778769']) assert.ok(output.includes(money(value)),value);
+ // eligible 10.767.500 − reserved 12.000.000 − uncovered 500.000 = −1.732.500 (availableMinor)
+ for (const value of ['12000000','-1732500']) assert.ok(output.includes(money(value)),value);
+ assert.match(output,/1 posisi tanpa harga tidak terhitung/);
 });
 
-test('only relevant obligation context stays visible on mobile, independently of transaction data', () => {
- for (const [overrides,ready,expected] of [
-  [{availableMinor:'100000',dueMinor:'0',uncoveredMinor:'0'},true,false],
-  [{availableMinor:'100000',dueMinor:'100000',uncoveredMinor:'0'},true,true],
-  [{availableMinor:'100000',dueMinor:'0',uncoveredMinor:'1000'},true,true],
-  [{availableMinor:'-1',dueMinor:'0',uncoveredMinor:'0'},true,true],
-  [{availableMinor:'-1'},false,false]]) {
-  const snapshot=fixture(); snapshot.currencies=[entry(overrides)]; snapshot.planningReady=ready;
-  assert.ok(section(html(snapshot),'home-obligations').includes(`data-mobile-relevant="${expected}"`));
- }
+test('credit bills and receivables come from asset_class, sorted by due day', () => {
+ const snapshot=fixture(); snapshot.throughDay='2999-12-31';
+ snapshot.assets.push(
+  {...snapshot.assets[0],id:'card',displayName:'Kartu Uji',assetClass:'liability',normallyLiquid:false,normallySpendable:false,balanceMinor:'-700000',note:credit.encodeCreditNote('',true,{dueDay:1,cutoffDay:20,limitMinor:0n,carryCurrentMinor:0n,schedule:[]}),creditInstallments:[]},
+  {...snapshot.assets[0],id:'loan',displayName:'Talangan Budi',assetClass:'receivable',balanceMinor:'250000'});
+ const output=html(snapshot);
+ assert.match(section(output,'home-due'),/Kartu Uji/);
+ assert.ok(section(output,'home-due').includes(money('700000')));
+ assert.doesNotMatch(output,/Tidak ada tagihan dalam 30 hari/);
+ assert.ok(output.includes(money('250000')));
+ assert.match(output,/1 akun<\/span> Menunggu pelunasan/);
+ assert.doesNotMatch(section(output,'home-accounts'),/Kartu Uji/);
 });
 
-test('recent Expense includes linked charges once; Transfer retains principal and separate fee', () => {
+test('recent activity shows up to six rows; Expense includes charges once; Transfer keeps principal and fee apart', () => {
  const snapshot=fixture(), before=structuredClone(snapshot), output=section(html(snapshot),'home-recent');
+ assert.equal((output.match(/<li[ >]/g)||[]).length,4);
  assert.ok(output.includes(`−${money('82500')}`));
  assert.ok(output.includes(`+${money('1000000')}`));
- assert.ok(output.includes(money('100000'))); assert.ok(output.includes(money('1000')));
+ assert.ok(output.includes(money('100000'))); assert.ok(output.includes(`Biaya ${money('1000')}`));
  assert.ok(!output.includes(money('101000')));
- assert.match(output,/Otomatis: Makan Harian/);
- assert.match(output,/>BNI · Otomatisasi · 11 Okt<\/small>/);
+ assert.match(output,/>BNI · Otomatisasi<\/small>/);
  assert.match(output,/BNI → Tunai/);
+ assert.match(output,/data-inspector-trigger/);
  assert.deepEqual(snapshot,before);
+ const many=fixture(); many.recent=[...many.recent,activity('5','expense'),activity('6','expense'),activity('seventh','expense',{note:'Ketujuh'})];
+ const capped=section(html(many),'home-recent');
+ assert.equal((capped.match(/<li[ >]/g)||[]).length,6);
+ assert.doesNotMatch(capped,/Ketujuh/);
 });
 
-test('archived account labels and genuine empty states are retained', () => {
+test('archived accounts and genuine empty states are described accurately', () => {
  const snapshot=fixture(); snapshot.assets[0].isActive=false; snapshot.recent=[];
- assert.match(html(snapshot),/Bank · Diarsipkan/);
+ assert.match(html(snapshot),/Belum ada akun aktif/);
  assert.match(html(snapshot),/Belum ada transaksi tercatat/);
  snapshot.assets=[];
  assert.match(html(snapshot),/Belum ada akun atau aset tercatat/);
  assert.doesNotMatch(html(snapshot),/Mulai dari aset pertama/); // investment-only owner
  snapshot.investment={hasHoldings:false,totals:[]}; snapshot.currencies=[];
  assert.match(html(snapshot),/Mulai dari aset pertama/);
- assert.doesNotMatch(html(snapshot),/Rp0|home-recent|home-desktop-details/);
+ assert.doesNotMatch(html(snapshot),/Rp0|home-recent|home-kpis/);
 });
 
-test('investment zero/unknown price data is never estimated or treated as consumption', () => {
+test('investment zero/unknown price data is never estimated', () => {
  const snapshot=fixture(); snapshot.investment.totals[0].marketMinor='0'; snapshot.investment.totals[0].unrealizedMinor='0';
  const output=html(snapshot), investments=section(output,'home-investments');
  assert.match(investments,/Rp0/); assert.match(investments,/1 posisi belum memiliki harga/);
- assert.ok(section(output,'home-expense').includes(money('1232500')));
+ assert.doesNotMatch(output,/Investasi \(nilai pasar\)/); // a zero component is not listed as value
  snapshot.investment.totals=[];
  assert.match(section(html(snapshot),'home-investments'),/Catat portofolio/);
 });
 
 test('currencies remain separate, deterministic and use their exact exponent', () => {
- const snapshot=fixture(); snapshot.currencies.unshift(entry({currency:'USD',exponent:2,totalMinor:'123456',liquidMinor:'123456',spendableMinor:'123456',expenseMinor:'0',availableMinor:'123456',unpricedCount:0}));
+ const snapshot=fixture(); snapshot.currencies.unshift(entry({currency:'USD',exponent:2,totalMinor:'123456',netWorthMinor:'123456',liquidMinor:'123456',eligibleMinor:'123456',reservedMinor:'0',spendableMinor:'123456',expenseMinor:'0',availableMinor:'123456',dueMinor:'0',uncoveredMinor:'0',unpricedCount:0}));
  const output=html(snapshot);
  assert.ok(output.indexOf('Ringkasan IDR')<output.indexOf('Ringkasan USD'));
  assert.ok(output.includes('USD 1.234,56'));
@@ -160,39 +167,30 @@ test('currencies remain separate, deterministic and use their exact exponent', (
 
 test('large negative money keeps exact group tokens, without focusable scroll controls', () => {
  const snapshot=fixture(), big='-999999999999999999999999999';
- snapshot.currencies[0].spendableMinor=big; snapshot.currencies[0].totalMinor=big;
+ snapshot.currencies[0].netWorthMinor=big; snapshot.currencies[0].totalMinor=big;
  snapshot.assets[0].balanceMinor=big; snapshot.investment.totals[0].unrealizedMinor=big;
  const output=html(snapshot), amount=money(big);
  assert.ok(output.includes(amount));
- assert.match(section(output,'home-hero'),/data-wide="true"/);
- assert.doesNotMatch(section(output,'home-hero'),/tabindex|<input|role="spinbutton"/);
- assert.match(section(output,'home-accounts'),/<li[^>]*data-wide="true"/);
+ const kpi=section(output,'home-kpi');
+ assert.match(kpi,/data-wide="true"/);
+ assert.doesNotMatch(kpi,/tabindex|<input|role="spinbutton"/);
+ assert.match(section(output,'home-accounts'),/data-wide="true"/);
  assert.doesNotMatch(output,/text-overflow|title="−Rp/);
- assert.match(css,/home-investment-currency dl[^{]*\{[^}]*display: grid/);
 });
 
-test('responsive contracts use four KPIs, three supporting columns and unscrollable grouping tokens', () => {
- assert.match(css,/home-kpis \{[^}]*repeat\(4,minmax\(0,1fr\)\)/);
- assert.match(css,/home-support-grid \{[^}]*repeat\(3,minmax\(0,1fr\)\)/);
- assert.doesNotMatch(css,/overflow-x:\s*(auto|scroll|hidden)|scale\(|data-density/);
+test('responsive contracts: container-driven KPI and column grids, no hidden modules, no scrolling amounts', () => {
+ assert.match(css,/\.home-kpis \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+ assert.match(css,/@container home \(min-width: 900px\) \{\s*\.home-kpis \{ grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+ assert.match(css,/\.home-grid \{ grid-template-columns: minmax\(0, 7fr\) minmax\(0, 5fr\)/);
+ assert.doesNotMatch(css,/overflow-x:\s*(auto|scroll|hidden)|scale\(|data-density|home-desktop-only|user-select/);
  assert.match(source('src/app/typography.css'),/financial-value\.financial-amount[^}]*overflow: visible; overflow-wrap: normal/);
- assert.match(css,/home-recent-copy > strong[^}]*-webkit-line-clamp: 2/);
- assert.match(css,/home-recent-copy > small[^}]*white-space: nowrap; overflow: hidden; text-overflow: ellipsis/);
- assert.match(source('src/app/responsive.css'),/main-content \{ padding-bottom: var\(--dock-clearance\)/);
-});
-
-for (const width of [360,390,430,768,1024,1280,1440,1920]) test(`CSS visibility contract at ${width}px (not a browser layout measurement)`, () => {
- const mobile=width<=767;
- let hidesFullCards=false;
- sheet.walkAtRules('media', rule => {
-  if(rule.params!=='(max-width: 767px)' || !mobile) return;
-  rule.walkRules(child => {
-   child.walkDecls('display', decl => {
-    if(child.selector.includes('.home-page .home-desktop-only') && decl.value==='none') hidesFullCards=true;
-   });
-  });
- });
- assert.equal(hidesFullCards,mobile);
+ assert.match(css,/home-recent-copy strong \{[^}]*-webkit-line-clamp: 2/);
+ assert.match(css,/home-recent-copy small, \.home-row-copy small \{[^}]*text-overflow: ellipsis; white-space: nowrap/);
+ assert.match(source('src/app/shell.css'),/\.main-content \{ padding: var\(--space-4\) var\(--space-4\) var\(--dock-clearance\)/);
+ assert.doesNotMatch(html(fixture()),/home-desktop-only/);
+ let hides=false;
+ sheet.walkDecls('display', decl => { if (decl.value==='none' && /home-(investments|accounts|recent|due|kpi)(?![-w])/.test(decl.parent.selector)) hides=true; });
+ assert.equal(hides,false);
 });
 
 test('retired authenticated GET/POST never loads storage, financial readers or reconciliation', async () => {
@@ -242,7 +240,7 @@ test('Home reuses real P6A trend/category report with visible scope and exact, i
  const output=html(snapshot,report);
  assert.match(output,/Pemasukan &amp; belanja/); assert.match(output,/Komposisi belanja/);
  assert.match(output,/Periode berjalan/); assert.match(output,/Tanpa kategori/);
- assert.match(output,/Tren IDR/); assert.match(output,/viewBox="0 0 600 140"/);
+ assert.match(output,/Tren IDR/); assert.match(output,/viewBox="0 0 340 140"/); // narrow-first on the server
  assert.match(output,/pemasukan Rp1\.000\.000, belanja Rp1\.232\.500, net −Rp232\.500/i);
  assert.match(output,/total Rp1\.232\.500/); assert.match(output,/Biaya admin pada transaksi Transfer/);
  assert.match(output,/role="button" tabindex="0"/); // only chart selection is interactive
@@ -276,5 +274,11 @@ test('shared foundations retain readable type and control targets without maskin
  assert.match(pendingOutput, /Parkir Stasiun/);
  assert.match(pendingOutput, /Konfirmasi/);
  assert.match(pendingOutput, /Lewati/);
- assert.ok(pendingOutput.indexOf('home-automation-alert') < pendingOutput.indexOf('home-hero'));
+ assert.ok(pendingOutput.indexOf('home-automation-alert') < pendingOutput.indexOf('home-due'));
+ const crowded = fixture();
+ crowded.pendingAutomations = [1,2,3,4,5].map(n => ({...withPending.pendingAutomations[0], key:`schedule:occ-${n}`, id:`occ-${n}`, title:`Rutin ${n}`}));
+ const crowdedOutput = html(crowded);
+ assert.match(crowdedOutput, /Konfirmasi transaksi otomatis \(5\)/);
+ assert.match(crowdedOutput, /Rutin 3/); assert.doesNotMatch(crowdedOutput, /Rutin 4/);
+ assert.match(crowdedOutput, /2 lainnya di Otomatisasi/);
 });

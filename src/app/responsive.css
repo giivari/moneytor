@@ -95,9 +95,6 @@ select { appearance: none; -webkit-appearance: none; background-image: url("data
 .transaction-optional .field-grid { margin-bottom: 4px; }
 .transaction-dialog .finance-actions { margin-top: 20px; }
 
-@media (max-width: 1020px) {
-  .main-content { padding-bottom: var(--dock-clearance); }
-}
 @media (max-width: 760px) {
   .hero-aside { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero-aside strong { overflow-wrap: anywhere; }

@@ -3,92 +3,85 @@
 import { useLinkStatus } from "next/link";
 import { AppLink as Link } from "./app-link";
 import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChartDonut, DotsThree, GearSix, House, List, SquaresFour, Target } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
+import { CalendarCheck, ChartBar, CreditCard, DotsThree, GearSix, House, Rows, TrendUp, Wallet, type IconProps } from "@phosphor-icons/react";
 import { BrandIdentity } from "./brand-identity";
 import { FeatureOnboarding } from "./feature-onboarding";
 import { PrivacyAmountToggle } from "./privacy-toggle";
 import { QuickAdd } from "@/components/quick-add";
 import { LoadingIndicator } from "./loading-indicator";
 import { useFinanceFeedback } from "./finance-feedback";
+import { InspectorPanel, InspectorProvider, useInspector } from "./inspector";
+import { activeArea, dockPrimary, modules, settingsModule, type ModuleArea, type NavModule } from "./navigation";
+import { ICON_MD } from "./icon-size";
 
-function NavigationIcon({ children }: { children: React.ReactNode }) {
+const icons: Record<ModuleArea, ComponentType<IconProps>> = {
+  home: House, transactions: Rows, assets: Wallet, credit: CreditCard, investments: TrendUp,
+  planning: CalendarCheck, insights: ChartBar, settings: GearSix,
+};
+
+function NavigationIcon({ area, active }: { area: ModuleArea; active: boolean }) {
   const { pending } = useLinkStatus();
-  return pending ? <span className="navigation-pending" role="status"><LoadingIndicator><span className="sr-only">Memuat halaman…</span></LoadingIndicator></span> : children;
+  const Icon = icons[area];
+  return pending
+    ? <span className="navigation-pending" role="status"><LoadingIndicator><span className="sr-only">Memuat halaman…</span></LoadingIndicator></span>
+    : <Icon size={ICON_MD} weight={active ? "fill" : "regular"} aria-hidden="true" />;
 }
 
-const navigation = [
-  { href: "/", label: "Home", Icon: House },
-  { href: "/transactions", label: "Transactions", Icon: List },
-  { href: "/assets", label: "Assets", Icon: SquaresFour },
-  { href: "/planning", label: "Planning", Icon: Target },
-  { href: "/insights", label: "Insights", Icon: ChartDonut },
-  { href: "/settings", label: "Settings", Icon: GearSix },
-];
-const mobileMore = navigation.slice(3);
+function NavItem({ item, current, className, onSelect, role }: { item: NavModule; current: ModuleArea | null; className: string; onSelect?: () => void; role?: "menuitem" }) {
+  const active = current === item.area;
+  return <Link href={item.href} data-area={item.area} className={className} aria-current={active ? "page" : undefined} onClick={onSelect} role={role}>
+    <NavigationIcon area={item.area} active={active} /><span>{item.label}</span>
+  </Link>;
+}
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const { refreshing, navigating, routeSkeleton, loading } = useFinanceFeedback();
-  const pathname = usePathname();
-  const standalone = ["/unlock", "/recover", "/enroll"].includes(pathname);
-  const shellRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLElement>(null);
-  useLayoutEffect(() => {
-    const header = headerRef.current, shell = shellRef.current;
-    if (!header || !shell) return;
-    const measure = () => shell.style.setProperty("--shell-header-block-size", `${Math.ceil(header.getBoundingClientRect().height)}px`);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(header);
-    return () => observer.disconnect();
-  }, [standalone]);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreAnchorRef = useRef<HTMLDivElement>(null);
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
-  const moreItemsRef = useRef<(HTMLAnchorElement | null)[]>([]);
-  const active = (href: string) => pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
-  const activeMoreItem = mobileMore.find((item) => active(item.href));
-
+function MoreMenu({ current }: { current: ModuleArea | null }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const items = [...modules.filter((item) => !dockPrimary.includes(item.area)), settingsModule];
+  const activeInMore = items.some((item) => item.area === current);
   useEffect(() => {
-    if (!moreOpen) return;
-    const dismissOutside = (event: PointerEvent) => {
-      if (!moreAnchorRef.current?.contains(event.target as Node)) setMoreOpen(false);
-    };
-    const dismissEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setMoreOpen(false); moreButtonRef.current?.focus(); }
-    };
-    document.addEventListener("pointerdown", dismissOutside);
-    document.addEventListener("keydown", dismissEscape);
-    moreItemsRef.current[0]?.focus();
-    return () => {
-      document.removeEventListener("pointerdown", dismissOutside);
-      document.removeEventListener("keydown", dismissEscape);
-    };
-  }, [moreOpen]);
-
-  function moveMoreFocus(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!open) return;
+    const outside = (event: PointerEvent) => { if (!anchorRef.current?.contains(event.target as Node)) setOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); buttonRef.current?.focus(); } };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    anchorRef.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  function moveFocus(event: React.KeyboardEvent<HTMLDivElement>) {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const index = moreItemsRef.current.findIndex((item) => item === document.activeElement);
-    const last = mobileMore.length - 1;
-    const next = event.key === "Home" ? 0 : event.key === "End" ? last
-      : event.key === "ArrowDown" ? (index + 1) % mobileMore.length
-      : (index + mobileMore.length - 1) % mobileMore.length;
-    moreItemsRef.current[next]?.focus();
+    const links = [...event.currentTarget.querySelectorAll<HTMLElement>("[role=menuitem]")];
+    const index = links.findIndex((link) => link === document.activeElement), last = links.length - 1;
+    const next = event.key === "Home" ? 0 : event.key === "End" ? last : event.key === "ArrowDown" ? (index + 1) % links.length : (index + last) % links.length;
+    links[next]?.focus();
   }
+  return <div className="dock-more" ref={anchorRef}>
+    <button ref={buttonRef} type="button" className="dock-item" data-active={open || activeInMore} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-controls="dock-more-menu">
+      <DotsThree size={ICON_MD} weight="bold" aria-hidden="true" /><span>Lainnya</span>
+    </button>
+    <div id="dock-more-menu" className="dock-menu" hidden={!open} role="menu" aria-label="Modul lainnya" onKeyDown={moveFocus}>
+      {items.map((item) => <NavItem key={item.href} item={item} current={current} className="dock-menu-item" role="menuitem" onSelect={() => setOpen(false)} />)}
+    </div>
+  </div>;
+}
 
-  if (standalone) return <>{children}</>;
-
-  return <div ref={shellRef} className="app-shell">
-    <header ref={headerRef} className="site-header" data-loading={loading}>
-      <div className="header-inner">
-        <Link href="/" className="brand" aria-label="moneytor, ke Home"><BrandIdentity /></Link>
-        <nav className="floating-nav" aria-label="Navigasi utama">
-          {navigation.map(({ href, label, Icon }) => <Link key={href} href={href} data-area={href.slice(1) || "home"} className={`nav-link ${active(href) ? "active" : ""}`} aria-current={active(href) ? "page" : undefined}><NavigationIcon><Icon size={17} weight={active(href) ? "fill" : "regular"} /></NavigationIcon><span>{label}</span></Link>)}
-        </nav>
-        <div className="header-actions"><PrivacyAmountToggle /><FeatureOnboarding /><QuickAdd /></div>
-      </div>
+function Shell({ children }: { children: React.ReactNode }) {
+  const { refreshing, navigating, routeSkeleton, loading } = useFinanceFeedback();
+  const { entry } = useInspector();
+  const current = activeArea(usePathname());
+  return <div className="app-shell" data-inspector={entry ? "open" : "closed"}>
+    <header className="app-header" data-loading={loading}>
+      <Link href="/" className="brand" aria-label="moneytor, ke Beranda"><BrandIdentity /></Link>
+      <div className="header-actions"><PrivacyAmountToggle /><FeatureOnboarding /><QuickAdd /></div>
     </header>
+
+    <nav className="app-rail" aria-label="Navigasi utama">
+      <div className="rail-modules">{modules.map((item) => <NavItem key={item.href} item={item} current={current} className="rail-item" />)}</div>
+      <div className="rail-footer"><NavItem item={settingsModule} current={current} className="rail-item" /></div>
+    </nav>
 
     <main id="main-content" className="main-content" aria-busy={refreshing || navigating}>
       {(refreshing || (navigating && !routeSkeleton)) && (
@@ -102,17 +95,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {children}
     </main>
 
-    <nav className="bottom-nav" aria-label="Navigasi seluler">
-      <Link href="/" data-area="home" className={active("/") ? "active" : ""} aria-current={active("/") ? "page" : undefined}><NavigationIcon><House size={22} weight={active("/") ? "fill" : "regular"} /></NavigationIcon><span>Home</span></Link>
-      <Link href="/assets" data-area="assets" className={active("/assets") ? "active" : ""} aria-current={active("/assets") ? "page" : undefined}><NavigationIcon><SquaresFour size={22} weight={active("/assets") ? "fill" : "regular"} /></NavigationIcon><span>Assets</span></Link>
+    <InspectorPanel />
+
+    <nav className="app-dock" aria-label="Navigasi seluler">
+      {dockPrimary.slice(0, 2).map((area) => <NavItem key={area} item={modules.find((item) => item.area === area)!} current={current} className="dock-item" />)}
       <QuickAdd compact />
-      <Link href="/transactions" data-area="transactions" className={active("/transactions") ? "active" : ""} aria-current={active("/transactions") ? "page" : undefined}><NavigationIcon><List size={22} weight={active("/transactions") ? "bold" : "regular"} /></NavigationIcon><span>Activity</span></Link>
-      <div className="more-anchor" ref={moreAnchorRef}>
-        <button ref={moreButtonRef} type="button" data-area={activeMoreItem?.href.slice(1)} className={moreOpen || activeMoreItem ? "active" : ""} onClick={() => setMoreOpen(!moreOpen)} aria-haspopup="menu" aria-expanded={moreOpen} aria-controls="mobile-more"><DotsThree size={22} weight="bold" /><span>More</span></button>
-        <div id="mobile-more" className="more-popover" hidden={!moreOpen} role="menu" aria-label="Halaman lainnya" onKeyDown={moveMoreFocus}>
-          {mobileMore.map(({ href, label, Icon }, index) => <Link key={href} data-area={href.slice(1)} ref={(item) => { moreItemsRef.current[index] = item; }} href={href} role="menuitem" onClick={() => setMoreOpen(false)} aria-current={active(href) ? "page" : undefined}><Icon size={19} weight={active(href) ? "fill" : "regular"} /><span>{label}</span></Link>)}
-        </div>
-      </div>
+      {dockPrimary.slice(2).map((area) => <NavItem key={area} item={modules.find((item) => item.area === area)!} current={current} className="dock-item" />)}
+      <MoreMenu current={current} />
     </nav>
   </div>;
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (["/unlock", "/recover", "/enroll"].includes(pathname)) return <>{children}</>;
+  return <InspectorProvider><Shell>{children}</Shell></InspectorProvider>;
 }

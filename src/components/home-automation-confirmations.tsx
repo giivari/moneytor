@@ -25,7 +25,8 @@ function automationMutation(action: string, body: Record<string, unknown> = {}) 
   });
 }
 
-export function HomeAutomationConfirmations({ items }: { items: WorkspaceInstance[] }) {
+/** Beranda shows the first `limit` pending items; the rest stay one click away in Otomatisasi. */
+export function HomeAutomationConfirmations({ items, limit = Infinity }: { items: WorkspaceInstance[]; limit?: number }) {
   const { refresh, notify, refreshing } = useFinanceFeedback();
   const { pending, begin, finish } = useMutationPending();
   const [amounts, setAmounts] = useState<Record<string, string>>({});
@@ -79,7 +80,7 @@ export function HomeAutomationConfirmations({ items }: { items: WorkspaceInstanc
         }
       />
       <div className="home-automation-list">
-        {items.map((item) => {
+        {items.slice(0, limit).map((item) => {
           const rawValue = item.allocation
             ? BigInt(item.allocation.differenceMinor) > 0n
               ? item.allocation.differenceMinor
@@ -199,7 +200,8 @@ export function HomeAutomationConfirmations({ items }: { items: WorkspaceInstanc
           );
         })}
       </div>
-      {allocationReview && allocationReview.storage !== "schedule" && (
+      {items.length > limit && <p className="home-automation-more"><AppLink href="/transactions/automation" className="text-link">{items.length - limit} lainnya di Otomatisasi <ArrowRight size={15} aria-hidden="true" /></AppLink></p>}
+      {allocationReview &&allocationReview.storage !== "schedule" && (
         <AllocationReview
           storage={allocationReview.storage}
           id={allocationReview.id}

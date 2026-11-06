@@ -32,29 +32,29 @@ const STORAGE_KEY = "moneytor:feature-onboarding:v1";
 export const FEATURE_TOURS: Record<string, FeatureTourDefinition> = {
   home: {
     key: "home",
-    featureName: "Beranda (Home)",
+    featureName: "Beranda",
     steps: [
       {
         badge: "Selamat Datang",
         title: "Kenali Posisi Keuangan Anda dalam Sekejap",
         description:
-          "Halaman Home merangkum posisi uang Anda saat ini: berapa dana yang siap dibelanjakan (Dapat digunakan), total Dana likuid, Total aset diketahui, serta sisa dana Setelah kewajiban.",
-        tip: "Jika baru pertama kali memakai moneytor (data masih 0), mulailah dengan membuat rekening atau dompet pertama di menu Assets.",
-        targetSelector: ".home-hero, .home-empty, .main-content",
+          "Beranda merangkum posisi uang Anda saat ini: Kekayaan bersih, Dana siap pakai setelah cadangan dan kewajiban 30 hari, tagihan kredit terdekat, serta piutang yang belum kembali. Tab Rincian kalkulasi menunjukkan asal setiap angka.",
+        tip: "Jika baru pertama kali memakai moneytor (data masih 0), mulailah dengan membuat rekening atau dompet pertama di menu Aset.",
+        targetSelector: ".home-kpis, .home-empty, .main-content",
       },
       {
         badge: "Navigasi Utama",
         title: "Berpindah Antar-Modul dengan Cepat",
         description:
-          "Gunakan bilah navigasi ini untuk membuka Transactions (riwayat & mutasi), Assets (rekening & investasi), Planning (anggaran, cadangan & tagihan), Insights (grafik analitik), serta Settings (pengaturan & ekspor).",
-        targetSelector: ".floating-nav, .bottom-nav",
+          "Gunakan bilah navigasi ini untuk membuka Mutasi, Aset, Kredit & Talangan, Investasi, Rencana (anggaran, cadangan & tagihan), Analitik, serta Pengaturan (ekspor & keamanan).",
+        targetSelector: ".app-rail, .app-dock",
       },
       {
         badge: "Tombol Aksi Cepat",
-        title: "Tombol '+ Tambah transaksi' dari Mana Saja",
+        title: "Tombol 'Catat' dari Mana Saja",
         description:
           "Tombol ini selalu tersedia di setiap halaman. Klik kapan saja untuk langsung mencatat Pengeluaran, Pemasukan, atau Transfer antar-rekening lengkap dengan rincian biaya admin/pajak.",
-        targetSelector: ".header-actions .button-primary, .bottom-add",
+        targetSelector: ".header-actions .button-primary, .dock-add",
       },
     ],
   },

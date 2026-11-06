@@ -184,9 +184,6 @@ details > summary > span, .transaction-optional summary span,
 }
 .investment-steps li[aria-current="step"] { font-weight: var(--weight-semibold); }
 .finance-asset-mark { font-size: var(--type-entity); font-weight: var(--weight-medium); }
-.floating-nav a, .more-popover > a { font-size: var(--type-meta); font-weight: var(--weight-medium); }
-.floating-nav a[aria-current="page"], .more-popover > a[aria-current="page"] { font-weight: var(--weight-semibold); }
-.bottom-nav > a, .bottom-nav > button, .more-anchor > button { font-size: 11px; font-weight: var(--weight-medium); }
 .navigation-progress-label, .route-loading-status .loading-indicator { font-size: var(--type-helper); font-weight: var(--weight-medium); }
 
 /* OptionalChargesEditor and OptionalFormSection use the same form type as other routes. */

@@ -41,17 +41,6 @@ button .loading-indicator { color: inherit; }
 .inline-catalog-creator .inline-field-action > .field { flex: 1 1 180px; margin: 0; }
 .app-link-pending-spinner { display: inline-flex; align-items: center; margin-inline-start: 6px; vertical-align: middle; }
 a:has(.navigation-pending, .settings-nav-status) .app-link-pending-spinner { display: none; }
-[data-area] { --nav-accent: var(--data-blue); }
-[data-area="transactions"] { --nav-accent: var(--data-cyan); }
-[data-area="assets"] { --nav-accent: var(--data-violet); }
-[data-area="planning"] { --nav-accent: var(--data-teal); }
-[data-area="insights"] { --nav-accent: var(--data-coral); }
-[data-area="settings"] { --nav-accent: var(--muted); }
-.floating-nav a[aria-current="page"], .bottom-nav a[aria-current="page"], .bottom-nav button.active[data-area] {
-  color: var(--nav-accent);
-  box-shadow: none;
-}
-.more-popover[hidden] { display: none; }
 .action-menu { position: relative; flex: 0 0 auto; max-inline-size: 100%; }
 .action-menu > button { gap: var(--space-sm); }
 .action-menu-options {

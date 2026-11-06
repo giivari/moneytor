@@ -69,7 +69,8 @@ export function useInsightsVisualTrend({
     (max, row) => [BigInt(row.incomeMinor), BigInt(row.spendingMinor)].reduce((a, b) => (a > b ? a : b), max),
     0n,
   );
-  const width = dashboard ? 600 : mobile ? 340 : Math.max(420, rows.length * 44 + 72);
+  // Beranda (dashboard) keeps all bins but narrows the viewBox on phones so axis text is not scaled below 12px.
+  const width = dashboard ? (viewport ? 340 : 600) : mobile ? 340 : Math.max(420, rows.length * 44 + 72);
   const bottom = dashboard ? 98 : 180;
   const axisLeft = 68;
   const step = (width - axisLeft - 12) / Math.max(1, rows.length);

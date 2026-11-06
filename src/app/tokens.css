@@ -56,17 +56,12 @@
   --data-rose-soft: #f8edf1;
 
   /* Module accents (navigation only) */
-  --accent-home: #4c6274;
-  --accent-transactions: #2169b5;
-  --accent-assets: #167868;
-  --accent-credit: #ba4d3c;
-  --accent-investments: #7152b0;
-  --accent-planning: #94630f;
-  --accent-insights: #087a95;
-
-  /* Brand (legacy header, removed with the new shell) */
-  --brand-gradient: linear-gradient(105deg, #4c6274 0%, #399da4 48%, #5044dc 100%);
-  --brand-gradient-loading: linear-gradient(105deg, #4c6274, #399da4, #5044dc, #399da4, #4c6274);
+  --accent-transactions: #087a95;
+  --accent-assets: #7152b0;
+  --accent-credit: #a74367;
+  --accent-investments: #2169b5;
+  --accent-planning: #167868;
+  --accent-insights: #ba4d3c;
 
   /* Typography */
   --text-xs: 12px;

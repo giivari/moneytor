@@ -77,7 +77,7 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
   await requireOwnerSession();
   const [readAssets, readInvestments, recent, pendingAutomations] = await Promise.all([
     prepareOwnerAssetRead(), prepareOwnerInvestmentSummaryRead(),
-    includeRecent ? listActivities(false, 4) : Promise.resolve([]),
+    includeRecent ? listActivities(false, 6) : Promise.resolve([]),
     includeRecent ? readPendingAutomations() : Promise.resolve([] as WorkspaceInstance[]),
   ]);
   const read = async (client: PoolClient) => {
