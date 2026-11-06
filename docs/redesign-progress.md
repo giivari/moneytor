@@ -16,7 +16,7 @@ File utama: `db/migrations/015_credit_asset_class.sql`, `src/lib/domain/{credit,
 Tes: `tests/credit-redesign.test.mjs` (a, b, c, e), `tests/credit-installment-db.test.mjs` (d, backfill, replace). Tes DB lama membaca
 `MONEYTOR_DB_TEST_PORT` (default 55433), dan asersi migrasinya kini dinamis.
 
-Hasil terakhir: typecheck dan lint bersih. test:unit 128 lulus, 1 skip. test:ui 142 lulus. Semua tes DB di container 55434 lulus:
+Hasil terakhir: typecheck dan lint bersih. test:unit 129 lulus, 1 skip. test:ui 142 lulus. Semua tes DB di container 55434 lulus:
 credit 7, auth 12, finance 8, investment 50, imports 3, planning 8, automation 8, events 13, composable 22, allocation 36, analytics 16, presentation 6.
 
 Belum selesai, diketahui:
