@@ -204,11 +204,15 @@ export function InsightsFinancialSuite({
 
   const liquidMinor = data.assets ? BigInt(data.assets.liquidMinor) : null;
   const totalAssetsMinor = data.assets ? BigInt(data.assets.totalMinor) : null;
+  // Everything still owed on credit accounts (all remaining installments), as computed by the domain.
   const creditDebtMinor =
-    data.assets && "creditDebtMinor" in data.assets && typeof data.assets.creditDebtMinor === "string"
-      ? BigInt(data.assets.creditDebtMinor)
+    data.assets && "liabilitiesMinor" in data.assets && typeof data.assets.liabilitiesMinor === "string"
+      ? BigInt(data.assets.liabilitiesMinor)
       : totalCreditUnpaid;
-  const netWorthMinor = totalAssetsMinor !== null ? totalAssetsMinor - creditDebtMinor : null;
+  const netWorthMinor =
+    data.assets && "netWorthMinor" in data.assets && typeof data.assets.netWorthMinor === "string"
+      ? BigInt(data.assets.netWorthMinor)
+      : totalAssetsMinor !== null ? totalAssetsMinor - creditDebtMinor : null;
   const runwayDays =
     liquidMinor !== null && liquidMinor > 0n && dailyBurnMinor > 0n ? liquidMinor / dailyBurnMinor : null;
 

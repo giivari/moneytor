@@ -40,7 +40,7 @@ import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
 import type { AssetDetailInfo, AssetOpeningHistory } from "@/lib/repositories/assets";
-import type { ActivityDraft, FinanceAsset } from "@/lib/finance/types";
+import type { ActivityDraft, AssetClass, FinanceAsset } from "@/lib/finance/types";
 import type { InvestmentTotal } from "@/lib/investments/types";
 import { AppLink } from "./app-link";
 import { FinancialAmount } from "./financial-amount";
@@ -84,9 +84,8 @@ function AssetForm({
   const initialMeta = parseCreditMeta(initial?.note);
   const initialTerms = parseAssetTerms(initial?.note);
   const initialBills = initial ? computeCreditBills(initial) : null;
-  const [isCredit, setIsCredit] = useState<boolean>(
-    initial ? isCreditAsset(initial) : false,
-  );
+  const [assetClass, setAssetClass] = useState<AssetClass>(initial?.assetClass ?? "asset");
+  const isCredit = assetClass === "liability";
   const [dueDay, setDueDay] = useState<string>(
     initial ? String(initialMeta.dueDay) : "1",
   );
@@ -260,6 +259,7 @@ function AssetForm({
         normallySpendable: isCredit ? false : spendable,
         safeSuffix: suffix || undefined,
         note: encodedNote,
+        assetClass,
       };
       await financeRequest(initial ? "asset-update" : "asset-create", body);
       refresh();
@@ -336,21 +336,35 @@ function AssetForm({
               <div className="segmented" role="group" aria-label="Kategori akun">
                 <button
                   type="button"
-                  className={!isCredit ? "selected" : ""}
-                  onClick={() => setIsCredit(false)}
+                  className={assetClass === "asset" ? "selected" : ""}
+                  aria-pressed={assetClass === "asset"}
+                  onClick={() => setAssetClass("asset")}
                 >
                   Rekening / Aset
                 </button>
                 <button
                   type="button"
-                  className={isCredit ? "selected" : ""}
+                  className={assetClass === "liability" ? "selected" : ""}
+                  aria-pressed={assetClass === "liability"}
                   onClick={() => {
-                    setIsCredit(true);
+                    setAssetClass("liability");
                     setLiquid(false);
                     setSpendable(false);
                   }}
                 >
                   Fasilitas Kredit
+                </button>
+                <button
+                  type="button"
+                  className={assetClass === "receivable" ? "selected" : ""}
+                  aria-pressed={assetClass === "receivable"}
+                  onClick={() => {
+                    setAssetClass("receivable");
+                    setLiquid(false);
+                    setSpendable(false);
+                  }}
+                >
+                  Piutang
                 </button>
               </div>
             </div>
