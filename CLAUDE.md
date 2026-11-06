@@ -76,3 +76,15 @@ npm run db:list | db:status | db:migrate   # lihat scripts/migrate.mjs
 ## Hemat konteks
 
 - Jika grep tidak tersedia, pakai Select-String atau node -e untuk menyaring keluaran.
+- Baca bagian file yang perlu (offset/limit), bukan seluruh file. File besar: `transaction-editor.tsx`, `assets-manager.tsx`,
+  `src/lib/domain/credit.ts`, `src/app/*.css`. Cari dengan grep dulu, baru baca.
+- Filter keluaran perintah: `npm run test:unit 2>&1 | grep -E "^# (tests|pass|fail|skipped)|not ok"`; untuk `tsc`/`eslint` pakai
+  `| tail -30`. Hanya buka keluaran penuh untuk tes yang gagal.
+- Pembacaan luas (mis. memetakan semua pemakai `isCreditAsset`, atau semua hex di CSS) dikerjakan subagent read-only yang
+  mengembalikan ringkasan.
+- Akhir tiap fase: tulis ringkasan ke `docs/redesign-progress.md` (keputusan, file yang berubah, langkah berikutnya, maks 30 baris).
+
+## Compact instructions
+
+Saat compact, pertahankan: keputusan desain/skema, daftar file yang diubah, hasil tes terakhir (lulus/gagal per file), dan langkah berikutnya.
+Buang: keluaran tes penuh, isi file yang sudah dibaca, dan percobaan yang gagal.
