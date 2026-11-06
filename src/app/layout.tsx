@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { AppShell } from "@/components/app-shell";
 import { FinanceFeedbackProvider } from "@/components/finance-feedback";
+import "./tokens.css";
 import "./globals.css";
 import "./shell.css";
 import "./visual.css";

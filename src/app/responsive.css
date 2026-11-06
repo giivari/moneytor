@@ -1,14 +1,3 @@
-:root {
-  --radius-dialog: 22px;
-  --radius-surface: 18px;
-  --radius-control: 12px;
-  --radius-compact: 10px;
-  --control-height: 46px;
-  --mobile-dock-height: 70px;
-  --mobile-dock-offset: 14px;
-  --dock-breathing-room: 36px;
-  --dock-clearance: calc(var(--mobile-dock-height) + var(--mobile-dock-offset) + env(safe-area-inset-bottom) + var(--dock-breathing-room));
-}
 
 .main-content > .page { width: 100%; min-width: 0; margin-inline: auto; }
 .page > *, .surface, .metric-card, .hero-balance, .chart-card, .category-card, .planning-grid > *, .insights-grid > * { min-width: 0; }

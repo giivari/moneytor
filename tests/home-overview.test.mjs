@@ -251,12 +251,14 @@ test('Home reuses real P6A trend/category report with visible scope and exact, i
 });
 
 test('shared foundations retain readable type and control targets without masking money overflow', () => {
- const density=source('src/app/density.css'), typography=source('src/app/typography.css'), shell=source('src/app/shell.css');
- assert.match(density,/--content-max-width: 1680px/);
- assert.match(density,/--control-target: 44px/);
- assert.match(density,/--surface-padding: 18px/);
+ const tokens=source('src/app/tokens.css'), typography=source('src/app/typography.css'), shell=source('src/app/shell.css');
+ assert.equal((tokens.match(/^:root \{/gm)||[]).length,1);
+ assert.match(tokens,/--content-max-width: 1680px/);
+ assert.match(tokens,/--control-target: 44px/);
+ assert.match(tokens,/--surface-padding: var\(--space-4\)/);
  assert.match(shell,/max-width: var\(--content-max-width\)/);
- assert.match(typography,/--type-copy: 14px/);
+ assert.match(tokens,/--text-xs: 12px/);
+ assert.match(tokens,/--type-copy: var\(--text-md\)/);
  assert.match(typography,/financial-amount-group \{ white-space: nowrap/);
  assert.doesNotMatch(source('src/components/financial-amount.tsx'),/useEffect|useState|tabIndex|scrollIntoView|<input|Number\(/);
  const emptyOutput = html(fixture());

@@ -26,3 +26,18 @@ Belum selesai, diketahui:
 - Mode render analytics (`MONEYTOR_INSIGHTS_RENDER_TEST=1`, tanpa script) gagal me-resolve `next/link`; kerusakan ini sudah ada sebelumnya.
 
 Langkah berikutnya: terapkan 015 di Neon branch dan tinjau NOTICE; pindahkan top-up cicilan ke tabel jadwal.
+
+## Fase token (langkah 1), 2026-11-06
+Keputusan:
+- `src/app/tokens.css` satu-satunya `:root` dan satu-satunya tempat hex/rgb, ukuran font, radius, bayangan, tinggi kontrol.
+  Skala: font 12/13/14/16/20/24, radius 4/8/12/pill, kontrol 28/32/40 (+ target sentuh 44), ikon 16/20, spasi 4..32.
+  Breakpoint tetap: <=390, <=767, <=1023, <=1279 / >=768, >=1024, >=1280.
+- Nama token lama (`--type-*`, `--radius-surface`, `--control-height`, ...) menjadi alias skala; override mobile di `body`.
+- Netral mengikuti CLAUDE.md (ink #1d2225, line #e1e4e6); warna data memakai versi AA dari interaction.css. Fokus biru.
+- Stylelint (`.stylelintrc.json`, dijalankan oleh `npm run lint`): larang hex, warna bernama, rgb(), `!important`, `:root`,
+  `user-select`, font/radius/bayangan/weight di luar token, breakpoint di luar daftar. File yang belum dimigrasi ada di
+  `ignoreFiles`; hapus dari daftar saat halamannya dimigrasi.
+File: `src/app/{tokens,globals,shell,density,typography,interaction,responsive}.css`, `src/app/layout.tsx`, `package.json`,
+`tests/home-overview.test.mjs` (asersi token pindah ke tokens.css).
+Hasil: typecheck, lint (eslint + stylelint) bersih; test:unit 129 lulus 1 skip; test:ui 142 lulus.
+Berikutnya: shell baru (rail 7 modul, header, inspector) dan Beranda.

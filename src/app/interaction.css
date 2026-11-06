@@ -1,16 +1,4 @@
 /* Context belongs to information and actions; the application base stays white. */
-:root {
-  --ink: #182126;
-  --muted: #4b5962;
-  --line: #d3dce1;
-  --data-blue: #2169b5;
-  --data-violet: #7152b0;
-  --data-cyan: #087a95;
-  --data-teal: #167868;
-  --data-amber: #94630f;
-  --data-coral: #ba4d3c;
-  --data-rose: #a74367;
-}
 .surface, .metric-card, .summary-strip, .settings-nav-group, .settings-detail-surface { border-color: var(--line); }
 .eyebrow { color: #485761; }
 .text-link, .settings-back { color: var(--data-blue); }

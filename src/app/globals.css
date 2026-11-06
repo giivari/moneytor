@@ -1,32 +1,3 @@
-:root {
-  --ink:#1d2225;
-  --muted:#555e63;
-  --line:#e1e4e6;
-  --bg:#fafafa;
-  --surface:#fff;
-  --positive:#19734b;
-  --positive-light:#edf7f0;
-  --negative:#a9443e;
-  --negative-light:#fff1ef;
-  --warning:#95641e;
-  --warning-light:#fff5e5;
-  --data-blue:#2879bd;
-  --data-violet:#8063bf;
-  --data-cyan:#168da8;
-  --data-teal:#218778;
-  --data-amber:#b77b1d;
-  --data-coral:#c95f4a;
-  --data-rose:#b84f72;
-  --data-blue-soft:#eaf3fb;
-  --data-violet-soft:#f1edfa;
-  --data-cyan-soft:#e8f5f8;
-  --data-teal-soft:#e9f5f1;
-  --data-amber-soft:#fbf3e5;
-  --data-coral-soft:#fbefec;
-  --data-rose-soft:#f8edf1;
-  --neutral-soft:#f3f4f5;
-  --radius:22px
-}
 
 * {
   box-sizing:border-box
@@ -82,7 +53,7 @@ strong,.hero-balance,.asset-total,.metric-card {
 }
 
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible {
-  outline:3px solid #737b80;
+  outline:2px solid var(--focus-ring);
   outline-offset:3px
 }
 
@@ -90,7 +61,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   position:fixed;
   left:15px;
   top:-60px;
-  background:#fff;
+  background:var(--surface);
   padding:12px;
   z-index:100
 }
@@ -104,16 +75,16 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   align-items:center;
   justify-content:center;
   gap:8px;
-  color:#fff;
-  background:#23282b;
-  border:1px solid #23282b;
-  border-radius:999px;
-  min-height:40px;
+  color:var(--on-primary);
+  background:var(--primary);
+  border:1px solid var(--primary);
+  border-radius:var(--radius-pill);
+  min-height:var(--control-lg);
   padding:0 15px
 }
 
 .button-primary:hover {
-  background:#080b0d
+  background:var(--primary-hover)
 }
 
 .page {
@@ -139,35 +110,35 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .period-pill,.count-pill {
   white-space:nowrap;
   border:1px solid var(--line);
-  background:#fff;
+  background:var(--surface);
   padding:9px 14px;
-  border-radius:999px;
-  color:#646b70
+  border-radius:var(--radius-pill);
+  color:var(--subtle)
 }
 
 .hero-balance {
   display:flex;
   justify-content:space-between;
   gap:30px;
-  background:#fff;
+  background:var(--surface);
   border:1px solid var(--line);
-  border-radius:22px;
+  border-radius:var(--radius-lg);
   padding:30px 34px;
   margin-bottom:18px;
-  box-shadow:0 5px 28px #20242706
+  box-shadow:var(--shadow-2)
 }
 
 .hero-kicker {
   display:flex;
   align-items:center;
   gap:7px;
-  color:#535d62;
+  color:var(--muted);
   letter-spacing:.12em;
   margin-bottom:17px
 }
 
 .hero-balance h2 {
-  color:#50595e;
+  color:var(--muted);
   margin-bottom:10px
 }
 
@@ -214,9 +185,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .metric-card {
-  background:#fff;
+  background:var(--surface);
   border:1px solid var(--line);
-  border-radius:16px;
+  border-radius:var(--radius-lg);
   padding:19px 21px;
   display:flex;
   flex-direction:column;
@@ -232,7 +203,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .metric-card small {
-  color:#626a6e
+  color:var(--subtle)
 }
 
 .home-columns {
@@ -248,9 +219,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .surface {
-  background:#fff;
+  background:var(--surface);
   border:1px solid var(--line);
-  border-radius:var(--radius);
+  border-radius:var(--radius-lg);
   padding:24px
 }
 
@@ -270,7 +241,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   display:inline-flex;
   align-items:center;
   gap:6px;
-  color:#30373b;
+  color:var(--ink);
   white-space:nowrap
 }
 
@@ -288,7 +259,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   align-items:center;
   gap:12px;
   min-height:66px;
-  border-top:1px solid #eceeef
+  border-top:1px solid var(--line-soft)
 }
 
 .account-row:first-child,.transaction-row:first-child {
@@ -297,23 +268,23 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 
 .provider-mark {
   flex:none;
-  width:39px;
-  height:39px;
-  border:1px solid #dce0e2;
-  border-radius:13px;
+  width:var(--control-lg);
+  height:var(--control-lg);
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius-lg);
   display:grid;
   place-items:center;
-  color:#4e565b;
-  background:#f7f8f8;
-  font-size:10px;
+  color:var(--ink-soft);
+  background:var(--neutral-soft);
+  font-size:var(--text-xs);
   letter-spacing:-.03em
 }
 
 .provider-mark-large {
   width:49px;
   height:49px;
-  border-radius:15px;
-  font-size:12px
+  border-radius:var(--radius-lg);
+  font-size:var(--text-xs)
 }
 
 .account-copy,.transaction-main {
@@ -342,14 +313,14 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .row-caret {
-  color:#7b8286;
+  color:var(--subtle);
   flex:none
 }
 
 .transaction-icon {
-  width:39px;
-  height:39px;
-  border-radius:13px;
+  width:var(--control-lg);
+  height:var(--control-lg);
+  border-radius:var(--radius-lg);
   display:grid;
   place-items:center;
   flex:none
@@ -366,8 +337,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .transaction-icon.transfer {
-  background:#f0f1f2;
-  color:#535b60
+  background:var(--surface-sunken);
+  color:var(--muted)
 }
 
 .transaction-amount {
@@ -402,8 +373,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 
 .progress {
   height:7px;
-  border-radius:999px;
-  background:#e9ebed;
+  border-radius:var(--radius-pill);
+  background:var(--track);
   overflow:hidden;
   margin:11px 0
 }
@@ -411,7 +382,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .progress>span {
   display:block;
   height:100%;
-  background:#6c7479;
+  background:var(--subtle);
   border-radius:inherit
 }
 
@@ -422,10 +393,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .note-icon,.plan-icon {
   display:grid;
   place-items:center;
-  width:40px;
-  height:40px;
-  border-radius:13px;
-  color:#535b60;
+  width:var(--control-lg);
+  height:var(--control-lg);
+  border-radius:var(--radius-lg);
+  color:var(--muted);
   background:var(--neutral-soft)
 }
 
@@ -439,9 +410,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 
 .summary-strip {
   display:flex;
-  background:#fff;
+  background:var(--surface);
   border:1px solid var(--line);
-  border-radius:16px;
+  border-radius:var(--radius-lg);
   margin-bottom:20px
 }
 
@@ -467,7 +438,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .muted-icon {
-  color:#686f73
+  color:var(--subtle)
 }
 
 .filter-row {
@@ -478,18 +449,18 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .filter-chip {
-  background:#fff;
-  border:1px solid #dfe2e4;
-  color:#434b50;
-  border-radius:999px;
+  background:var(--surface);
+  border:1px solid var(--line-strong);
+  color:var(--ink-soft);
+  border-radius:var(--radius-pill);
   padding:8px 13px;
   white-space:nowrap
 }
 
 .filter-chip.active {
-  background:#eceeef;
-  border-color:#d9dddf;
-  color:#1d2225
+  background:var(--surface-hover);
+  border-color:var(--line-strong);
+  color:var(--ink)
 }
 
 .transaction-button {
@@ -502,7 +473,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .transaction-button:hover {
-  background:#f5f6f6
+  background:var(--neutral-soft)
 }
 
 .clickable-list .transaction-row {
@@ -517,15 +488,15 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .asset-total {
-  background:#fff;
+  background:var(--surface);
   border:1px solid var(--line);
-  border-radius:19px;
+  border-radius:var(--radius-lg);
   padding:26px 30px;
   margin-bottom:20px
 }
 
 .asset-total span {
-  color:#51595e
+  color:var(--muted)
 }
 
 .asset-total strong {
@@ -552,7 +523,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 
 .asset-row {
   padding:15px 0;
-  border-top:1px solid #eceeef
+  border-top:1px solid var(--line-soft)
 }
 
 .asset-row:first-child {
@@ -578,7 +549,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .allocation-bar {
   height:13px;
   display:flex;
-  border-radius:99px;
+  border-radius:var(--radius-pill);
   overflow:hidden;
   gap:3px;
   margin:24px 0
@@ -620,7 +591,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .investment-note>svg {
-  color:#5b6368
+  color:var(--muted)
 }
 
 .investment-note h2 {
@@ -628,7 +599,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .muted-link {
-  color:#5b6368;
+  color:var(--muted);
   white-space:normal
 }
 
@@ -676,7 +647,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 
 .planning-note {
   margin-top:18px;
-  background:#f4f5f5
+  background:var(--neutral-soft)
 }
 
 .planning-note p {
@@ -727,7 +698,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   display:block;
   width:min(100%,41px);
   background:var(--positive);
-  border-radius:7px 7px 0 0
+  border-radius:var(--radius-md) var(--radius-md) 0 0
 }
 
 .bar-chart small {
@@ -817,23 +788,23 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .settings-icon {
-  width:38px;
-  height:38px;
+  width:var(--control-lg);
+  height:var(--control-lg);
   display:grid;
   place-items:center;
-  background:#f0f1f2;
-  color:#4b5358;
-  border-radius:11px
+  background:var(--surface-sunken);
+  color:var(--ink-soft);
+  border-radius:var(--radius-md)
 }
 
 .quick-dialog,.detail-dialog {
-  background:#fff;
+  background:var(--surface);
   width:min(100%,440px);
   max-height:calc(100vh - 30px);
   overflow:auto;
-  border-radius:21px;
+  border-radius:var(--radius-lg);
   padding:25px;
-  box-shadow:0 20px 70px #17202424
+  box-shadow:var(--shadow-3)
 }
 
 .dialog-heading h2 {
@@ -842,19 +813,19 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 
 .icon-button {
   border:0;
-  background:#f0f1f2;
-  color:#30373b;
-  border-radius:9px;
-  width:34px;
-  height:34px;
+  background:var(--surface-sunken);
+  color:var(--ink);
+  border-radius:var(--radius-md);
+  width:var(--control-md);
+  height:var(--control-md);
   display:grid;
   place-items:center;
   flex:none
 }
 
 .demo-notice {
-  background:#f3f4f5;
-  border-radius:8px;
+  background:var(--neutral-soft);
+  border-radius:var(--radius-md);
   padding:9px 11px;
   margin:15px 0
 }
@@ -867,14 +838,14 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .field>span {
-  color:#41494e
+  color:var(--ink-soft)
 }
 
 .field input,.field select {
-  height:42px;
-  border:1px solid #d9dddf;
-  border-radius:10px;
-  background:#fff;
+  height:var(--control-lg);
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius-md);
+  background:var(--surface);
   padding:0 12px;
   color:var(--ink);
   width:100%
@@ -883,13 +854,13 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .amount-input {
   display:flex;
   align-items:center;
-  border:1px solid #d9dddf;
-  border-radius:10px;
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius-md);
   padding:0 12px
 }
 
 .amount-input span {
-  color:#454d52
+  color:var(--ink-soft)
 }
 
 .amount-input input {
@@ -900,8 +871,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .segmented {
   display:flex;
   gap:4px;
-  background:#f0f1f2;
-  border-radius:10px;
+  background:var(--surface-sunken);
+  border-radius:var(--radius-md);
   padding:4px
 }
 
@@ -909,15 +880,15 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   flex:1;
   border:0;
   background:transparent;
-  border-radius:8px;
-  min-height:36px;
-  color:#555d62
+  border-radius:var(--radius-md);
+  min-height:var(--control-md);
+  color:var(--muted)
 }
 
 .segmented button.selected {
-  background:#fff;
-  color:#22282c;
-  box-shadow:0 1px 4px #20242717
+  background:var(--surface);
+  color:var(--ink);
+  box-shadow:var(--shadow-1)
 }
 
 .advanced {
@@ -928,7 +899,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 
 .advanced summary {
   cursor:pointer;
-  color:#353c40
+  color:var(--ink-soft)
 }
 
 .field-grid {
@@ -949,7 +920,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 
 .button-full {
   width:100%;
-  height:43px
+  height:var(--control-lg)
 }
 
 .detail-symbol {
@@ -957,9 +928,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   place-items:center;
   width:50px;
   height:50px;
-  border-radius:15px;
-  background:#f0f2f3;
-  color:#353c40;
+  border-radius:var(--radius-lg);
+  background:var(--surface-sunken);
+  color:var(--ink-soft);
   margin:20px 0
 }
 
@@ -988,7 +959,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   border-bottom:0
 }
 
-@media(max-width:1050px) {
+@media (max-width: 1023px) {
   .home-columns,.asset-layout {
     grid-template-columns:1fr
   }
@@ -1004,7 +975,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   }
 }
 
-@media(max-width:760px) {
+@media (max-width: 767px) {
   .welcome-row,.page-heading {
     margin-bottom:21px
   }
@@ -1092,7 +1063,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   }
 }
 
-@media(max-width:390px) {
+@media (max-width: 390px) {
   .account-row .row-caret {
     display:none
   }

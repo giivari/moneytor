@@ -1,26 +1,4 @@
 /* Shared semantic type scale. Feature styles own layout and color, not emphasis. */
-:root {
-  --weight-regular: 400;
-  --weight-medium: 500;
-  --weight-semibold: 600;
-  --weight-strong: 700;
-  --type-meta: 12px;
-  --type-metadata: 13px;
-  --type-label: 12px;
-  --type-copy: 14px;
-  --type-helper: clamp(12.5px, calc(12px + .14vw), 14px);
-  --type-entity: 15px;
-  --type-section: 16px;
-  --type-dialog: 20px;
-  --type-page: clamp(24px, 2vw, 30px);
-  --type-hero: 32px;
-  --type-amount-primary: 24px;
-  --type-amount-secondary: 16px;
-  --type-position-value: 18px;
-  --type-value-entity: 16px;
-  --type-value-row: 14px;
-  --type-amount-supporting: 14px;
-}
 
 body { font-size: var(--type-copy); font-weight: var(--weight-regular); }
 strong, b { font-weight: var(--weight-semibold); }
@@ -225,14 +203,5 @@ input:not([type="checkbox"]):not([type="radio"]), select, textarea {
 .transaction-amount-field input, .amount-input input { font-size: var(--type-position-value); font-weight: var(--weight-medium); }
 .amount-input span { font-size: var(--type-copy); font-weight: var(--weight-medium); }
 .recovery-codes code { font-size: var(--type-meta); }
-
-@media (max-width: 600px) {
-  :root {
-    --type-hero: 32px;
-    --type-amount-primary: 21px;
-    --type-value-entity: 15px;
-    --type-page: 26px;
-  }
-}
 
 .list-sort-control, .list-sort-control select { font-size: var(--type-helper); font-weight: var(--weight-medium); }

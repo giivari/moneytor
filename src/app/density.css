@@ -1,19 +1,4 @@
 /* A small shared density scale. Primary figures, section surfaces and rows have different weight. */
-:root {
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 20px;
-  --space-xl: 28px;
-  --surface-padding: 18px;
-  --content-column-gap: var(--space-md);
-  --content-max-width: 1680px;
-  --page-gutter: clamp(14px, 2vw, 32px);
-  --dashboard-gap: 14px;
-  --kpi-padding: 14px;
-  --row-icon-size: 30px;
-  --control-target: 44px;
-}
 /* Separate primary data lists from small configuration forms. */
 .configuration-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--content-column-gap); }
 .compact-management-body { min-width: 0; }
@@ -266,7 +251,6 @@
   .investment-position-details[data-desktop-expanded="true"] { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 }
 @media (max-width: 600px) {
-  :root { --surface-padding: 14px; --dashboard-gap: 12px; }
   .page .compact-management-actions > button, .page .compact-management-actions > a { min-height: 44px; }
   .responsive-disclosure[data-expanded="false"] > .disclosure-content { display: none; }
   .section-header-icon { width: 30px; height: 30px; }
