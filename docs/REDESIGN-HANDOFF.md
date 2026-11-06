@@ -62,6 +62,13 @@ dengan reversal; kunci idempotensi; `bigint` + desimal 18 digit untuk unit inves
 5. Dividen dan kupon, lalu XIRR.
 6. Tabel kurs + konsolidasi ke IDR; ekspor "harta dan utang per 31 Desember" untuk lampiran SPT.
 
+### Catatan migrasi 015 (asset_class + jadwal cicilan)
+- Akun yang catatan kreditnya sudah dikompres `fitCreditNote` (langkah gabung per bulan, `ref` hilang) tetap membawa bug void:
+  cicilan masa depan pembelian yang di-void tetap terhitung utang sampai jadwalnya dimigrasi manual ke `credit_installments`
+  (atau tagihannya disetel ulang di form akun). 015 tidak bisa memulihkan pemilik cicilan yang sudah hilang.
+- Sebelum deploy: terapkan 015 di Neon branch (bukan database utama), baca laporan `RAISE NOTICE` klasifikasi `asset_class`
+  per akun, perbaiki yang salah, baru terapkan di produksi.
+
 ---------------------------------------------------------------------------
 ## B. Peta aliran uang vs cakupan moneytor
 
