@@ -29,6 +29,7 @@ test("P3 isolated PostgreSQL posting and reversal", { skip: !enabled }, async (t
       resolve(specifier, context, next) {
         if (specifier === "@/lib/auth/session") return { url: "data:text/javascript,export async function requireOwnerSession(){if(!globalThis.__financeTestAuthorized)throw new Error('Unauthorized');return {credentialId:'synthetic-test'}}", shortCircuit: true };
         if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
+        if (specifier.startsWith(".") && !/\.[a-z]+$/i.test(specifier)) return next(new URL(`${specifier}.ts`, context.parentURL).href, context);
         return next(specifier, context);
       },
     });

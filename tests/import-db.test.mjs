@@ -33,6 +33,7 @@ test("P7 isolated disposable PostgreSQL import preview, duplicate detection, com
           };
         }
         if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
+        if (specifier.startsWith(".") && !/\.[a-z]+$/i.test(specifier)) return next(new URL(`${specifier}.ts`, context.parentURL).href, context);
         if (specifier.startsWith("./") && context.parentURL?.endsWith(".ts") && !specifier.endsWith(".ts")) return next(new URL(`${specifier}.ts`, context.parentURL).href, context);
         return next(specifier, context);
       },
