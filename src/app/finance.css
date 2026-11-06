@@ -33,7 +33,7 @@
 .finance-history-toggle { display: inline-flex; align-items: center; gap: 8px; margin: 12px 0; color: var(--ink-soft); cursor: pointer; }
 .finance-history-toggle input, .finance-checks input { accent-color: var(--primary); }
 .finance-dialog { width: min(100%, 560px); max-height: min(92vh, 880px); overflow: auto; margin: auto; padding: 26px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-3); }
-.finance-dialog::backdrop { background: var(--ink); }
+.finance-dialog::backdrop { background: var(--scrim); }
 .finance-dialog h2 { margin: 3px 0 0; }
 .finance-dialog form { margin-top: 14px; }
 .finance-dialog .field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 15px; row-gap: 2px; }

@@ -126,7 +126,7 @@ test('loading/error rendering cannot claim empty financial results and provides 
  const error=renderToStaticMarkup(React.createElement(InsightsLoadState,{loading:false,error:'Sesi berakhir',retry:()=>{}}));assert.match(error,/role="alert"/);assert.match(error,/Coba lagi/);assert.doesNotMatch(error,/Memuat|Belum ada/);
 });
 test('responsive CSS confines chart overflow, prevents mid-number wrapping, and preserves global dock/navigation styles',()=>{
- const css=fs.readFileSync(new URL('../src/app/insights/insights.css',import.meta.url),'utf8');assert.match(css,/@media \(max-width: 700px\)/);assert.match(css,/grid-template-columns: minmax\(0, 1fr\)/);assert.match(css,/overflow-x: auto/);assert.match(css,/prefers-reduced-motion/);assert.match(css,/:focus-visible/);assert.doesNotMatch(css,/\.bottom-dock|\.app-header|\.main-content/);
+ const css=fs.readFileSync(new URL('../src/app/insights/insights.css',import.meta.url),'utf8');assert.match(css,/@media \(max-width: 767px\)/);assert.match(css,/grid-template-columns: minmax\(0, 1fr\)/);assert.match(css,/overflow-x: auto/);assert.match(css,/prefers-reduced-motion/);assert.match(css,/:focus-visible/);assert.doesNotMatch(css,/\.bottom-dock|\.app-header|\.main-content/);
  assert.match(css,/\.insight-compact-kpis > div > span/);assert.match(css,/\.financial-amount\[data-wide="false"\] \{ white-space: nowrap; \}/);
  const page=fs.readFileSync(new URL('../src/app/insights/page.tsx',import.meta.url),'utf8');assert.match(page,/await requireOwnerSession\(\)/);assert.match(page,/force-dynamic/);assert.doesNotMatch(page,/demo-data|postActivity|reconcile/);
 });
@@ -299,6 +299,6 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(insightsCss,/\.insights-page \.insight-credit-ratios-strip/);
  assert.match(insightsCss,/\.insights-page \.insight-period-select-mobile\s*\{[^}]*display:\s*none/);
  assert.match(insightsCss,/\.insights-page \.insight-period-pills-desktop\s*\{[^}]*display:\s*none/);
- assert.match(insightsCss,/\.insights-page \.insight-fit-chart \.insight-axis\s*\{[^}]*font-size:\s*11px/);
+ assert.match(insightsCss,/\.insights-page \.insight-fit-chart \.insight-axis\s*\{[^}]*font-size:\s*var\(--text-xs\)/); // 12px minimum for content text
  assert.match(dataCss,/\.u-subgrid\b/);
 });

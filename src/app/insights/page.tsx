@@ -1,4 +1,5 @@
 import { requireOwnerSession } from "@/lib/auth/session";
+import { PageHeading } from "@/components/ui";
 import { analyticsCurrencyOptions, readAnalytics, validateAnalyticsInput } from "@/lib/analytics/service";
 import { analyticsFilters } from "@/lib/analytics/filters";
 import type { AnalyticsReport } from "@/lib/analytics/types";
@@ -32,8 +33,7 @@ export default async function InsightsPage({ searchParams }: {
     catch { error = "Laporan belum dapat dimuat. Periksa filter atau coba lagi."; }
   }
   return <div className="page insights-page">
-    <div className="page-heading"><div><span className="eyebrow">PAHAMI POLANYA</span><h1>Insights</h1>
-      <p>Pemasukan, belanja, dan konteks keuangan dari transaksi yang tercatat.</p></div></div>
+    <header className="page-header"><PageHeading title="Analitik" description="Pemasukan, belanja, dan konteks keuangan dari transaksi yang tercatat." /></header>
     <InsightsWorkspace key={params.toString()} initial={initial} initialQuery={params.toString()} initialError={error} currencies={currencies} />
   </div>;
 }

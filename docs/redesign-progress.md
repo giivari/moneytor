@@ -101,3 +101,10 @@ tidak ada laporan), bukan KPI kelima. SVG dashboard disembunyikan dengan ruang t
 - Keputusan kecil: label "Setelah kewajiban rencana" + catatan "belum termasuk tagihan kredit", karena angka ini tidak memuat
   creditDebt (berbeda dengan Dana siap pakai di Beranda). Lebar khusus 1100px dihapus agar sejajar dengan halaman lain.
 - planning.css bertoken; duplikat .planning-row-actions digabung.
+
+### Analitik
+- Kepala "Analitik"; teks "Planning"/"Transactions" di laporan diganti "Rencana"/"Mutasi". insights.css bertoken.
+- Tes diperbarui untuk keputusan skala: breakpoint 700px → 767px, teks sumbu 11px → 12px (minimum konten).
+- Bug migrasi diperbaiki: hex beralpha (#5263720b sorotan bar, #181d2075 backdrop dialog keuangan) sempat jadi warna pekat;
+  kini --neutral-soft dan --scrim. Skrip migrasi harus memeriksa hex 8 digit secara manual bila dipakai lagi.
+- Catatan ops: tiga dev server sempat berbagi .next (aset 404); dimatikan, .next dihapus, satu server dijalankan ulang.

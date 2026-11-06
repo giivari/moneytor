@@ -237,7 +237,7 @@ export function InsightsReportView({
       )}
       {report.context && !report.context.planningReady && (
         <p className="insight-warning" role="note">
-          Planning belum tersedia; konteks kewajiban belum lengkap.
+          Rencana belum tersedia; konteks kewajiban belum lengkap.
         </p>
       )}
 
@@ -595,7 +595,7 @@ export function InsightsReportView({
                                 data.assets.availableMinor,
                                 report.context?.planningReady
                                   ? `Sampai ${dayLabel(report.context.throughDay)}`
-                                  : "Planning belum tersedia",
+                                  : "Rencana belum tersedia",
                               )}
                             </tbody>
                           </table>

@@ -11,8 +11,7 @@
     "src/app/responsive.css",
     "src/app/settings.css",
     "src/app/typography.css",
-    "src/app/visual.css",
-    "src/app/insights/insights.css"
+    "src/app/visual.css"
   ],
   "rules": {
     "color-no-hex": true,

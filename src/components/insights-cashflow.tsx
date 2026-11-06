@@ -937,7 +937,7 @@ export function InsightsFinancialSuite({
           <section className="surface insight-panel insight-bills-card" aria-label="Tagihan dan Kewajiban">
             <SectionHeading
               title="Tagihan & Kewajiban"
-              helper="Kewajiban jatuh tempo di Planning serta realisasi belanja kategori tagihan & utilitas."
+              helper="Kewajiban jatuh tempo di Rencana serta realisasi belanja kategori tagihan & utilitas."
             />
 
             {(openObs.length > 0 || settledObsCount > 0) && (
@@ -945,7 +945,7 @@ export function InsightsFinancialSuite({
                 <table className="u-table" aria-label="Kewajiban aktif dan tagihan belum lunas">
                   <thead>
                     <tr>
-                      <th scope="col">Kewajiban Planning</th>
+                      <th scope="col">Kewajiban Rencana</th>
                       <th scope="col">Nominal</th>
                     </tr>
                   </thead>
@@ -1072,12 +1072,12 @@ export function InsightsFinancialSuite({
               {uncategorizedCount > 0 ? (
                 <>
                   Ada {uncategorizedCount} pengeluaran tanpa kategori ·{" "}
-                  <AppLink href="/transactions?kind=expense">Ubah detail di Transactions →</AppLink>
+                  <AppLink href="/transactions?kind=expense">Ubah detail di Mutasi →</AppLink>
                 </>
               ) : (
                 <>
                   Semua transaksi memiliki kategori ·{" "}
-                  <AppLink href="/transactions?kind=expense">Lihat seluruh mutasi di Transactions →</AppLink>
+                  <AppLink href="/transactions?kind=expense">Lihat seluruh mutasi di Mutasi →</AppLink>
                 </>
               )}
             </p>
