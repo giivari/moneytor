@@ -21,8 +21,8 @@ credit 7, auth 12, finance 8, investment 50, imports 3, planning 8, automation 8
 
 Belum selesai, diketahui:
 - Transfer top-up cicilan masih memakai jadwal di catatan (bunga bulan 2..N di luar ledger).
-- Editor belum mengirim tenor saat mengedit pembelian cicilan. Edit dari UI membatalkan jadwal, dan seluruh nominal masuk tagihan berjalan.
+- Koreksi pembelian cicilan dari editor mengirim ulang tenor dan bunga per bulan; pengingat planning lama dari pembelian asli tidak ikut diperbarui.
 - Catatan kredit yang sudah dikompres tetap membawa bug void sampai dimigrasi manual (lihat REDESIGN-HANDOFF.md).
 - Mode render analytics (`MONEYTOR_INSIGHTS_RENDER_TEST=1`, tanpa script) gagal me-resolve `next/link`; kerusakan ini sudah ada sebelumnya.
 
-Langkah berikutnya: terapkan 015 di Neon branch dan tinjau NOTICE; perbarui "Jebakan logika" di CLAUDE.md; pindahkan top-up cicilan ke tabel jadwal.
+Langkah berikutnya: terapkan 015 di Neon branch dan tinjau NOTICE; pindahkan top-up cicilan ke tabel jadwal.

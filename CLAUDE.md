@@ -21,7 +21,7 @@ npm run db:list | db:status | db:migrate   # lihat scripts/migrate.mjs
 - Dua tes unit gagal di clone bersih karena membaca `references/Monitor_Keuangan_dengan_Reports_revised.xlsx` (folder `/references/` di-gitignore).
   Itu bukan bug logika; jangan "memperbaiki" dengan menghapus tesnya.
 - Tes `*-db.test.mjs` butuh PostgreSQL terisolasi dan di-skip kecuali variabel konfirmasi cocok (lihat bagian atas tiap file tes,
-  mis. `MONEYTOR_P3_DB_TEST` dan port 55433/55434). JANGAN arahkan `DATABASE_URL` ke database produksi atau Neon milik pemilik.
+  mis. `MONEYTOR_P3_DB_TEST`). Port default 55433, bisa diganti lewat `MONEYTOR_DB_TEST_PORT`; `test:credit:db` selalu 55434. JANGAN arahkan `DATABASE_URL` ke database produksi atau Neon milik pemilik.
   Migrasi hanya dengan `--apply --confirm-db=<nama db>`.
 
 ## Struktur
@@ -40,23 +40,18 @@ npm run db:list | db:status | db:migrate   # lihat scripts/migrate.mjs
 - Jangan menaruh perubahan skema atau SQL pembersihan data di `scripts/vercel-db-setup.mjs` (jalan di tiap build). Semua lewat migrasi.
 - Semua route di `src/app/api` wajib memeriksa sesi pemilik (kecuali `/api/health`). Jangan melonggarkan pemeriksaan origin/CSRF.
 - Jangan log atau commit rahasia (`MONETA_BOOTSTRAP_SECRET`, `DATABASE_URL`, kunci API harga). Jangan commit data pribadi (UUID, nama akun nyata).
+- `assets.asset_class` (asset/liability/receivable) adalah sumber tunggal klasifikasi kredit/piutang (`isCreditAsset`, `isReceivableAsset`).
+  Jangan menambah regex nama akun atau tag baru di `assets.note` untuk mengklasifikasi.
+- Pembelian cicilan dibukukan penuh (pokok + charge "Bunga cicilan") di ledger; `credit_installments` hanya membagi tagihan per bulan
+  (status scheduled -> cancelled, tanpa hapus). Kekayaan bersih = aset - seluruh kewajiban (`netWorthMinor` dari `summarizeBalances`).
+- Ledger single-entry (satu pergerakan di sisi aset). Jangan menulis "double-entry" di kode atau teks baru.
 
-## Jebakan logika yang sudah diketahui (jangan diperluas)
+## Jebakan logika yang masih berlaku (jangan diperluas)
 
-- Klasifikasi kredit/piutang saat ini lewat regex nama akun (`CREDIT_NAME_RE`, `isReceivableAsset`) dan tag `[CREDIT:...]`/`[ACCT:...]` di `assets.note`.
-  Ini salah untuk "Piutang Pinjaman ke Budi", "Dana Kredit Mahasiswa", "Dana Cicilan Motor", dan tidak mengenali "Hutang"/"KPR". Rencana: kolom
-  `asset_class` + tabel jadwal cicilan. Jangan menambah regex atau tag baru; jangan membangun UI baru yang bergantung padanya tanpa memberi tahu pemilik.
-- Kelebihan bayar akun kredit hilang dari kekayaan bersih dan UI menampilkan "Lunas". Net worth tidak memuat cicilan bulan ke-3 dst.
-- Docs menyebut ledger "double-entry", padahal single-entry (satu pergerakan di sisi aset). Jangan menulis "double-entry" di kode atau teks baru.
+- Top-up cicilan (transfer dari akun kredit) masih memakai jadwal di catatan kredit (`scheduleCreditCharge`): bunga bulan 2..N di luar ledger.
+- Catatan kredit lama yang sudah dikompres `fitCreditNote` (`ref` hilang) tetap membawa bug void: cicilan masa depan pembelian yang
+  di-void tetap terhitung utang sampai jadwalnya dimigrasi manual.
 - Belum ada kurs, bruto->neto gaji, dividen/kupon/XIRR; pajak bunga default flat 20% tanpa pengecualian Rp7,5 jt.
-- Terkonfirmasi dari kode, belum diuji ujung ke ujung: pembelian cicilan hanya membukukan cicilan pertama sebagai expense
-  (`transaction-editor.tsx` memposting `firstMonthTotalMinor`; cicilan 2..N di luar ledger lewat `scheduleCreditCharge`).
-  Tulis tes sebelum mengubah perilakunya.
-- Akun yang cocok sebagai kredit sekaligus piutang (mis. "Piutang Pinjaman ke Budi") hilang dari aset DAN utang: `financeSnapshot`
-  memeriksa `isCreditAsset` lebih dulu sehingga saldo tidak masuk total aset, sementara saldo positif memberi `totalUnpaid = 0`.
-- Void pembelian cicilan yang catatan kreditnya sudah dikompres `fitCreditNote` (langkah terakhir: gabung per bulan, `ref` hilang)
-  meninggalkan cicilan masa depan sebagai utang: `releaseCreditCharge` tidak menemukan pemiliknya dan jalur cadangan hanya
-  menangani `LEGACY_DEFERRED_REF` non-off-ledger, jadi mengembalikan `null`.
 
 ## UI dan gaya
 
