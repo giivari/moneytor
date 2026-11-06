@@ -116,8 +116,7 @@
 
 .asset-overview-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: var(--space-md); margin-bottom: var(--space-md); }
 .asset-overview-grid > * { min-width: 0; }
-.asset-overview-grid .finance-asset-total, .asset-overview-grid .investment-summary { margin: 0; padding: var(--surface-padding); }
-.asset-overview-grid .finance-asset-total p { margin-bottom: 0; }
+.asset-overview-grid .investment-summary { margin: 0; padding: var(--surface-padding); }
 .investment-summary-currency { grid-template-columns: repeat(auto-fit,minmax(min(100%,172px),1fr)); gap: var(--space-md); padding-top: var(--space-xs); }
 .investment-summary-currency > div:first-child { grid-column: auto; }
 .investment-totals dd { font-variant-numeric: tabular-nums; }

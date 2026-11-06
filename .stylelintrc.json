@@ -6,7 +6,6 @@
     ".next/**",
     "src/app/auth.css",
     "src/app/automation.css",
-    "src/app/finance.css",
     "src/app/interaction.css",
     "src/app/investments.css",
     "src/app/onboarding.css",

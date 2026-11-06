@@ -5,7 +5,8 @@ import { useListSort } from "./use-list-sort";
 import { ListSortControl } from "./list-sort-control";
 
 import { useEffect, useRef, useState } from "react";
-import { Bank, CheckCircle, PencilSimple, Plus, X } from "@phosphor-icons/react";
+import { Bank, CheckCircle, CreditCard, Drop, PencilSimple, Plus, Wallet, X } from "@phosphor-icons/react";
+import { Kpi, PageHeading } from "./ui";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
 import {
   bpsToInput,
@@ -1630,7 +1631,7 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
   </dialog>;
 }
 
-export function AssetsManager({ assets, totals, investmentTotals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number }[]; investmentTotals: InvestmentTotal[] }) {
+export function AssetsManager({ assets, totals, investmentTotals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number; liquidMinor?: string; eligibleMinor?: string; liabilitiesMinor?: string }[]; investmentTotals: InvestmentTotal[] }) {
   const mobile = useMobileViewport();
   const [viewingAsset, setViewingAsset] = useState<FinanceAsset | null>(null);
   const [editing, setEditing] = useState<FinanceAsset | "new" | null>(null);
@@ -1739,11 +1740,21 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
     </section>
   ) : null;
 
-  return <div className="page finance-assets-page"><div className="page-heading finance-heading"><div><span className="eyebrow">POSISI KEUANGAN</span><h1>Assets</h1>
-    </div><div className="page-heading-actions"><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></div></div>
-    <div className="asset-overview-grid">{!!totals.length && <section className="asset-total finance-asset-total"><div className="finance-total-heading"><span className="finance-total-icon"><Bank size={17} weight="bold" /></span><span>Total aset tercatat</span></div>
-      {totals.map((item) => <strong className="financial-value financial-value--summary" key={item.currency}>{formatMinor(item.amountMinor, item.currency, item.exponent)}</strong>)}
-      </section>}
+  return <div className="page finance-assets-page">
+    <header className="page-header"><PageHeading title="Aset" description="Rekening, kas, e-money, tabungan, dan piutang beserta saldo awalnya."
+      actions={<><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></>} /></header>
+    {totals.map((item) => {
+      const money = (value: string | undefined) => formatMinor(value ?? "0", item.currency, item.exponent);
+      return <div className="ui-kpis assets-kpis" key={item.currency} aria-label={`Ringkasan aset ${item.currency}`}>
+        <Kpi title="Total aset tercatat" icon={Bank} tone="neutral" value={money(item.amountMinor)} valueTone={BigInt(item.amountMinor) < 0n ? "negative" : ""}
+          note={item.unpricedCount ? `${item.unpricedCount} posisi investasi tanpa harga belum termasuk` : `Termasuk investasi dan piutang · ${item.currency}`} />
+        <Kpi title="Dana likuid" icon={Drop} tone="info" value={money(item.liquidMinor)} valueTone={BigInt(item.liquidMinor ?? "0") < 0n ? "negative" : ""} note="Akun aktif bertanda likuid" />
+        <Kpi title="Dapat dipakai belanja" icon={Wallet} tone="positive" value={money(item.eligibleMinor)} valueTone={BigInt(item.eligibleMinor ?? "0") < 0n ? "negative" : ""} note="Sebelum cadangan dan kewajiban" />
+        <Kpi title="Kewajiban kredit" icon={CreditCard} tone="negative" value={money(item.liabilitiesMinor)} note="Termasuk cicilan bulan berikutnya"
+          action={<AppLink href="/credit" className="text-link">Kredit &amp; Talangan</AppLink>} />
+      </div>;
+    })}
+    <div className="asset-overview-grid">
     <InvestmentSummary totals={investmentTotals} /></div>
     {creditFirst && creditSection}
     {!regularActive.length ? <section className="surface finance-empty"><h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2><p>{archived.length ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru." : "Buat akun atau aset pertama, lalu catat saldo awalnya."}</p>

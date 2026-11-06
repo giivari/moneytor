@@ -81,3 +81,10 @@ tidak ada laporan), bukan KPI kelima. SVG dashboard disembunyikan dengan ruang t
 - CSS data-presentation, density, forms dimigrasi ke token (keluar dari ignoreFiles). Skrip migrasi memetakan hex ke token
   terdekat (jarak warna Lab); perbedaan > dE 12 dicatat: #557ba0, #284b61, #4b91c1 -> data-cyan/ink-soft.
 - Keputusan kecil: `var(--type-*)` diizinkan stylelint karena alias skala.
+
+### Aset
+- Kepala "Aset" (ekspor, tambah aset) dan KPI dari snapshot: total aset (totalMinor), dana likuid (liquidMinor), dapat dipakai
+  belanja (eligibleMinor), kewajiban kredit (liabilitiesMinor, tautan ke Kredit & Talangan). Daftar aset, kredit, editor tetap.
+- finance.css dimigrasi ke token; kartu total lama dihapus; `!important` diganti selektor berulang (spesifisitas setara);
+  `user-select: none` pada tombol dihapus. Warna jenuh dipetakan per keluarga (biru→data-blue, hijau→positive, dst.).
+- Label "Unrealized" → "Belum terealisasi".
