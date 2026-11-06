@@ -159,6 +159,7 @@ Tes DB belum dijalankan (butuh Postgres).
 8. Secret bootstrap minimal hanya 8 karakter (README menganjurkan 43).
 9. Docs usang: modul kredit (`domain/credit.ts`, 740 baris) tak ada di README/CHANGELOG; "sesi terenkripsi SHA-256" salah (itu hash).
 10. Penamaan tak konsisten: paket `personal-finance-monitor`, env/cookie `MONETA_`/`moneta-`, repo `moneytor`.
+11. `import-db.test.mjs` tidak memeriksa host/port seperti `finance-db`; tambahkan pemeriksaan yang sama (belum dikerjakan).
 
 Kelebihan repo yang sudah ada: auth WebAuthn serius (hash sesi, idle 24 jam, absolut 7 hari, challenge sekali pakai, tidak bisa
 mencabut passkey terakhir), semua route API memeriksa sesi kecuali `/api/health`, constraint + trigger di SQL, checksum migrasi,
