@@ -94,3 +94,10 @@ tidak ada laporan), bukan KPI kelima. SVG dashboard disembunyikan dengan ruang t
   terealisasi, biaya perolehan tersisa, laba/rugi terealisasi (dari investmentSnapshot). Onboarding, posisi, riwayat tetap.
 - investments.css bertoken; `.pnl-*` tanpa `!important` (kelas berulang). Label "Unrealized" diterjemahkan.
 - Belum: label ekspor (lib/exports) masih memuat "Unrealized P/L" di berkas ekspor; tidak diubah karena format ekspor.
+
+### Rencana
+- Kepala "Rencana" (jangka kewajiban + ekspor sebagai aksi), KPI per mata uang dari planningPosition: dapat digunakan,
+  setelah kewajiban rencana N hari, cadangan aktif, kewajiban belum tercakup (dengan jatuh tempo/tercakup).
+- Keputusan kecil: label "Setelah kewajiban rencana" + catatan "belum termasuk tagihan kredit", karena angka ini tidak memuat
+  creditDebt (berbeda dengan Dana siap pakai di Beranda). Lebar khusus 1100px dihapus agar sejajar dengan halaman lain.
+- planning.css bertoken; duplikat .planning-row-actions digabung.

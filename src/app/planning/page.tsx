@@ -6,8 +6,8 @@ import { PlanningManager } from "@/components/planning-manager";
 export const dynamic = "force-dynamic";
 export default async function PlanningPage() {
   const planning = await listPlanning();
-  if (!planning.ready) return <div className="page planning-page"><div className="page-heading"><div><span className="eyebrow">RENCANA KEUANGAN</span><h1>Planning</h1></div></div>
-    <section className="surface finance-empty"><h2>Planning belum diaktifkan di database lokal</h2>
+  if (!planning.ready) return <div className="page planning-page"><div className="page-heading"><div><span className="eyebrow">RENCANA KEUANGAN</span><h1>Rencana</h1></div></div>
+    <section className="surface finance-empty"><h2>Rencana belum diaktifkan di database lokal</h2>
       <p>Migrasi 007_planning.sql perlu diterapkan sebelum Anda dapat mencatat rencana. Data keuangan yang ada tetap utuh.</p></section></div>;
   const snapshot = await financeSnapshot({ includeRecent: false, includeExpenses: false });
   const positions = snapshot.currencies.map(({ currency, exponent, liquidMinor, eligibleMinor }) => ({ currency, exponent, liquidMinor, eligibleMinor }));

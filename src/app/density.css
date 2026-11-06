@@ -224,7 +224,7 @@
 .investment-history-row { padding-block: 12px; gap: var(--space-sm); }
 .investment-history-row .history-detail p { margin-top: var(--space-xs); }
 
-.planning-position, .planning-section, .planning-first-run { padding: var(--surface-padding); }
+.planning-section, .planning-first-run { padding: var(--surface-padding); }
 .planning-position-values { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--space-md); margin-top: 12px; }
 .planning-calculation-details { margin-top: var(--space-sm); }
 .planning-calculation-details .planning-breakdown { margin-top: var(--space-sm); padding-top: 12px; }

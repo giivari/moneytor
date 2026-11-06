@@ -9,9 +9,9 @@ import { ListOrderControl, ListSortControl } from "./list-sort-control";
 import { useRef, useState } from "react";
 import { ExportMenuButton } from "./export-menu-button";
 import { SectionHeading } from "./section-heading";
-import { ResponsiveDisclosure } from "./responsive-disclosure";
 import { InlineCatalogSelect } from "./inline-catalog-select";
-import { Archive, ArrowCounterClockwise, CalendarBlank, PencilSimple, PiggyBank, Plus, ShieldCheck, Target } from "@phosphor-icons/react";
+import { Archive, ArrowCounterClockwise, CalendarBlank, CalendarCheck, PencilSimple, PiggyBank, Plus, ShieldCheck, Target, Wallet } from "@phosphor-icons/react";
+import { Kpi, PageHeading } from "./ui";
 import { useFinanceDialog } from "./finance-form-hooks";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
@@ -297,28 +297,27 @@ export function PlanningManager({ data, positions, sources, throughDay }: {
         onEdit={(row) => setForm({ kind: row.kind,item: row })} onConfirm={(row,action) => setConfirm({ item: row,action })}
         onReactivate={(row) => void reactivate(row)} busy={busy} />)}</div>}</section>;
   }
-  return <div className="page planning-page"><div className="page-heading finance-heading"><div><span className="eyebrow">RENCANA KEUANGAN</span><h1>Planning</h1>
-    <p>Atur batas, target, dana yang disisihkan, dan kewajiban tanpa mengubah saldo aset.</p></div><div className="page-heading-actions"><ExportMenuButton dataset="planning" label="Ekspor Rencana" /></div></div>
-    <label className="planning-horizon field"><span>Jangka kewajiban</span><select value={horizon} onChange={(event) => setHorizon(Number(event.target.value) as 7 | 30 | 90)}>
-      <option value={7}>7 hari</option><option value={30}>30 hari</option><option value={90}>90 hari</option></select></label>
+  return <div className="page planning-page">
+    <header className="page-header"><PageHeading title="Rencana" description="Batas belanja, target, dana yang disisihkan, dan kewajiban, tanpa mengubah saldo aset."
+      actions={<><label className="planning-horizon field"><span>Jangka kewajiban</span><select value={horizon} onChange={(event) => setHorizon(Number(event.target.value) as 7 | 30 | 90)}>
+        <option value={7}>7 hari</option><option value={30}>30 hari</option><option value={90}>90 hari</option></select></label>
+        <ExportMenuButton dataset="planning" label="Ekspor Rencana" /></>} /></header>
     <div className="planning-position-grid">{sortNamed(positions, entry => entry.currency, entry => entry.currency).map((entry) => {
       const total = planningPosition(entry.eligibleMinor,entry.currency,data.reserves.filter((row) => row.currency === entry.currency).map((row) => ({
         currency: row.currency,amountMinor: row.amountMinor,isActive: row.isActive,goalId: row.goalId,obligationId: row.obligationId })),
       data.obligations.filter((row) => row.currency === entry.currency).map((row) => ({
         id: row.id,currency: row.currency,amountMinor: row.amountMinor,dueOn: row.dueOn,status: row.status })),end);
-      return <section className="surface planning-position" key={entry.currency} data-warning={BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n}>
-        <span className="eyebrow">{entry.currency} · RINGKASAN</span>
-        <div className="planning-position-values"><div><span>Dapat digunakan</span><strong className="financial-value financial-value--summary">{formatMinor(total.spendableMinor,entry.currency,entry.exponent)}</strong></div>
-          <div><span>Setelah kewajiban {horizon} hari</span><strong className="financial-value financial-value--summary">{formatMinor(total.availableMinor,entry.currency,entry.exponent)}</strong></div></div>
-        <ResponsiveDisclosure label="Rincian perhitungan" desktopExpanded className="planning-calculation-details"><div className="planning-breakdown">
-          <div><span>Likuid</span><strong>{formatMinor(entry.liquidMinor,entry.currency,entry.exponent)}</strong></div>
-          <div><span>Cadangan</span><strong>{formatMinor(total.reservedMinor,entry.currency,entry.exponent)}</strong></div>
-          <div><span>Kewajiban jatuh tempo</span><strong>{formatMinor(total.dueMinor,entry.currency,entry.exponent)}</strong></div>
-          <div><span>Tercakup cadangan</span><strong>{formatMinor(total.coveredMinor,entry.currency,entry.exponent)}</strong></div>
-          <div><span>Belum tercakup</span><strong>{formatMinor(total.uncoveredMinor,entry.currency,entry.exponent)}</strong></div>
-        </div></ResponsiveDisclosure>
-        {(BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n) && <p className="planning-warning-copy">Komitmen melebihi dana yang dapat digunakan.</p>}
-      </section>;
+      const money = (value: string) => formatMinor(value, entry.currency, entry.exponent);
+      const tone = (value: string) => (BigInt(value) < 0n ? "negative" : "") as "" | "negative";
+      return <div className="planning-position" key={entry.currency} data-warning={BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n}>
+        <div className="ui-kpis" aria-label={`Ringkasan rencana ${entry.currency}`}>
+          <Kpi title="Dapat digunakan" icon={Wallet} tone="info" value={money(total.spendableMinor)} valueTone={tone(total.spendableMinor)} note={<>Saldo dapat dipakai {money(entry.eligibleMinor)} − cadangan</>} />
+          <Kpi title={`Setelah kewajiban rencana ${horizon} hari`} icon={CalendarCheck} tone="warning" value={money(total.availableMinor)} valueTone={tone(total.availableMinor)} note="Belum termasuk tagihan kredit; lihat Dana siap pakai di Beranda" />
+          <Kpi title="Cadangan aktif" icon={ShieldCheck} tone="positive" value={money(total.reservedMinor)} note={<>Likuid {money(entry.liquidMinor)} · {entry.currency}</>} />
+          <Kpi title="Kewajiban belum tercakup" icon={CalendarBlank} tone="negative" value={money(total.uncoveredMinor)} valueTone={BigInt(total.uncoveredMinor) > 0n ? "negative" : ""} note={<>Jatuh tempo {money(total.dueMinor)}, tercakup {money(total.coveredMinor)}</>} />
+        </div>
+        {(BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n) && <p className="ui-notice" data-tone="negative">Komitmen melebihi dana yang dapat digunakan.</p>}
+      </div>;
     })}</div>
     {!positions.length && <p className="planning-intro">Belum ada aset atau komitmen dalam mata uang yang tercatat.</p>}
     <details className="context-help"><summary>Cara menghitung</summary><p className="planning-intro supporting-prose supporting-prose--section">Setiap mata uang dihitung terpisah. Hanya cadangan aktif yang mengurangi dana dapat digunakan; kewajiban terbuka yang jatuh tempo mengurangi sisanya setelah memperhitungkan cadangan terkait. Saldo aset tidak berubah.</p></details>
