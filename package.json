@@ -16,7 +16,7 @@
     "db:reset:empty": "node scripts/vercel-db-setup.mjs --reset-empty --confirm-empty",
     "ops:check": "node scripts/backup-drill.mjs --verify-env",
     "ops:drill": "node scripts/backup-drill.mjs --drill",
-    "test:unit": "node --test tests/asset-class-insert.test.mjs tests/domain.test.mjs tests/auth.test.mjs tests/auth-http.test.mjs tests/finance-interaction.test.mjs tests/investment-domain.test.mjs tests/investment-display.test.mjs tests/investment-workflow.test.mjs tests/planning-domain.test.mjs tests/automation-domain.test.mjs tests/income-event-domain.test.mjs tests/composable-domain.test.mjs tests/allocation-domain.test.mjs tests/allocation-presentation.test.mjs tests/automation-review.test.mjs tests/analytics-domain.test.mjs tests/list-order.test.mjs tests/import-domain.test.mjs tests/export-domain.test.mjs tests/production-readiness.test.mjs tests/credit-redesign.test.mjs tests/home-briefing.test.mjs tests/available-funds.test.mjs tests/transaction-preset.test.mjs tests/credit-overview.test.mjs",
+    "test:unit": "node --test tests/catalog-doc.test.mjs tests/asset-class-insert.test.mjs tests/domain.test.mjs tests/auth.test.mjs tests/auth-http.test.mjs tests/finance-interaction.test.mjs tests/investment-domain.test.mjs tests/investment-display.test.mjs tests/investment-workflow.test.mjs tests/planning-domain.test.mjs tests/automation-domain.test.mjs tests/income-event-domain.test.mjs tests/composable-domain.test.mjs tests/allocation-domain.test.mjs tests/allocation-presentation.test.mjs tests/automation-review.test.mjs tests/analytics-domain.test.mjs tests/list-order.test.mjs tests/import-domain.test.mjs tests/export-domain.test.mjs tests/production-readiness.test.mjs tests/credit-redesign.test.mjs tests/home-briefing.test.mjs tests/available-funds.test.mjs tests/transaction-preset.test.mjs tests/credit-overview.test.mjs",
     "test:ui": "node --test tests/transaction-editor-steps.test.mjs tests/style-tokens.test.mjs tests/automation-activity-details.test.mjs tests/insights-presentation.test.mjs tests/insights-visuals.test.mjs tests/insights-month.test.mjs tests/list-loading.test.mjs tests/presentation-order.test.mjs tests/mobile-presentation.test.mjs tests/home-overview.test.mjs tests/credit-page.test.mjs",
     "test:domain": "node --test tests/domain.test.mjs",
     "test:auth": "node --test tests/auth.test.mjs",
@@ -36,7 +36,8 @@
     "test:imports:db": "node --conditions=react-server --test tests/import-db.test.mjs",
     "lint:css": "stylelint \"src/**/*.css\"",
     "test:splitbill:db": "node --conditions=react-server --test tests/split-bill-db.test.mjs",
-    "test:debt:db": "node --conditions=react-server --test tests/debt-activities-db.test.mjs"
+    "test:debt:db": "node --conditions=react-server --test tests/debt-activities-db.test.mjs",
+    "test:catalog:db": "node --conditions=react-server --test tests/catalog-db.test.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

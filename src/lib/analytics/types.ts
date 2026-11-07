@@ -121,6 +121,9 @@ export type AnalyticsReport = {
   byOrigin: DimensionRow[]; monthly: DimensionRow[]; daily: DimensionRow[]; charges: ChargeReport[];
   investmentFlows: InvestmentFlows[];
   byIncomeCategory?: DimensionRow[];
+  /** Expenses grouped under the catalog parent (a root category is its own group) and by effective nature (key "none" = Tanpa sifat). */
+  byCategoryParent?: DimensionRow[];
+  byNature?: DimensionRow[];
   byWeekday?: DimensionRow[];
   expenseItems?: AnalyticsExpenseItem[];
   creditAndBills?: AnalyticsCreditAndBills[];

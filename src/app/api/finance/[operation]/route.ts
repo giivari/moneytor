@@ -3,7 +3,7 @@ import { assertRequestOrigin, boundedBody } from "@/lib/auth/http";
 import { currentOwnerSession } from "@/lib/auth/session";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { insertAssetWithOpening, updateAsset, archiveAsset, restoreAsset, listAssets, assetOpeningHistory, readAssetDetail, correctAssetOpening, changeAssetClass, OpeningCorrectionError } from "@/lib/repositories/assets";
-import { deleteCustomCatalogItem, restoreCustomCatalogItem, archiveCustomCatalogItem, insertCustomCatalogItem, insertCustomCategory, listCatalog, renameCustomCatalogItem, type Catalog } from "@/lib/repositories/catalogs";
+import { setCategoryNature, CATEGORY_NATURES, deleteCustomCatalogItem, restoreCustomCatalogItem, archiveCustomCatalogItem, insertCustomCatalogItem, insertCustomCategory, listCatalog, renameCustomCatalogItem, type Catalog } from "@/lib/repositories/catalogs";
 import { postActivity, replaceActivity, voidActivity } from "@/lib/finance/service";
 import { postSplitBill } from "@/lib/finance/split-bill-service";
 import { LifecycleError } from "@/lib/repositories/lifecycle";
@@ -114,9 +114,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (operation === "catalog-create") {
       const which = catalog(body.catalog);
       const item = which === "transactionCategories"
-        ? await insertCustomCategory(str(body.displayName), str(body.appliesTo, 7) as "income" | "expense")
+        ? await insertCustomCategory(str(body.displayName), str(body.appliesTo, 7) as "income" | "expense", optional(body.parentId, 36))
         : await insertCustomCatalogItem(which, str(body.displayName));
       return json({ item });
+    }
+    if (operation === "category-nature") {
+      const nature = body.nature === null ? null : str(body.nature, 12);
+      if (nature !== null && !(CATEGORY_NATURES as readonly string[]).includes(nature)) throw new Error("Invalid nature");
+      await setCategoryNature(str(body.id, 36), nature as Parameters<typeof setCategoryNature>[1]); return json({ ok: true });
     }
     if (operation === "catalog-rename") {
       await renameCustomCatalogItem(catalog(body.catalog), str(body.id, 36), str(body.displayName)); return json({ ok: true });

@@ -18,7 +18,11 @@ const catalogTables = {
 
 export type Catalog = keyof typeof catalogTables;
 export type CategoryScope = "income" | "expense";
-export type CatalogRecord = CatalogItem & { appliesTo?: CategoryScope; canDelete?: boolean };
+export type CategoryNature = "need" | "want" | "obligation" | "social" | "saving";
+export const CATEGORY_NATURES: readonly CategoryNature[] = ["need", "want", "obligation", "social", "saving"];
+/** Categories also carry the two-level hierarchy and nature; effectiveNature = override, else own, else the parent's. */
+export type CatalogRecord = CatalogItem & { appliesTo?: CategoryScope; canDelete?: boolean;
+  parentId?: string | null; nature?: CategoryNature | null; natureOverride?: CategoryNature | null; effectiveNature?: CategoryNature | null };
 
 type CatalogRow = {
   id: string;
@@ -28,6 +32,7 @@ type CatalogRow = {
   is_active: boolean;
   applies_to?: CategoryScope;
   can_delete?: boolean;
+  parent_id?: string | null; nature?: CategoryNature | null; nature_override?: CategoryNature | null; effective_nature?: CategoryNature | null;
 };
 
 function toCatalogItem(row: CatalogRow): CatalogRecord {
@@ -39,6 +44,8 @@ function toCatalogItem(row: CatalogRow): CatalogRecord {
     isActive: row.is_active,
     ...(row.can_delete !== undefined ? { canDelete: row.can_delete } : {}),
     ...(row.applies_to ? { appliesTo: row.applies_to } : {}),
+    ...(row.applies_to ? { parentId: row.parent_id ?? null, nature: row.nature ?? null,
+      natureOverride: row.nature_override ?? null, effectiveNature: row.effective_nature ?? null } : {}),
   };
 }
 
@@ -80,7 +87,9 @@ export async function listCatalog(catalog: Catalog, includeArchived = false): Pr
   }
   const flags = await readLifecycleFlags(database(), table, includeArchived);
   const eligibility = includeArchived ? `, (NOT is_builtin AND system_key IS NULL AND NOT is_active AND ${unreferencedSql(table, "entry.id", flags.planning, flags.automation, flags.event, flags.general, flags.allocation)}) AS can_delete` : "";
-  const scope = catalog === "transactionCategories" ? ", applies_to" : "";
+  const scope = catalog === "transactionCategories" ? `, applies_to, parent_id, nature,
+    (SELECT e.nature_override FROM transaction_category_effective e WHERE e.id=entry.id) AS nature_override,
+    (SELECT e.effective_nature FROM transaction_category_effective e WHERE e.id=entry.id) AS effective_nature` : "";
   const result = await database().query<CatalogRow>(
     `SELECT id, display_name, system_key, is_builtin, is_active${scope}${eligibility}
      FROM ${table} entry WHERE ($1::boolean OR is_active) ORDER BY display_name, id`,
@@ -127,17 +136,33 @@ export async function archiveCustomCatalogItem(catalog: Catalog, id: string): Pr
   if (!result.rowCount) throw new Error("Item kustom aktif tidak ditemukan");
 }
 
-export async function insertCustomCategory(displayName: string, appliesTo: CategoryScope): Promise<CatalogRecord> {
+/** A custom category may sit under a catalog parent (two levels; same kind). A child with no own nature inherits the parent's. */
+export async function insertCustomCategory(displayName: string, appliesTo: CategoryScope, parentId?: string): Promise<CatalogRecord> {
   await requireOwnerSession();
   if (appliesTo !== "income" && appliesTo !== "expense") throw new Error("Invalid category scope");
+  if (parentId) assertUuid(parentId);
   const id = randomUUID();
   const result = await database().query<CatalogRow>(
-    `INSERT INTO transaction_categories (id, display_name, applies_to, is_builtin, system_key)
-     VALUES ($1, $2, $3, false, NULL)
-     RETURNING id, display_name, applies_to, system_key, is_builtin, is_active`,
-    [id, validateCatalogName(displayName), appliesTo],
+    `INSERT INTO transaction_categories (id, display_name, applies_to, is_builtin, system_key, parent_id)
+     VALUES ($1, $2, $3, false, NULL, $4)
+     RETURNING id, display_name, applies_to, system_key, is_builtin, is_active, parent_id, nature`,
+    [id, validateCatalogName(displayName), appliesTo, parentId ?? null],
   );
-  return toCatalogItem(result.rows[0]);
+  return toCatalogItem({ ...result.rows[0], effective_nature: result.rows[0].nature ?? null });
+}
+
+/** Owner's own nature for an expense category (built-in rows are never edited); null removes the override. */
+export async function setCategoryNature(categoryId: string, nature: CategoryNature | null): Promise<void> {
+  await requireOwnerSession(); assertUuid(categoryId);
+  if (nature === null) {
+    await database().query("DELETE FROM category_nature_overrides WHERE category_id=$1", [categoryId]);
+    return;
+  }
+  if (!CATEGORY_NATURES.includes(nature)) throw new Error("Sifat kategori tidak valid");
+  const category = await database().query("SELECT 1 FROM transaction_categories WHERE id=$1 AND applies_to='expense'", [categoryId]);
+  if (!category.rowCount) throw new Error("Sifat hanya untuk kategori pengeluaran");
+  await database().query(`INSERT INTO category_nature_overrides (category_id, nature) VALUES ($1,$2)
+    ON CONFLICT (category_id) DO UPDATE SET nature=EXCLUDED.nature, updated_at=now()`, [categoryId, nature]);
 }
 
 export async function restoreCustomCatalogItem(catalog: Catalog, id: string): Promise<void> {

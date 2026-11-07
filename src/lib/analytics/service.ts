@@ -253,6 +253,8 @@ export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()
     return { version: "p6a.v1", generatedAt: now.toISOString(), period, summary,
       byCategory,
       byIncomeCategory: dimension("income_category").sort(incomeRanking),
+      byCategoryParent: dimension("category_parent").sort(ranking),
+      byNature: dimension("category_nature").sort(ranking),
       byWeekday: dimension("weekday"),
       byAccount,
       byOrigin, monthly, daily: dimension("day"), charges, investmentFlows, expenseItems,

@@ -5,7 +5,7 @@ import type { AnalyticsExpenseItem, AnalyticsObligationItem, ChargeReport, Dimen
 import { FEE_SYSTEM_KEYS, TAX_SYSTEM_KEYS } from "./domain";
 import { CREDIT_REMINDER_NOTE_PREFIX } from "@/lib/domain/credit";
 
-export type AggregateRow = DimensionRow & { dimension: "summary" | "category" | "income_category" | "weekday" | "account" | "origin" | "month" | "day" };
+export type AggregateRow = DimensionRow & { dimension: "summary" | "category" | "category_parent" | "category_nature" | "income_category" | "weekday" | "account" | "origin" | "month" | "day" };
 /** One effective activity is one fact. Charges are reduced before any dimension joins. */
 export async function readAggregates(client: PoolClient, period: ReportingPeriod, currency: string | null, summaryOnly = false): Promise<AggregateRow[]> {
   const result = await client.query<AggregateRow>(`
@@ -36,6 +36,7 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
     ), facts AS (
       SELECT f.*,c.minor_unit_exponent AS exponent,o.origin,
         cat.display_name AS category_name,cat.is_active AS category_active,
+        ce.root_id,root.display_name AS root_name,root.is_active AS root_active,ce.effective_nature,
         a.display_name AS account_name,a.is_active AS account_active,
         COALESCE(f.source_asset_id,f.destination_asset_id) AS account_id,
         da.display_name AS dest_account_name,da.is_active AS dest_account_active,
@@ -50,6 +51,7 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
         COALESCE(ch.other,0) AS other,COALESCE(ch.transfer_fees,0) AS transfer_fees
       FROM selected f JOIN currencies c ON c.code=f.currency_code JOIN origins o ON o.id=f.id
       LEFT JOIN charges ch ON ch.activity_id=f.id LEFT JOIN transaction_categories cat ON cat.id=f.category_id
+      LEFT JOIN transaction_category_effective ce ON ce.id=f.category_id LEFT JOIN transaction_categories root ON root.id=ce.root_id
       JOIN assets a ON a.id=COALESCE(f.source_asset_id,f.destination_asset_id)
       LEFT JOIN assets da ON da.id=f.destination_asset_id AND f.kind='transfer'
     ), dimensions AS (
@@ -60,6 +62,8 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
       FROM facts f CROSS JOIN LATERAL (VALUES
         ('summary','summary',NULL::text,'Ringkasan',false),
         ('category',COALESCE(f.category_id::text,'uncategorized'),f.category_id::text,COALESCE(f.category_name,'Tanpa kategori'),NOT COALESCE(f.category_active,true)),
+        ('category_parent',COALESCE(f.root_id::text,'uncategorized'),f.root_id::text,COALESCE(f.root_name,'Tanpa kategori'),NOT COALESCE(f.root_active,true)),
+        ('category_nature',COALESCE(f.effective_nature,'none'),NULL::text,CASE f.effective_nature WHEN 'need' THEN 'Kebutuhan' WHEN 'want' THEN 'Keinginan' WHEN 'obligation' THEN 'Kewajiban' WHEN 'social' THEN 'Sosial' WHEN 'saving' THEN 'Tabungan' ELSE 'Tanpa sifat' END,false),
         ('income_category',COALESCE(f.category_id::text,'uncategorized'),f.category_id::text,COALESCE(f.category_name,'Tanpa kategori'),NOT COALESCE(f.category_active,true)),
         ('weekday',extract(isodow from f.occurred_at AT TIME ZONE 'Asia/Jakarta')::int::text,NULL::text,extract(isodow from f.occurred_at AT TIME ZONE 'Asia/Jakarta')::int::text,false),
         ('account',f.account_id::text,f.account_id::text,f.account_name,NOT f.account_active),
@@ -67,7 +71,7 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
         ('month',to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM'),NULL::text,to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM'),false),
         ('day',to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM-DD'),NULL::text,to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM-DD'),false)
       ) d(dimension,key,dimension_id,name,archived)
-      WHERE (d.dimension<>'category' OR f.kind IN ('expense','refund'))
+      WHERE (d.dimension NOT IN ('category','category_parent','category_nature') OR f.kind IN ('expense','refund'))
         AND (d.dimension<>'income_category' OR f.kind='income')
         AND (NOT $4::boolean OR d.dimension='summary')
       UNION ALL
