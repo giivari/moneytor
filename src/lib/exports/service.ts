@@ -1,3 +1,4 @@
+import type { AnyActivityKind } from "@/lib/finance/types";
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { requireOwnerSession } from "@/lib/auth/session";
@@ -47,9 +48,14 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
     // Every currency is totalled separately so non-IDR activity is never dropped from the summary.
     const postedIncome = sumByCurrency(posted, (act) => act.kind === "income"
       ? { currency: act.currency, exponent: act.exponent, amountMinor: BigInt(act.baseAmountMinor) } : null);
-    const postedExpense = sumByCurrency(posted, (act) => act.kind === "expense"
-      ? { currency: act.currency, exponent: act.exponent,
-        amountMinor: BigInt(act.baseAmountMinor) + act.charges.reduce((acc, c) => acc + BigInt(c.amountMinor), 0n) } : null);
+    // Loan interest (a repay charge) is an expense; a refund lowers expenses; borrow/adjustment are neither income nor expense.
+    const postedExpense = sumByCurrency(posted, (act) => {
+      const charges = act.charges.reduce((acc, c) => acc + BigInt(c.amountMinor), 0n);
+      const kind = act.kind as AnyActivityKind;
+      const amountMinor = kind === "expense" ? BigInt(act.baseAmountMinor) + charges
+        : kind === "repay" ? charges : kind === "refund" ? -BigInt(act.baseAmountMinor) : 0n;
+      return amountMinor === 0n ? null : { currency: act.currency, exponent: act.exponent, amountMinor };
+    });
     const postedTransfer = sumByCurrency(posted, (act) => act.kind === "transfer"
       ? { currency: act.currency, exponent: act.exponent, amountMinor: BigInt(act.baseAmountMinor) } : null);
     const activityCurrencies = sumByCurrency(posted, (act) => ({ currency: act.currency, exponent: act.exponent, amountMinor: 0n }));
@@ -85,10 +91,11 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
     for (const act of activities) {
       const chargesSum = act.charges.reduce((acc, c) => acc + BigInt(c.amountMinor), 0n);
       const total = BigInt(act.baseAmountMinor) + chargesSum;
-      const typeLabel = act.kind === "income" ? "Pemasukan" : act.kind === "expense" ? "Pengeluaran" : "Transfer";
+      const typeLabel = ({ income: "Pemasukan", expense: "Pengeluaran", transfer: "Transfer", borrow: "Pinjaman cair", repay: "Pelunasan pinjaman",
+        refund: "Refund", adjustment: "Penyesuaian saldo" } as Record<string, string>)[act.kind] ?? "Transfer";
       const statusLabel = act.status === "posted" ? "Aktif" : act.status === "voided" ? "Dibatalkan" : "Dikoreksi";
-      const accountCol = act.kind === "income" ? (act.destinationName ?? "") : (act.sourceName ?? "");
-      const toAccountCol = act.kind === "transfer" ? (act.destinationName ?? "") : "";
+      const accountCol = !act.sourceAssetId ? (act.destinationName ?? "") : (act.sourceName ?? "");
+      const toAccountCol = act.sourceAssetId && act.destinationAssetId ? (act.destinationName ?? "") : "";
       const dateStr = new Date(act.occurredAt).toLocaleString("id-ID", {
         timeZone: "Asia/Jakarta",
         day: "2-digit",
@@ -97,9 +104,9 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
         hour: "2-digit",
         minute: "2-digit",
       });
-      const sign = act.kind === "expense" ? "-" : act.kind === "income" ? "+" : "";
+      const sign = act.kind === "expense" ? "-" : act.kind === "income" || (act.kind as AnyActivityKind) === "refund" ? "+" : "";
       const formattedTotal = `${sign}${formatMinor(total.toString(), act.currency, act.exponent)}`;
-      const accountFlow = act.kind === "transfer" ? `${act.sourceName ?? ""} -> ${act.destinationName ?? ""}` : accountCol;
+      const accountFlow = act.sourceAssetId && act.destinationAssetId ? `${act.sourceName ?? ""} -> ${act.destinationName ?? ""}` : accountCol;
 
       csvRows.push([
         dateStr,

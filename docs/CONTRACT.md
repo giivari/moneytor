@@ -115,3 +115,36 @@ Request:
 - `receivableAssetId` opsional: harus akun `receivable` aktif, mata uang sama. Jika kosong: pakai akun receivable aktif pertama di mata uang itu, atau buat "Piutang & Talangan" (`assetClass: "receivable"`).
 Respons: `{ "personalActivityId": "<uuid>|null", "transferActivityId": "<uuid>", "receivableAssetId": "<uuid>", "receivableCreated": true }`.
 Ulangan dengan kunci dan isi sama mengembalikan respons yang sama tanpa posting ganda. Gagal di tengah = tidak ada yang tersimpan. Jalur lama (`asset-create` + dua `post`) tetap tersedia.
+
+## Tambahan: jenis aktivitas utang dan koreksi (migrasi 017)
+
+`ActivityDraft.kind` (POST `/api/finance/post`, `replace`) kini menerima `borrow | repay | refund | adjustment` selain `income | expense | transfer`.
+Tipe TypeScript: `ActivityKind` tetap 3 jenis lama (dipakai UI, otomasi, impor); `DebtActivityKind` dan `AnyActivityKind` ada di `src/lib/finance/types.ts`.
+**Peringatan frontend:** `GET /api/finance/activities` dan `financeSnapshot().recent` dapat mengembalikan `kind` baru walau tipe `FinanceActivity.kind` masih `ActivityKind`;
+komponen yang mengindeks label berdasarkan `kind` perlu menangani empat jenis ini (belum diubah, di luar lingkup backend).
+Nominal tetap string minor unit. Aturan: borrow BUKAN pemasukan; pokok repay BUKAN pengeluaran, bunga adalah biaya; refund mengurangi pengeluaran (bukan pemasukan);
+adjustment dilaporkan terpisah. Otomasi, recurring, dan impor tetap hanya 3 jenis lama; jenis baru bukan pemicu otomasi.
+
+| kind | Field | Ledger (satu pergerakan per sisi aset) | Syarat |
+|---|---|---|---|
+| `borrow` | `sourceAssetId` (liability), `destinationAssetId`, `amountMinor` | liability `-P`, tujuan `+P` | sumber `asset_class='liability'`; tanpa kategori/biaya |
+| `repay` | `sourceAssetId` (pembayar), `destinationAssetId` (liability), `amountMinor`, `charges?: [{typeId (system_key loan_interest "Bunga pinjaman"), amountMinor}]` (maks 1) | pembayar `-P`, liability `+P`, bunga `-I` di pembayar | tujuan liability |
+| `refund` | `destinationAssetId`, `amountMinor`, `refundOfActivityId` | tujuan `+P` | asal = pengeluaran posted, mata uang sama; kategori disalin dari asal; total refund aktif <= pokok + biaya asal; pengeluaran asal tidak dapat di-void/dikoreksi selama masih ada refund aktif |
+| `adjustment` | tepat satu dari `destinationAssetId` (naik) atau `sourceAssetId` (turun), `amountMinor`, `adjustmentReason` (`reconciliation` \| `opening_debt`) | `+P` atau `-P` | `opening_debt`: hanya `sourceAssetId` dan akun liability; saldo awal akun tetap 0 |
+
+Jadwal pokok: `borrow` dan `opening_debt` boleh membawa `creditCycle` + `creditInstallments { count >= 2, principalMinor, interestMinor: "0" }` (bunga selalu dibukukan saat `repay`);
+tanpa jadwal seluruh pokok menjadi tagihan saat ini. `creditDebtMinor`/`availableMinor` memakai rumus yang sama.
+
+Contoh `repay`:
+```json
+{ "draft": { "kind": "repay", "amountMinor": "1000000", "sourceAssetId": "<uuid>", "destinationAssetId": "<uuid liability>",
+  "charges": [{ "typeId": "<uuid loan_interest>", "amountMinor": "50000" }], "occurredAt": "2026-03-01T05:00:00.000Z" }, "idempotencyKey": "<uuid>" }
+```
+Respons: `{ "id": "<uuid>" }`. Contoh `refund`: `{ "draft": { "kind": "refund", "amountMinor": "40000", "destinationAssetId": "<uuid>", "refundOfActivityId": "<uuid expense>", "occurredAt": "..." }, "idempotencyKey": "<uuid>" }`.
+
+`FinanceActivity` mendapat `refundOfActivityId?: string|null` dan `adjustmentReason?: "reconciliation"|"opening_debt"|null`.
+GET `/api/finance/activities?kind=` menerima ketujuh jenis.
+Analitik (`FinancialMeasures`) mendapat `adjustmentInMinor`, `adjustmentOutMinor`, `debtBorrowedMinor`, `debtRepaidMinor`, `refundCount` (string, opsional);
+`expensePrincipalMinor`/`spendingMinor` sudah dikurangi refund (bisa negatif per kategori) dan memuat bunga repay; `incomeMinor` tidak terpengaruh.
+`monthlyExpenses`/`expenseMinor` dan anggaran terpakai juga mengurangi refund dan menghitung bunga repay.
+Ekspor transaksi memberi label "Pinjaman cair", "Pelunasan pinjaman", "Refund", "Penyesuaian saldo".

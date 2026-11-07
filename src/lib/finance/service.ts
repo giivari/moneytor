@@ -10,7 +10,7 @@ import { parseCreditMeta, type CreditInstallmentTerms } from "@/lib/domain/credi
 import { applyCreditPost, applyCreditVoid } from "@/lib/domain/credit-purchase";
 import { planActivity, type ActivityInput, type AssetReference, type CategoryReference, type ChargeInput } from "@/lib/domain/ledger";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
-import type { ActivityDraft, CreditInstallment, FinanceActivity } from "./types";
+import type { ActivityDraft, ActivityKind, AnyActivityKind, AdjustmentReason, AssetClass, CreditInstallment, FinanceActivity } from "./types";
 
 function positive(raw: unknown): bigint {
   if (typeof raw !== "string") throw new Error("Jumlah harus berupa bilangan bulat dalam unit terkecil");
@@ -30,13 +30,29 @@ function noteFrom(raw: unknown): string | null {
   return raw.trim() || null;
 }
 function normalizeDraft(raw: ActivityDraft): ActivityDraft {
-  if (!raw || !["income", "expense", "transfer"].includes(raw.kind)) throw new Error("Jenis transaksi tidak valid");
+  if (!raw || !["income", "expense", "transfer", "borrow", "repay", "refund", "adjustment"].includes(raw.kind)) throw new Error("Jenis transaksi tidak valid");
   const amountMinor = positive(raw.amountMinor).toString();
   const occurredAt = dateFrom(raw.occurredAt).toISOString();
   const note = noteFrom(raw.note) ?? undefined;
   const sourceAssetId = raw.sourceAssetId ? assertUuid(raw.sourceAssetId) : undefined;
   const destinationAssetId = raw.destinationAssetId ? assertUuid(raw.destinationAssetId) : undefined;
   const categoryId = raw.categoryId ? assertUuid(raw.categoryId) : undefined;
+  if (raw.kind === "borrow" || raw.kind === "repay") {
+    if (!sourceAssetId || !destinationAssetId || categoryId || raw.transferFeeMinor) throw new Error("Bentuk pinjaman/pelunasan tidak valid");
+    if (raw.kind === "borrow" && raw.charges?.length) throw new Error("Pinjaman tidak memiliki biaya tambahan");
+    if (raw.charges && (!Array.isArray(raw.charges) || raw.charges.length > 1)) throw new Error("Pelunasan hanya memiliki satu bunga");
+    const charges = (raw.charges ?? []).map((charge) => ({ typeId: assertUuid(charge.typeId), amountMinor: positive(charge.amountMinor).toString() }));
+    return { kind: raw.kind, amountMinor, sourceAssetId, destinationAssetId, charges: charges.length ? charges : undefined, occurredAt, note };
+  }
+  if (raw.kind === "refund") {
+    if (!destinationAssetId || sourceAssetId || raw.charges?.length || raw.transferFeeMinor || !raw.refundOfActivityId) throw new Error("Bentuk refund tidak valid");
+    return { kind: "refund", amountMinor, destinationAssetId, refundOfActivityId: assertUuid(raw.refundOfActivityId), occurredAt, note };
+  }
+  if (raw.kind === "adjustment") {
+    if (Boolean(sourceAssetId) === Boolean(destinationAssetId) || categoryId || raw.charges?.length || raw.transferFeeMinor
+      || !["reconciliation", "opening_debt"].includes(raw.adjustmentReason as string)) throw new Error("Bentuk penyesuaian tidak valid");
+    return { kind: "adjustment", amountMinor, sourceAssetId, destinationAssetId, adjustmentReason: raw.adjustmentReason, occurredAt, note };
+  }
   if (raw.kind === "income") {
     if (!destinationAssetId || sourceAssetId || raw.charges?.length || raw.transferFeeMinor) throw new Error("Bentuk pemasukan tidak valid");
     return { kind: "income", amountMinor, destinationAssetId, categoryId, occurredAt, note };
@@ -53,11 +69,11 @@ function normalizeDraft(raw: ActivityDraft): ActivityDraft {
 }
 
 async function activeAsset(client: PoolClient, id: string): Promise<AssetReference> {
-  const result = await client.query<{ id: string; currency_code: string; is_active: boolean }>(
-    "SELECT id, currency_code, is_active FROM assets WHERE id=$1 FOR SHARE", [id]);
+  const result = await client.query<{ id: string; currency_code: string; is_active: boolean; asset_class: AssetClass }>(
+    "SELECT id, currency_code, is_active, asset_class FROM assets WHERE id=$1 FOR SHARE", [id]);
   const row = result.rows[0];
   if (!row || !row.is_active) throw new Error("Pilih aset aktif");
-  return { id: row.id, currency: row.currency_code, isActive: true };
+  return { id: row.id, currency: row.currency_code, isActive: true, assetClass: row.asset_class };
 }
 async function activeCategory(client: PoolClient, id: string | undefined, kind: "income" | "expense"): Promise<CategoryReference | undefined> {
   if (!id) return undefined;
@@ -89,6 +105,23 @@ async function buildInput(client: PoolClient, draft: ActivityDraft): Promise<Act
       source: await activeAsset(client, draft.sourceAssetId!),
       category: await activeCategory(client, draft.categoryId, "expense"), charges };
   }
+  if (draft.kind === "borrow") return { kind: "borrow", amountMinor,
+    source: await activeAsset(client, draft.sourceAssetId!), destination: await activeAsset(client, draft.destinationAssetId!) };
+  if (draft.kind === "repay") return { kind: "repay", amountMinor,
+    source: await activeAsset(client, draft.sourceAssetId!), destination: await activeAsset(client, draft.destinationAssetId!),
+    interest: draft.charges?.[0] ? await activeCharge(client, draft.charges[0].typeId, draft.charges[0].amountMinor) : undefined };
+  if (draft.kind === "refund") {
+    const origin = (await client.query<{ category_id: string | null }>("SELECT category_id FROM financial_activities WHERE id=$1", [draft.refundOfActivityId])).rows[0];
+    if (!origin) throw new Error("Pengeluaran asal refund tidak ditemukan");
+    // The category is copied from the expense even if it has since been archived.
+    const category = origin.category_id ? (await client.query<{ id: string; display_name: string; system_key: string | null; is_builtin: boolean }>(
+      "SELECT id,display_name,system_key,is_builtin FROM transaction_categories WHERE id=$1", [origin.category_id])).rows[0] : undefined;
+    return { kind: "refund", amountMinor, destination: await activeAsset(client, draft.destinationAssetId!),
+      category: category && { id: category.id, displayName: category.display_name, systemKey: category.system_key, isBuiltIn: category.is_builtin, isActive: true, appliesTo: "expense" } };
+  }
+  if (draft.kind === "adjustment") return { kind: "adjustment", amountMinor, reason: draft.adjustmentReason!,
+    source: draft.sourceAssetId ? await activeAsset(client, draft.sourceAssetId) : undefined,
+    destination: draft.destinationAssetId ? await activeAsset(client, draft.destinationAssetId) : undefined };
   const fee = draft.transferFeeMinor
     ? await client.query<{ id: string }>("SELECT id FROM additional_charge_types WHERE system_key='transfer_fee' AND is_active") : null;
   if (draft.transferFeeMinor && !fee?.rows[0]) throw new Error("Jenis biaya transfer tidak tersedia");
@@ -101,15 +134,18 @@ async function buildInput(client: PoolClient, draft: ActivityDraft): Promise<Act
 async function insertPosted(client: PoolClient, draft: ActivityDraft, replacesId?: string): Promise<string> {
   const input = await buildInput(client, draft);
   const plan = planActivity(input);
+  const categoryId = input.kind === "refund" ? input.category?.id : draft.categoryId;
   for (const movement of plan.movements) assertStoredMinor(movement.amountMinor);
   assertStoredMinor(plan.totalOutflowMinor);
   const id = randomUUID();
   await client.query(`INSERT INTO financial_activities
-    (id,kind,base_amount_minor,currency_code,source_asset_id,destination_asset_id,category_id,category_kind,occurred_at,note,replaces_activity_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    (id,kind,base_amount_minor,currency_code,source_asset_id,destination_asset_id,category_id,category_kind,occurred_at,note,replaces_activity_id,
+     refund_of_activity_id,adjustment_reason)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [id, draft.kind, plan.baseAmountMinor.toString(), plan.currency, draft.sourceAssetId ?? null,
-      draft.destinationAssetId ?? null, draft.categoryId ?? null, draft.categoryId ? draft.kind : null,
-      dateFrom(draft.occurredAt), draft.note ?? null, replacesId ?? null]);
+      draft.destinationAssetId ?? null, categoryId ?? null, categoryId ? (draft.kind === "refund" ? "expense" : draft.kind) : null,
+      dateFrom(draft.occurredAt), draft.note ?? null, replacesId ?? null,
+      draft.kind === "refund" ? draft.refundOfActivityId : null, draft.kind === "adjustment" ? draft.adjustmentReason : null]);
   for (const charge of plan.charges) {
     await client.query(`INSERT INTO activity_charges (id,activity_id,activity_kind,charge_type_id,amount_minor)
       VALUES ($1,$2,$3,$4,$5)`, [charge.id, id, draft.kind, charge.type.id, charge.amountMinor.toString()]);
@@ -158,6 +194,22 @@ export type CreditPosting = {
   creditInstallments?: { count: number; principalMinor: string; interestMinor: string };
 };
 type CreditSchedulePlan = { cycle: CreditCycle; installments?: CreditInstallmentTerms };
+/** The credit-schedule kind of an outflow from the source account, or null when the draft is not one. */
+function scheduleKindOf(draft: ActivityDraft): "expense" | "transfer" | null {
+  if (!draft.sourceAssetId) return null;
+  if (draft.kind === "expense") return "expense";
+  if (draft.kind === "transfer" || draft.kind === "repay" || draft.kind === "borrow") return "transfer";
+  return draft.kind === "adjustment" && draft.adjustmentReason === "opening_debt" ? "transfer" : null;
+}
+/** Borrowed money and opening debt are only scheduled as principal-only installments; the legacy note branch is never used for them. */
+function debtPlanFor(draft: ActivityDraft, posting: CreditPosting): CreditSchedulePlan | null {
+  const plan = creditPlanFor(posting);
+  if (!plan) return null;
+  if (draft.kind !== "borrow" && !(draft.kind === "adjustment" && draft.adjustmentReason === "opening_debt")) return plan;
+  if (!plan.installments) return null;
+  if (plan.installments.interestMinor !== 0n) throw new Error("Jadwal pinjaman hanya memuat pokok; bunga dibukukan saat pelunasan");
+  return plan;
+}
 function creditPlanFor(posting: CreditPosting): CreditSchedulePlan | null {
   if (posting.creditCycle !== "current" && posting.creditCycle !== "next") return null;
   const raw = posting.creditInstallments;
@@ -248,13 +300,13 @@ async function withIdempotency(operation: "post" | "replace" | "void", key: stri
 
 export async function postActivity(raw: ActivityDraft, key: string, options: CreditPosting = {}): Promise<string> {
   const draft = normalizeDraft(raw);
-  const plan = draft.kind !== "income" && draft.sourceAssetId ? creditPlanFor(options) : null;
+  const plan = scheduleKindOf(draft) ? debtPlanFor(draft, options) : null;
   // Plain posts keep their historical request hash; a scheduled credit post hashes its billing as well.
   const payload = plan ? { draft, creditCycle: plan.cycle, creditInstallments: options.creditInstallments ?? null } : draft;
   return withIdempotency("post", key, payload, async (client) => {
     if (plan) await client.query("SELECT id FROM assets WHERE id=$1 FOR UPDATE", [draft.sourceAssetId]);
     const id = await insertPosted(client, draft);
-    if (plan) await scheduleCreditOutflow(client, id, draft.kind as "expense" | "transfer", draft.sourceAssetId!, plan);
+    if (plan) await scheduleCreditOutflow(client, id, scheduleKindOf(draft)!, draft.sourceAssetId!, plan);
     return id;
   });
 }
@@ -266,7 +318,7 @@ export async function postActivityInTransaction(client: PoolClient, raw: Activit
 export async function replaceActivity(oldId: string, raw: ActivityDraft, key: string, options: CreditPosting = {}): Promise<string> {
   assertUuid(oldId);
   const draft = normalizeDraft(raw);
-  const plan = draft.kind !== "income" && draft.sourceAssetId ? creditPlanFor(options) : null;
+  const plan = scheduleKindOf(draft) ? debtPlanFor(draft, options) : null;
   // Plain corrections keep their historical request hash; a rescheduled credit correction hashes its billing as well.
   const payload = plan ? { oldId, draft, creditCycle: plan.cycle, creditInstallments: options.creditInstallments ?? null } : { oldId, draft };
   return withIdempotency("replace", key, payload, async (client) => {
@@ -275,7 +327,7 @@ export async function replaceActivity(oldId: string, raw: ActivityDraft, key: st
     const id = await insertPosted(client, draft, oldId);
     // The old schedule is cancelled first; a replacement with its own billing then gets fresh rows.
     await releaseCreditSchedule(client, oldId, id, Boolean(plan));
-    if (plan) await scheduleCreditOutflow(client, id, draft.kind as "expense" | "transfer", draft.sourceAssetId!, plan);
+    if (plan) await scheduleCreditOutflow(client, id, scheduleKindOf(draft)!, draft.sourceAssetId!, plan);
     return id;
   });
 }
@@ -302,13 +354,15 @@ export async function listActivities(includeHistory = false, limit: number | nul
   if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 500)) throw new Error("Invalid activity read limit");
   const ordering = activityReadOrder(options);
   const result = await database().query<{
-    cursor_time: string; id: string; kind: "income" | "expense" | "transfer"; base_amount_minor: string; currency_code: string; minor_unit_exponent: number;
+    cursor_time: string; id: string; kind: AnyActivityKind; base_amount_minor: string; currency_code: string; minor_unit_exponent: number;
+    refund_of_activity_id: string | null; adjustment_reason: AdjustmentReason | null;
     source_asset_id: string | null; source_name: string | null; destination_asset_id: string | null; destination_name: string | null;
     category_id: string | null; category_name: string | null; occurred_at: Date; note: string | null;
     status: "posted" | "voided" | "superseded"; replaces_activity_id: string | null;
   }>(`SELECT f.occurred_at::text AS cursor_time,f.id,f.kind,f.base_amount_minor::text,f.currency_code,c.minor_unit_exponent,
     f.source_asset_id,s.display_name AS source_name,f.destination_asset_id,d.display_name AS destination_name,
-    f.category_id,cat.display_name AS category_name,f.occurred_at,f.note,f.status,f.replaces_activity_id
+    f.category_id,cat.display_name AS category_name,f.occurred_at,f.note,f.status,f.replaces_activity_id,
+    f.refund_of_activity_id,f.adjustment_reason
     FROM financial_activities f JOIN currencies c ON c.code=f.currency_code
     LEFT JOIN assets s ON s.id=f.source_asset_id LEFT JOIN assets d ON d.id=f.destination_asset_id
     LEFT JOIN transaction_categories cat ON cat.id=f.category_id
@@ -370,10 +424,11 @@ export async function listActivities(includeHistory = false, limit: number | nul
       JOIN currencies c ON c.code=source.currency_code`,[ids]) : {rows:[]};
   const allocationNames = new Map(allocationOrigins.rows.map(entry=>[entry.id,entry]));
   return result.rows.map((row) => ({
-    cursorTime: row.cursor_time, id: row.id, kind: row.kind, baseAmountMinor: row.base_amount_minor, currency: row.currency_code, exponent: row.minor_unit_exponent,
+    cursorTime: row.cursor_time, id: row.id, kind: row.kind as ActivityKind, baseAmountMinor: row.base_amount_minor, currency: row.currency_code, exponent: row.minor_unit_exponent,
     sourceAssetId: row.source_asset_id, sourceName: row.source_name, destinationAssetId: row.destination_asset_id,
     destinationName: row.destination_name, categoryId: row.category_id, categoryName: row.category_name,
     occurredAt: row.occurred_at.toISOString(), note: row.note, status: row.status, replacesActivityId: row.replaces_activity_id,
+    refundOfActivityId: row.refund_of_activity_id, adjustmentReason: row.adjustment_reason,
     recurringRuleName: allocationNames.get(row.id)?.title ?? recurringNames.get(row.id) ?? eventNames.get(row.id)?.title ?? generalNames.get(row.id)?.title,
     automationInstanceId:allocationNames.get(row.id)?.instance_id ?? generalNames.get(row.id)?.instance_id,
     allocationAdjustmentId:allocationNames.get(row.id)?.adjustment_id,

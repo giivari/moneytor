@@ -54,6 +54,10 @@ async function readMonthlyExpenses(client?: PoolClient) {
       SELECT currency_code,base_amount_minor::numeric AS amount FROM financial_activities
       WHERE kind='expense' AND status='posted' AND occurred_at >= $1 AND occurred_at < $2
       UNION ALL
+      -- A refund lowers spending (negative expense); it is never income.
+      SELECT currency_code,-base_amount_minor::numeric FROM financial_activities
+      WHERE kind='refund' AND status='posted' AND occurred_at >= $1 AND occurred_at < $2
+      UNION ALL
       SELECT f.currency_code,ac.amount_minor::numeric FROM activity_charges ac
       JOIN financial_activities f ON f.id=ac.activity_id
       WHERE f.status='posted' AND f.occurred_at >= $1 AND f.occurred_at < $2

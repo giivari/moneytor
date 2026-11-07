@@ -29,7 +29,7 @@ test('prior calendar periods and equal-day custom comparison',()=>{
   assert.equal(previousPeriod({kind:'current_year'},reportingPeriod({kind:'current_year'},now),now).startDay,'2025-01-01');
 });
 test('ordinary Income and transfers remain separate; fees are explicit spending',()=>{
-  assert.deepEqual(financialAmounts('transfer','1000000','5000'),{incomeMinor:'0',expensePrincipalMinor:'0',spendingMinor:'5000',netMinor:'-5000',transferPrincipalMinor:'1000000'});
+  assert.deepEqual(financialAmounts('transfer','1000000','5000'),{incomeMinor:'0',expensePrincipalMinor:'0',spendingMinor:'5000',netMinor:'-5000',transferPrincipalMinor:'1000000',adjustmentInMinor:'0',adjustmentOutMinor:'0',debtBorrowedMinor:'0',debtRepaidMinor:'0'});
   assert.equal(financialAmounts('income','1000000','0').spendingMinor,'0');
   assert.equal(financialAmounts('expense','100','30').spendingMinor,'130');
 });
@@ -60,4 +60,15 @@ test('flexible presets (1w, 1m, 6m, 1y, 5y) and explicit day/week/month/year gra
   const yearReport={generatedAt:now.toISOString(),period:y5,daily:[],monthly:[{key:'2025-10',currency:'IDR',exponent:0,incomeMinor:'100',spendingMinor:'40',netMinor:'60',activityCount:'1'},{key:'2026-10',currency:'IDR',exponent:0,incomeMinor:'200',spendingMinor:'50',netMinor:'150',activityCount:'1'}]};
   const yearlyTrend=visualTrend(yearReport,'IDR',12,'year');
   assert.equal(yearlyTrend.granularity,'year');assert.ok(yearlyTrend.intervals.length>=5);
+});
+test('refund mengurangi pengeluaran, borrow bukan pemasukan, adjustment terpisah, bunga repay adalah biaya',()=>{
+  assert.deepEqual(financialAmounts('refund','40000','0'),{incomeMinor:'0',expensePrincipalMinor:'-40000',spendingMinor:'-40000',netMinor:'40000',transferPrincipalMinor:'0',adjustmentInMinor:'0',adjustmentOutMinor:'0',debtBorrowedMinor:'0',debtRepaidMinor:'0'});
+  assert.equal(financialAmounts('borrow','5000000','0').incomeMinor,'0');
+  assert.equal(financialAmounts('borrow','5000000','0').netMinor,'0');
+  assert.equal(financialAmounts('borrow','5000000','0').debtBorrowedMinor,'5000000');
+  const repay=financialAmounts('repay','1000000','50000');
+  assert.equal(repay.spendingMinor,'50000');assert.equal(repay.expensePrincipalMinor,'0');assert.equal(repay.debtRepaidMinor,'1000000');
+  const adj=financialAmounts('adjustment','700','0','in');
+  assert.equal(adj.adjustmentInMinor,'700');assert.equal(adj.incomeMinor,'0');assert.equal(adj.netMinor,'0');
+  assert.equal(financialAmounts('adjustment','700','0','out').adjustmentOutMinor,'700');
 });

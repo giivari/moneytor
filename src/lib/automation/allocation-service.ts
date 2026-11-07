@@ -4,7 +4,7 @@ import type { PoolClient } from 'pg';
 import { requireOwnerSession } from '@/lib/auth/session';
 import { database, inDatabaseTransaction } from '@/lib/db/pool';
 import { postActivityInTransaction } from '@/lib/finance/service';
-import type { ActivityDraft } from '@/lib/finance/types';
+import type { ActivityDraft, ActivityKind } from '@/lib/finance/types';
 import { evaluateConditions, resolveAsset, validId, positiveMinor, type GeneralRuleInput, type FinancialAction, type TriggerContext } from './composable-domain';
 import { allocationDifference, AllocationError, type AllocationStorage, type AllocationSummary } from './allocation-domain';
 
@@ -15,7 +15,7 @@ type Adapter = { id: string; rule_id: string; version: number; root: string; ori
   originalSource: TriggerContext; conditions: unknown };
 type Assessment = { id: string; legacy_instance_id: string | null; general_instance_id: string | null; root_activity_id: string;
   source_amount_minor: string; target_minor: string; recognized_minor: string; difference_minor: string; original_result_id: string;
-  percentage_bps: number; currency_code: string; action_kind: ActivityDraft['kind']; state: AllocationSummary['state']; reason: string | null;
+  percentage_bps: number; currency_code: string; action_kind: ActivityKind; state: AllocationSummary['state']; reason: string | null;
   source_asset_id: string | null; destination_asset_id: string | null; category_id: string | null;
   source_snapshot: Activity; rule_snapshot: { title: string; version: number; evaluatedConditions?: {matched:boolean} }; result_snapshot: Activity[]; fingerprint: string; basis_fingerprint: string };
 type Proposal = { id: string; assessment_id: string; status: string; result_activity_id: string | null; confirmation_hash: string | null;

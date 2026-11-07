@@ -35,7 +35,8 @@
     "test:imports": "node --test tests/import-domain.test.mjs",
     "test:imports:db": "node --conditions=react-server --test tests/import-db.test.mjs",
     "lint:css": "stylelint \"src/**/*.css\"",
-    "test:splitbill:db": "node --conditions=react-server --test tests/split-bill-db.test.mjs"
+    "test:splitbill:db": "node --conditions=react-server --test tests/split-bill-db.test.mjs",
+    "test:debt:db": "node --conditions=react-server --test tests/debt-activities-db.test.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

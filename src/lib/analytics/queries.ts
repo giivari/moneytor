@@ -40,7 +40,11 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
         COALESCE(f.source_asset_id,f.destination_asset_id) AS account_id,
         da.display_name AS dest_account_name,da.is_active AS dest_account_active,
         CASE WHEN f.kind='income' THEN f.base_amount_minor::numeric ELSE 0 END AS income,
-        CASE WHEN f.kind='expense' THEN f.base_amount_minor::numeric ELSE 0 END AS expense,
+        CASE WHEN f.kind='expense' THEN f.base_amount_minor::numeric WHEN f.kind='refund' THEN -f.base_amount_minor::numeric ELSE 0 END AS expense,
+        CASE WHEN f.kind='adjustment' AND f.source_asset_id IS NULL THEN f.base_amount_minor::numeric ELSE 0 END AS adjustment_in,
+        CASE WHEN f.kind='adjustment' AND f.source_asset_id IS NOT NULL THEN f.base_amount_minor::numeric ELSE 0 END AS adjustment_out,
+        CASE WHEN f.kind='borrow' THEN f.base_amount_minor::numeric ELSE 0 END AS debt_borrowed,
+        CASE WHEN f.kind='repay' THEN f.base_amount_minor::numeric ELSE 0 END AS debt_repaid,
         CASE WHEN f.kind='transfer' THEN f.base_amount_minor::numeric ELSE 0 END AS transfer,
         COALESCE(ch.total,0) AS charges,COALESCE(ch.fees,0) AS fees,COALESCE(ch.taxes,0) AS taxes,
         COALESCE(ch.other,0) AS other,COALESCE(ch.transfer_fees,0) AS transfer_fees
@@ -51,6 +55,7 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
     ), dimensions AS (
       SELECT d.dimension,d.key,d.dimension_id,d.name,d.archived,f.currency_code,f.exponent,f.kind,
         f.income,f.expense,f.fees,f.taxes,f.other,f.transfer_fees,f.charges,f.transfer,
+        f.adjustment_in,f.adjustment_out,f.debt_borrowed,f.debt_repaid,
         0::numeric AS transfer_in,false AS is_transfer_in
       FROM facts f CROSS JOIN LATERAL (VALUES
         ('summary','summary',NULL::text,'Ringkasan',false),
@@ -62,13 +67,14 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
         ('month',to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM'),NULL::text,to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM'),false),
         ('day',to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM-DD'),NULL::text,to_char(f.occurred_at AT TIME ZONE 'Asia/Jakarta','YYYY-MM-DD'),false)
       ) d(dimension,key,dimension_id,name,archived)
-      WHERE (d.dimension<>'category' OR f.kind='expense')
+      WHERE (d.dimension<>'category' OR f.kind IN ('expense','refund'))
         AND (d.dimension<>'income_category' OR f.kind='income')
         AND (NOT $4::boolean OR d.dimension='summary')
       UNION ALL
       SELECT 'account',f.destination_asset_id::text,f.destination_asset_id::text,f.dest_account_name,NOT COALESCE(f.dest_account_active,true),
         f.currency_code,f.exponent,f.kind,
         0::numeric,0::numeric,0::numeric,0::numeric,0::numeric,0::numeric,0::numeric,0::numeric,
+        0::numeric,0::numeric,0::numeric,0::numeric,
         f.base_amount_minor::numeric AS transfer_in,true AS is_transfer_in
       FROM facts f
       WHERE f.kind='transfer' AND f.destination_asset_id IS NOT NULL AND f.dest_account_name IS NOT NULL AND NOT $4::boolean
@@ -79,10 +85,13 @@ export async function readAggregates(client: PoolClient, period: ReportingPeriod
       sum(transfer_fees)::text AS "transferFeesMinor",sum(charges)::text AS "chargesMinor",
       sum(expense+charges)::text AS "spendingMinor",sum(income-expense-charges)::text AS "netMinor",
       sum(transfer)::text AS "transferPrincipalMinor",
+      sum(adjustment_in)::text AS "adjustmentInMinor",sum(adjustment_out)::text AS "adjustmentOutMinor",
+      sum(debt_borrowed)::text AS "debtBorrowedMinor",sum(debt_repaid)::text AS "debtRepaidMinor",
       sum(transfer_in)::text AS "transferInMinor",
       count(*)::text AS "activityCount",
       count(*) FILTER (WHERE kind='income')::text AS "incomeCount",
       count(*) FILTER (WHERE kind='expense')::text AS "expenseCount",
+      count(*) FILTER (WHERE kind='refund')::text AS "refundCount",
       count(*) FILTER (WHERE kind='transfer' AND NOT is_transfer_in)::text AS "transferCount",
       count(*) FILTER (WHERE is_transfer_in)::text AS "transferInCount"
     FROM dimensions GROUP BY dimension,key,dimension_id,name,archived,currency_code,exponent

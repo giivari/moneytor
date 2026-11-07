@@ -330,13 +330,13 @@ export async function listPlanning(): Promise<PlanningData> {
       c.minor_unit_exponent AS exponent,b.limit_minor::text AS "limitMinor",b.period_start::text AS "periodStart",b.period_end::text AS "periodEnd",
       b.category_id AS "categoryId",tc.display_name AS "categoryName",b.note,b.is_active AS "isActive",b.archived_at::text AS "archivedAt",
       b.version,b.created_at::text AS "createdAt",b.updated_at::text AS "updatedAt",
-      COALESCE((SELECT sum((CASE WHEN a.kind='expense' THEN a.base_amount_minor ELSE 0 END)
+      COALESCE((SELECT sum((CASE WHEN a.kind='expense' THEN a.base_amount_minor WHEN a.kind='refund' THEN -a.base_amount_minor ELSE 0 END)
         + COALESCE((SELECT sum(ac.amount_minor) FROM activity_charges ac WHERE ac.activity_id=a.id),0))
         FROM financial_activities a WHERE a.status='posted' AND a.currency_code=b.currency_code
           AND a.occurred_at >= (b.period_start::timestamp AT TIME ZONE 'Asia/Jakarta')
           AND a.occurred_at < ((b.period_end + 1)::timestamp AT TIME ZONE 'Asia/Jakarta')
-          AND ((a.kind='expense' AND (b.category_id IS NULL OR a.category_id=b.category_id))
-            OR (b.category_id IS NULL AND a.kind='transfer'))),0)::text AS "spentMinor"
+          AND ((a.kind IN ('expense','refund') AND (b.category_id IS NULL OR a.category_id=b.category_id))
+            OR (b.category_id IS NULL AND a.kind IN ('transfer','repay')))),0)::text AS "spentMinor"
       FROM planning_budgets b JOIN planning_labels l ON l.id=b.label_id JOIN currencies c ON c.code=b.currency_code
       LEFT JOIN transaction_categories tc ON tc.id=b.category_id ORDER BY b.is_active DESC,b.created_at DESC,b.id DESC`);
     const goals = await client.query<PlanningGoal>(`SELECT g.id,'goal' AS kind,g.label_id AS "labelId",l.display_name AS "labelName",g.title,g.currency_code AS currency,

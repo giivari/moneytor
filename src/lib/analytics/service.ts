@@ -53,9 +53,12 @@ function empty(currency: string, exponent: number): FinancialMeasures {
 }
 function measures(row: FinancialMeasures): FinancialMeasures {
   const { currency, exponent, incomeMinor, expensePrincipalMinor, feesMinor, taxesMinor, otherChargesMinor,
-    transferFeesMinor, chargesMinor, spendingMinor, netMinor, transferPrincipalMinor, activityCount, incomeCount, expenseCount, transferCount } = row;
+    transferFeesMinor, chargesMinor, spendingMinor, netMinor, transferPrincipalMinor, activityCount, incomeCount, expenseCount, transferCount,
+    adjustmentInMinor, adjustmentOutMinor, debtBorrowedMinor, debtRepaidMinor, refundCount } = row;
   return { currency, exponent, incomeMinor, expensePrincipalMinor, feesMinor, taxesMinor, otherChargesMinor,
-    transferFeesMinor, chargesMinor, spendingMinor, netMinor, transferPrincipalMinor, activityCount, incomeCount, expenseCount, transferCount };
+    transferFeesMinor, chargesMinor, spendingMinor, netMinor, transferPrincipalMinor, activityCount, incomeCount, expenseCount, transferCount,
+    adjustmentInMinor: adjustmentInMinor ?? "0", adjustmentOutMinor: adjustmentOutMinor ?? "0",
+    debtBorrowedMinor: debtBorrowedMinor ?? "0", debtRepaidMinor: debtRepaidMinor ?? "0", refundCount: refundCount ?? "0" };
 }
 function ranking(a: DimensionRow, b: DimensionRow) {
   if (a.currency !== b.currency) return a.currency < b.currency ? -1 : 1;

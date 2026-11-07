@@ -399,3 +399,35 @@ test("receivables and credit lines are never reserve sources", () => {
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "Dana Cicilan Motor" }), true);
   assert.equal(credit.isReserveSourceAsset({ ...base, displayName: "BCA Utama", normallySpendable: false }), false);
 });
+
+const liability = { id: "kartu", currency: "IDR", isActive: true, assetClass: "liability" };
+const interestType = { id: "bunga", displayName: "Bunga pinjaman", systemKey: "loan_interest", isBuiltIn: true, isActive: true };
+test("borrow: liability keluar, rekening tujuan masuk; bukan arus pemasukan", () => {
+  const plan = planActivity({ kind: "borrow", amountMinor: 5000000n, source: liability, destination });
+  assert.deepEqual(plan.movements.map((m) => [m.assetId, m.amountMinor]), [["kartu", -5000000n], ["destination", 5000000n]]);
+  assert.equal(plan.netAssetEffectMinor, 0n);
+  assert.equal(plan.totalOutflowMinor, 0n);
+  assert.throws(() => planActivity({ kind: "borrow", amountMinor: 1n, source, destination }), /liability/);
+});
+test("repay: pokok ke liability, bunga adalah charge dari pembayar", () => {
+  const plan = planActivity({ kind: "repay", amountMinor: 1000000n, source, destination: liability,
+    interest: { id: "i1", amountMinor: 50000n, type: interestType } });
+  assert.deepEqual(plan.movements.map((m) => [m.assetId, m.component, m.amountMinor]),
+    [["source", "principal", -1000000n], ["kartu", "principal", 1000000n], ["source", "charge", -50000n]]);
+  assert.equal(plan.netAssetEffectMinor, -50000n);
+  assert.throws(() => planActivity({ kind: "repay", amountMinor: 1n, source, destination }), /liability/);
+  assert.throws(() => planActivity({ kind: "repay", amountMinor: 1n, source, destination: liability,
+    interest: { id: "x", amountMinor: 1n, type: { ...interestType, systemKey: "admin_fee" } } }), /loan_interest/);
+});
+test("refund: masuk ke rekening tujuan dengan kategori pengeluaran asal", () => {
+  const plan = planActivity({ kind: "refund", amountMinor: 40000n, destination, category: customExpenseCategory });
+  assert.deepEqual(plan.movements.map((m) => [m.assetId, m.amountMinor]), [["destination", 40000n]]);
+  assert.throws(() => planActivity({ kind: "refund", amountMinor: 1n, destination, category: { ...customExpenseCategory, appliesTo: "income" } }), /does not apply/);
+});
+test("adjustment: tepat satu sisi; opening_debt hanya mengurangi saldo liability", () => {
+  assert.deepEqual(planActivity({ kind: "adjustment", amountMinor: 700n, reason: "reconciliation", destination }).movements.map((m) => m.amountMinor), [700n]);
+  assert.deepEqual(planActivity({ kind: "adjustment", amountMinor: 700n, reason: "reconciliation", source }).movements.map((m) => m.amountMinor), [-700n]);
+  assert.throws(() => planActivity({ kind: "adjustment", amountMinor: 1n, reason: "reconciliation", source, destination }), /satu sisi/);
+  assert.deepEqual(planActivity({ kind: "adjustment", amountMinor: 900n, reason: "opening_debt", source: liability }).movements.map((m) => m.amountMinor), [-900n]);
+  assert.throws(() => planActivity({ kind: "adjustment", amountMinor: 900n, reason: "opening_debt", source }), /liability/);
+});

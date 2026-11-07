@@ -13,6 +13,8 @@ export type FinancialMeasures = {
   otherChargesMinor: string; transferFeesMinor: string; chargesMinor: string;
   spendingMinor: string; netMinor: string; transferPrincipalMinor: string;
   activityCount: string; incomeCount: string; expenseCount: string; transferCount: string;
+  /** Separate from income/expense: balance adjustments, loans taken and repaid principal, refund count. */
+  adjustmentInMinor?: string; adjustmentOutMinor?: string; debtBorrowedMinor?: string; debtRepaidMinor?: string; refundCount?: string;
 };
 export type DimensionRow = FinancialMeasures & {
   key: string;

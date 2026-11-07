@@ -1,6 +1,11 @@
+/** Kinds known to automation, recurring templates, imports and the current UI. */
 export type ActivityKind = "income" | "expense" | "transfer";
+/** Debt and correction kinds (docs/CONTRACT.md). Not income, expense or transfer in any report. */
+export type DebtActivityKind = "borrow" | "repay" | "refund" | "adjustment";
+export type AnyActivityKind = ActivityKind | DebtActivityKind;
+export type AdjustmentReason = "reconciliation" | "opening_debt";
 export type ActivityDraft = {
-  kind: ActivityKind;
+  kind: AnyActivityKind;
   amountMinor: string;
   sourceAssetId?: string;
   destinationAssetId?: string;
@@ -9,6 +14,10 @@ export type ActivityDraft = {
   transferFeeMinor?: string;
   occurredAt: string;
   note?: string;
+  /** refund only: the posted expense being refunded (its category is copied). */
+  refundOfActivityId?: string;
+  /** adjustment only: destination = increase, source = decrease; opening_debt needs a liability source. */
+  adjustmentReason?: AdjustmentReason;
 };
 /** What an account is in net worth: something owned, a debt (credit line, loan), or money owed to the owner. */
 export type AssetClass = "asset" | "liability" | "receivable";
@@ -40,6 +49,8 @@ export type FinanceActivity = {
   categoryId: string | null; categoryName: string | null;
   occurredAt: string; note: string | null; status: "posted" | "voided" | "superseded";
   replacesActivityId: string | null;
+  refundOfActivityId?: string | null;
+  adjustmentReason?: AdjustmentReason | null;
   recurringRuleName?: string;
   eventInstanceId?: string;
   eventSourceIncomeId?: string;
