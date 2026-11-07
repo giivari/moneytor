@@ -37,7 +37,9 @@
     "lint:css": "stylelint \"src/**/*.css\"",
     "test:splitbill:db": "node --conditions=react-server --test tests/split-bill-db.test.mjs",
     "test:debt:db": "node --conditions=react-server --test tests/debt-activities-db.test.mjs",
-    "test:catalog:db": "node --conditions=react-server --test tests/catalog-db.test.mjs"
+    "test:catalog:db": "node --conditions=react-server --test tests/catalog-db.test.mjs",
+    "test:reconcile:db": "node --conditions=react-server --test tests/reconcile-db.test.mjs",
+    "test:catalog-readonly:db": "node --conditions=react-server --test tests/catalog-readonly-db.test.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
