@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
 import { OptionalChargesEditor, type ChargeEditorRow } from "./optional-charges-editor";
 import { OptionalFormSection } from "./optional-form-section";
@@ -19,13 +19,13 @@ import {
   formatShortDueIso,
   isAfterCutoffDay,
   isCreditAsset,
-  isReceivableAsset,
   nextMonthlyDueDayIso,
   parseCreditMeta,
 } from "@/lib/domain/credit";
 import { planSplitBill } from "@/lib/domain/split-bill";
 import { pickTransferSource, type TransactionPreset as BaseTransactionPreset } from "@/lib/domain/transaction-preset";
-import type { ActivityDraft, AnyActivityKind, FinanceActivity, FinanceAsset } from "@/lib/finance/types";
+import type { AnalyticsExpenseItem, AnalyticsReport } from "@/lib/analytics/types";
+import type { ActivityDraft, AdjustmentReason, AnyActivityKind, FinanceActivity, FinanceAsset } from "@/lib/finance/types";
 
 type TransactionPreset = Omit<BaseTransactionPreset, "kind"> & { kind?: AnyActivityKind };
 
@@ -51,7 +51,7 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const replay = useRef<{ payload: string; key: string } | null>(null);
   // A retried split bill must reuse its keys and receivable account, or a retry after a partial failure
   // would post the personal share twice or create a second receivable account.
-  const splitReplay = useRef<{ payload: string; personalKey: string; transferKey: string; receivableId?: string } | null>(null);
+  const splitReplay = useRef<{ payload: string; key: string; personalKey: string; transferKey: string; receivableId?: string } | null>(null);
   const { options, optionsError, retry, reload } = useFinanceOptions();
   const [error, setError] = useState("");
   // Steps: 1 jenis, 2 akun & nominal, 3 opsi lanjutan. All field state lives here, so switching steps loses nothing.
@@ -72,8 +72,19 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [occurredAt, setOccurredAt] = useState(localDate(initial?.occurredAt));
   const [note, setNote] = useState(initial?.note ?? preset?.note ?? "");
+  const [refundOfActivityId, setRefundOfActivityId] = useState(initial?.refundOfActivityId ?? "");
+  const [adjustmentReason, setAdjustmentReason] = useState<AdjustmentReason>(initial?.adjustmentReason ?? "reconciliation");
+  const [adjustmentDirection, setAdjustmentDirection] = useState<"increase" | "decrease">(
+    initial?.kind === "adjustment" && initial.sourceAssetId ? "decrease" : "increase",
+  );
+  const [repayInterest, setRepayInterest] = useState(
+    initial?.kind === "repay" && initial.charges[0] ? minorToInput(initial.charges[0].amountMinor, initial.exponent) : "",
+  );
+  const [refundExpenses, setRefundExpenses] = useState<AnalyticsExpenseItem[]>([]);
+  const [refundExpensesLoading, setRefundExpensesLoading] = useState(false);
+
   // Correcting an installment purchase or top-up starts from its stored tenor and monthly interest.
-  const initialInstallment = initial?.kind === "expense" || initial?.kind === "transfer" ? installmentEditDefaults(initial.creditInstallments) : null;
+  const initialInstallment = initial?.kind === "expense" || initial?.kind === "transfer" ? installmentEditDefaults(initial.creditInstallments) : initial?.creditInstallments ? installmentEditDefaults(initial.creditInstallments) : null;
   // The fee of a stored top-up holds the interest of every month; only the rest is the owner's own transfer fee.
   const storedTopUpInterest = initialInstallment && initial?.kind === "transfer" ? BigInt(initialInstallment.interestFlatMinor) * BigInt(initialInstallment.tenorMonths) : 0n;
   const storedOwnFee = initial?.kind === "transfer" && initial.charges[0] ? BigInt(initial.charges[0].amountMinor) - storedTopUpInterest : 0n;
@@ -99,19 +110,81 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const [receivableAssetId, setReceivableAssetId] = useState("");
 
   const active = options?.assets ?? [];
+  const requiresLiabilityPrimary = kind === "borrow" || (kind === "adjustment" && adjustmentReason === "opening_debt");
+  const primaryPool = requiresLiabilityPrimary
+    ? active.filter((item) => item.assetClass === "liability")
+    : kind === "repay"
+      ? active.filter((item) => item.assetClass !== "liability")
+      : active;
+  const effectivePrimaryPool = primaryPool.length ? primaryPool : active;
   // A transfer preset names only the destination (a credit account to pay): the source defaults to a spendable account, not to that credit account.
-  const account = accountId ? active.find((item) => item.id === accountId)
-    : (kind === "transfer" && destinationId ? pickTransferSource(active, destinationId) : undefined) ?? active[0];
+  const account = (accountId ? effectivePrimaryPool.find((item) => item.id === accountId) : undefined)
+    ?? ((kind === "transfer" || kind === "repay") && destinationId ? pickTransferSource(active, destinationId) : undefined)
+    ?? effectivePrimaryPool[0];
   const currency = account?.currency ?? "IDR";
   const exponent = account?.exponent ?? 0;
-  const destinationOptions = active.filter((item) => item.id !== account?.id && item.currency === currency);
-  const destination = destinationId ? destinationOptions.find((item) => item.id === destinationId) : destinationOptions[0];
+  const rawDestinationOptions = active.filter((item) => item.id !== account?.id && item.currency === currency);
+  const destinationOptions = kind === "repay"
+    ? rawDestinationOptions.filter((item) => item.assetClass === "liability")
+    : kind === "borrow"
+      ? rawDestinationOptions.filter((item) => item.assetClass !== "liability")
+      : rawDestinationOptions;
+  const effectiveDestinationOptions = destinationOptions.length ? destinationOptions : rawDestinationOptions;
+  const destination = (destinationId ? effectiveDestinationOptions.find((item) => item.id === destinationId) : undefined) ?? effectiveDestinationOptions[0];
   const categories =
     options?.catalogs.transactionCategories.filter(
       (item) => item.appliesTo === kind && (!isDedicatedCategory(item) || item.id === initial?.categoryId),
     ) ?? [];
   const chargeTypes = options?.catalogs.chargeTypes.filter((item) => item.systemKey !== "transfer_fee") ?? [];
 
+  useEffect(() => {
+    if (kind !== "refund") return;
+    let activeRequest = true;
+    setRefundExpensesLoading(true);
+    Promise.all([
+      requestJson<AnalyticsReport>(`/api/analytics?period=monthly_trend&months=12&currency=${encodeURIComponent(currency)}`, { cache: "no-store" }).catch(() => null),
+      requestJson<{ items: FinanceActivity[] }>("/api/finance/activities?kind=expense", { cache: "no-store" }).catch(() => null),
+    ]).then(([report, activitiesPage]) => {
+      if (!activeRequest) return;
+      const byId = new Map<string, AnalyticsExpenseItem>();
+      for (const item of report?.expenseItems ?? []) {
+        if (item.currency === currency) byId.set(item.id, item);
+      }
+      for (const act of activitiesPage?.items ?? []) {
+        if (act.currency !== currency || byId.has(act.id)) continue;
+        byId.set(act.id, {
+          id: act.id,
+          occurredAt: act.occurredAt,
+          currency: act.currency,
+          exponent: act.exponent,
+          baseAmountMinor: act.baseAmountMinor,
+          chargesMinor: "0",
+          spendingMinor: act.baseAmountMinor,
+          refundedMinor: "0",
+          netMinor: act.baseAmountMinor,
+          categoryId: act.categoryId,
+          categoryName: act.categoryName,
+          sourceAssetId: act.sourceAssetId ?? "",
+          sourceName: act.sourceName ?? "",
+          note: act.note,
+          origin: "manual",
+          charges: [],
+        });
+      }
+      const list = Array.from(byId.values()).filter(
+        (item) => item.id === initial?.refundOfActivityId || BigInt(item.netMinor ?? item.spendingMinor) > 0n,
+      );
+      setRefundExpenses(list);
+      setRefundOfActivityId((prev) => (prev && list.some((item) => item.id === prev) ? prev : list[0]?.id ?? ""));
+      setRefundExpensesLoading(false);
+    });
+    return () => { activeRequest = false; };
+  }, [kind, currency, initial?.refundOfActivityId]);
+
+  const selectedRefundOrigin = refundExpenses.find((item) => item.id === refundOfActivityId);
+
+  const isDebtScheduleApplicable =
+    kind === "borrow" || (kind === "adjustment" && adjustmentReason === "opening_debt");
   const isCreditPurchase =
     (!initial || Boolean(initialInstallment)) &&
     (kind === "expense" || (kind === "transfer" && Boolean(destination && !isCreditAsset(destination)))) &&
@@ -128,21 +201,21 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const nextDueShort = formatShortDueIso(nextMonthlyDueDayIso(dueDay, 1));
 
   let creditPlan: ReturnType<typeof calculateCreditInstallmentPlan> | null = null;
-  if (isCreditPurchase && amount.trim()) {
+  if ((isCreditPurchase || (isDebtScheduleApplicable && tenorMonths > 1)) && amount.trim()) {
     try {
       const principalMinorStr = inputToMinor(amount, exponent);
       const parsedPercent =
-        interestMode === "percent" && interestValue.trim()
+        !isDebtScheduleApplicable && interestMode === "percent" && interestValue.trim()
           ? Number(interestValue.trim().replace(",", "."))
           : 0;
       const parsedFlatMinor =
-        interestMode === "flat_minor" && interestValue.trim()
+        !isDebtScheduleApplicable && interestMode === "flat_minor" && interestValue.trim()
           ? inputToMinor(interestValue.trim(), exponent)
           : "0";
       creditPlan = calculateCreditInstallmentPlan({
         principalMinorStr,
         tenorMonths,
-        interestMode,
+        interestMode: isDebtScheduleApplicable ? "flat_minor" : interestMode,
         interestRatePercent: parsedPercent,
         interestFlatMinorStr: parsedFlatMinor,
       });
@@ -204,22 +277,34 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
     event.preventDefault(); if (!begin()) return; setError("");
     try {
       if (!account) throw new Error("Buat aset terlebih dahulu.");
-      if (kind === "transfer" && !destination) throw new Error("Pilih dua aset aktif dengan mata uang yang sama.");
+      if ((kind === "transfer" || kind === "borrow" || kind === "repay") && !destination) {
+        throw new Error("Pilih dua aset aktif dengan mata uang yang sama.");
+      }
+      if (requiresLiabilityPrimary && account.assetClass !== "liability") {
+        throw new Error("Pilih akun kewajiban (liability) untuk transaksi ini.");
+      }
+      if (kind === "repay" && destination?.assetClass !== "liability") {
+        throw new Error("Pilih akun kewajiban (liability) sebagai tujuan pelunasan.");
+      }
+      if (kind === "refund" && !refundOfActivityId) {
+        throw new Error("Pilih pengeluaran asal yang di-refund.");
+      }
       const rawPrincipalMinor = inputToMinor(amount, exponent);
       const parsedPercent =
-        interestMode === "percent" && interestValue.trim()
+        !isDebtScheduleApplicable && interestMode === "percent" && interestValue.trim()
           ? Number(interestValue.trim().replace(",", "."))
           : 0;
       const parsedFlatMinor =
-        interestMode === "flat_minor" && interestValue.trim()
+        !isDebtScheduleApplicable && interestMode === "flat_minor" && interestValue.trim()
           ? inputToMinor(interestValue.trim(), exponent)
           : "0";
 
-      const plan = isCreditPurchase
+      const hasDebtSchedule = isDebtScheduleApplicable && tenorMonths > 1;
+      const plan = isCreditPurchase || hasDebtSchedule
         ? calculateCreditInstallmentPlan({
             principalMinorStr: rawPrincipalMinor,
             tenorMonths,
-            interestMode,
+            interestMode: isDebtScheduleApplicable ? "flat_minor" : interestMode,
             interestRatePercent: parsedPercent,
             interestFlatMinorStr: parsedFlatMinor,
           })
@@ -235,81 +320,52 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
           reimbursedMinor: BigInt(inputToMinor(reimburseAmount.trim(), exponent)),
           chargesMinor: splitCharges.reduce((sum, charge) => sum + BigInt(charge.amountMinor), 0n),
         });
-        const personalShareBig = split.personalMinor;
         const talanganBig = split.reimbursedMinor;
-        const splitPayload = JSON.stringify({ amount, reimburseAmount, reimbursePerson, receivableAssetId, accountId: account.id,
-          categoryId, occurredAt, note, splitCharges });
+        const splitPayload = JSON.stringify({
+          amount,
+          reimburseAmount,
+          reimbursePerson,
+          receivableAssetId,
+          accountId: account.id,
+          categoryId,
+          occurredAt,
+          note,
+          splitCharges,
+        });
         if (splitReplay.current?.payload !== splitPayload) {
-          splitReplay.current = { payload: splitPayload, personalKey: crypto.randomUUID(), transferKey: crypto.randomUUID() };
+          splitReplay.current = {
+            payload: splitPayload,
+            key: crypto.randomUUID(),
+            personalKey: crypto.randomUUID(),
+            transferKey: crypto.randomUUID(),
+          };
         }
         const splitKeys = splitReplay.current;
-
-        let targetReceivableId = receivableAssetId || splitKeys.receivableId || "";
-        if (!targetReceivableId) {
-          const existingReceivable = active.find(
-            (item) =>
-              item.currency === currency &&
-              item.id !== account.id &&
-              !isCreditAsset(item) &&
-              isReceivableAsset(item),
-          );
-          if (existingReceivable) {
-            targetReceivableId = existingReceivable.id;
-          } else {
-            const created = await financeRequest<{ id: string }>("asset-create", {
-              displayName: currency === "IDR" ? "Piutang & Talangan" : `Piutang & Talangan (${currency})`,
-              currency,
-              openingAmountMinor: "0",
-              openingEffectiveAt: new Date().toISOString(),
-              assetTypeId: account.assetTypeId,
-              assetGroupId: account.assetGroupId || undefined,
-              normallyLiquid: false,
-              normallySpendable: false,
-              note: "Akun penampung uang talangan / split bill yang belum diganti.",
-            });
-            targetReceivableId = created.id;
-          }
-          splitKeys.receivableId = targetReceivableId;
-        }
-
-        const transferNote = `Talangan${reimbursePerson.trim() ? ` ${reimbursePerson.trim()}` : ""}${note.trim() ? ` · ${note.trim()}` : ""}`.slice(0, 1000);
-
-        if (personalShareBig > 0n) {
-          const personalDraft: ActivityDraft = {
-            kind: "expense",
-            amountMinor: personalShareBig.toString(),
-            occurredAt: new Date(occurredAt).toISOString(),
-            note: note.trim() || undefined,
-            sourceAssetId: account.id,
-            categoryId: categoryId || undefined,
-            charges: splitCharges,
-          };
-          await financeRequest("post", { draft: personalDraft, idempotencyKey: splitKeys.personalKey });
-
-          const splitTransferDraft: ActivityDraft = {
-            kind: "transfer",
-            amountMinor: talanganBig.toString(),
-            occurredAt: new Date(occurredAt).toISOString(),
-            note: transferNote,
-            sourceAssetId: account.id,
-            destinationAssetId: targetReceivableId,
-          };
-          await financeRequest("post", { draft: splitTransferDraft, idempotencyKey: splitKeys.transferKey });
-        } else {
-          // 100% talangan milik teman
-          const splitTransferDraft: ActivityDraft = {
-            kind: "transfer",
-            amountMinor: talanganBig.toString(),
-            occurredAt: new Date(occurredAt).toISOString(),
-            note: transferNote,
-            sourceAssetId: account.id,
-            destinationAssetId: targetReceivableId,
-          };
-          await financeRequest("post", { draft: splitTransferDraft, idempotencyKey: splitKeys.transferKey });
-        }
+        const splitResult = await financeRequest<{
+          personalActivityId: string | null;
+          transferActivityId: string;
+          receivableAssetId: string;
+          receivableCreated: boolean;
+        }>("split-bill", {
+          idempotencyKey: splitKeys.key,
+          sourceAssetId: account.id,
+          totalMinor: rawPrincipalMinor,
+          reimbursedMinor: talanganBig.toString(),
+          occurredAt: new Date(occurredAt).toISOString(),
+          categoryId: categoryId || undefined,
+          charges: splitCharges.length ? splitCharges : undefined,
+          person: reimbursePerson.trim() || undefined,
+          note: note.trim() || undefined,
+          receivableAssetId: receivableAssetId || splitKeys.receivableId || undefined,
+        });
+        splitKeys.receivableId = splitResult.receivableAssetId;
 
         refresh();
-        notify("Transaksi berhasil dicatat (Porsi talangan dialihkan ke akun Piutang).");
+        notify(
+          splitResult.receivableCreated
+            ? "Transaksi berhasil dicatat (Akun Piutang & Talangan dibuat otomatis)."
+            : "Transaksi berhasil dicatat (Porsi talangan dialihkan ke akun Piutang).",
+        );
         onClose();
         return;
       }
@@ -351,6 +407,7 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
       }
       // Installment purchase: what is posted now and what the server schedules for the later months.
       const interestChargeTypeId = options?.catalogs.chargeTypes.find((item) => item.systemKey === "installment_interest")?.id;
+      const loanInterestChargeTypeId = options?.catalogs.chargeTypes.find((item) => item.systemKey === "loan_interest")?.id;
       const purchase = kind === "expense" && isCreditPurchase && plan && tenorMonths > 1
         ? installmentPurchaseRequest(plan, tenorMonths, interestChargeTypeId)
         : null;
@@ -365,19 +422,46 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
             : `${note.trim() || account.displayName} (Dicicil ${tenorMonths}x)`
           : note;
 
+      const repayInterestMinor =
+        kind === "repay" && repayInterest.trim() ? inputToMinor(repayInterest.trim(), exponent) : "0";
+      const repayCharges =
+        kind === "repay" && BigInt(repayInterestMinor) > 0n && loanInterestChargeTypeId
+          ? [{ typeId: loanInterestChargeTypeId, amountMinor: repayInterestMinor }]
+          : undefined;
+
+      const usesDestinationAsPrimary =
+        kind === "income" ||
+        kind === "refund" ||
+        (kind === "adjustment" && adjustmentReason === "reconciliation" && adjustmentDirection === "increase");
+
       const draft: ActivityDraft = {
         kind,
         amountMinor: postedAmountMinor,
         occurredAt: new Date(occurredAt).toISOString(),
         note: effectiveNote,
-        ...(kind === "income" ? { destinationAssetId: account.id } : { sourceAssetId: account.id }),
+        ...(usesDestinationAsPrimary ? { destinationAssetId: account.id } : { sourceAssetId: account.id }),
         ...(kind === "transfer"
           ? {
               destinationAssetId: destination!.id,
               transferFeeMinor: finalTransferFeeMinor,
             }
           : {}),
-        ...(kind !== "transfer" ? { categoryId: categoryId || undefined } : {}),
+        ...(kind === "borrow" || kind === "repay"
+          ? {
+              destinationAssetId: destination!.id,
+            }
+          : {}),
+        ...(kind === "refund"
+          ? {
+              refundOfActivityId,
+            }
+          : {}),
+        ...(kind === "adjustment"
+          ? {
+              adjustmentReason,
+            }
+          : {}),
+        ...(kind === "expense" || kind === "income" ? { categoryId: categoryId || undefined } : {}),
         ...(kind === "expense"
           ? {
               charges: [
@@ -389,8 +473,9 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
               ],
             }
           : {}),
+        ...(kind === "repay" && repayCharges ? { charges: repayCharges } : {}),
       };
-      const payload = JSON.stringify({ id: initial?.id, draft, tenorMonths: isCreditPurchase ? tenorMonths : 1, targetCycle });
+      const payload = JSON.stringify({ id: initial?.id, draft, tenorMonths: isCreditPurchase || hasDebtSchedule ? tenorMonths : 1, targetCycle });
       if (replay.current?.payload !== payload) replay.current = { payload, key: crypto.randomUUID() };
       // The server assigns a credit outflow to the next billing cycle in the same database transaction as
       // the posting, using the authoritative ledger impact and the freshly locked account note.
@@ -400,11 +485,17 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
         idempotencyKey: replay.current.key,
         // The effective cycle (automatic or manual override) is stored with the activity so a later void or
         // correction releases exactly what this posting deferred.
-        ...(isCreditPurchase ? { creditCycle: targetCycle } : {}),
+        ...(isCreditPurchase || hasDebtSchedule ? { creditCycle: targetCycle } : {}),
         ...(purchase
           ? { creditInstallments: purchase.creditInstallments }
-          : isCreditPurchase && plan && tenorMonths > 1
-            ? { creditInstallments: { count: tenorMonths, principalMinor: plan.monthlyPrincipalMinor, interestMinor: plan.monthlyInterestMinor } }
+          : (isCreditPurchase || hasDebtSchedule) && plan && tenorMonths > 1
+            ? {
+                creditInstallments: {
+                  count: tenorMonths,
+                  principalMinor: plan.monthlyPrincipalMinor,
+                  interestMinor: isDebtScheduleApplicable ? "0" : plan.monthlyInterestMinor,
+                },
+              }
             : {}),
       });
 
@@ -475,17 +566,71 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
 
       {step === 1 && <>
       <div className="field"><span>Jenis transaksi</span><div className="segmented" role="group" aria-label="Jenis transaksi">
-        {(["expense", "income", "transfer"] as const).map((item) => <button type="button" key={item} className={kind === item ? "selected" : ""}
-          onClick={() => { setKind(item); setCategoryId(""); goTo(2); }}>{item === "expense" ? "Pengeluaran" : item === "income" ? "Pemasukan" : "Transfer"}</button>)}
+        {(["expense", "income", "transfer", "borrow", "repay", "refund", "adjustment"] as const).map((item) => <button type="button" key={item} className={kind === item ? "selected" : ""}
+          onClick={() => { setKind(item); setCategoryId(""); goTo(2); }}>{kindLabels[item]}</button>)}
       </div></div>
       </>}
       {step === 2 && <>
         <p className="transaction-kind-summary"><span>Jenis</span><strong>{kindLabel}</strong><button type="button" className="text-link" onClick={() => goTo(1)}>Ubah</button></p>
+      {kind === "adjustment" && (
+        <div className="field-grid">
+          <label className="field">
+            <span>Alasan koreksi</span>
+            <select
+              value={adjustmentReason}
+              onChange={(event) => setAdjustmentReason(event.target.value as AdjustmentReason)}
+            >
+              <option value="reconciliation">Rekonsiliasi saldo</option>
+              <option value="opening_debt">Saldo awal utang / kewajiban</option>
+            </select>
+          </label>
+          {adjustmentReason === "reconciliation" && (
+            <label className="field">
+              <span>Arah koreksi</span>
+              <select
+                value={adjustmentDirection}
+                onChange={(event) => setAdjustmentDirection(event.target.value as "increase" | "decrease")}
+              >
+                <option value="increase">Tambah saldo (masuk ke aset)</option>
+                <option value="decrease">Kurangi saldo (keluar dari aset)</option>
+              </select>
+            </label>
+          )}
+        </div>
+      )}
       <label className="field transaction-amount-field"><span>{isCreditPurchase ? `Harga pokok transaksi (${currency})` : `Jumlah (${currency})`}</span><input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" /></label>
-      <label className="field"><span>{kind === "income" ? "Aset penerima" : "Aset sumber"}</span><select required value={account?.id ?? ""}
-        onChange={(event) => setAccountId(event.target.value)}><option value="">Pilih aset aktif</option>{active.map((item) => <option key={item.id} value={item.id}>{formatAssetOptionLabel(item)}</option>)}</select></label>
+      <label className="field"><span>{kind === "income" ? "Aset penerima" : kind === "refund" ? "Aset penerima refund" : kind === "borrow" || (kind === "adjustment" && adjustmentReason === "opening_debt") ? "Akun kewajiban (sumber utang)" : "Aset sumber"}</span><select required value={account?.id ?? ""}
+        onChange={(event) => setAccountId(event.target.value)}><option value="">Pilih aset aktif</option>{effectivePrimaryPool.map((item) => <option key={item.id} value={item.id}>{formatAssetOptionLabel(item)}</option>)}</select></label>
+      {requiresLiabilityPrimary && primaryPool.length === 0 && (
+        <small className="finance-hint">Belum ada akun dengan kelas Kewajiban (liability). Buat atau pilih akun kewajiban terlebih dahulu.</small>
+      )}
+      {kind === "refund" && (
+        <label className="field">
+          <span>Pengeluaran asal yang di-refund</span>
+          <select
+            required
+            value={refundOfActivityId}
+            onChange={(event) => setRefundOfActivityId(event.target.value)}
+            disabled={refundExpensesLoading}
+          >
+            <option value="">{refundExpensesLoading ? "Memuat daftar pengeluaran…" : "Pilih pengeluaran asal"}</option>
+            {refundExpenses.map((item) => (
+              <option key={item.id} value={item.id}>
+                {(item.note || item.categoryName || "Pengeluaran")} · {item.sourceName} · Sisa {formatMinor(item.netMinor ?? item.spendingMinor, item.currency, item.exponent)}
+              </option>
+            ))}
+          </select>
+          {selectedRefundOrigin && (
+            <small className="finance-hint">
+              Pengeluaran asal: <strong>{formatMinor(selectedRefundOrigin.spendingMinor, selectedRefundOrigin.currency, selectedRefundOrigin.exponent)}</strong>
+              {" · "}Sudah di-refund: <strong>{formatMinor(selectedRefundOrigin.refundedMinor ?? "0", selectedRefundOrigin.currency, selectedRefundOrigin.exponent)}</strong>
+              {" · "}Sisa dapat di-refund: <strong>{formatMinor(selectedRefundOrigin.netMinor ?? selectedRefundOrigin.spendingMinor, selectedRefundOrigin.currency, selectedRefundOrigin.exponent)}</strong>
+            </small>
+          )}
+        </label>
+      )}
 
-      {isCreditPurchase && (
+      {(isCreditPurchase || isDebtScheduleApplicable) && (
         <div className="credit-payment-scheme">
           <div className="field-grid">
             <label className="field">
@@ -517,69 +662,68 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
             </label>
           </div>
 
-          <div className="field-grid">
-            <label className="field">
-              <span>Bunga / biaya kredit per bulan</span>
-              <input
-                inputMode="decimal"
-                value={interestValue}
-                onChange={(event) => setInterestValue(event.target.value)}
-                placeholder={interestMode === "percent" ? "Mis. 2.95 atau 0" : "0"}
-              />
-            </label>
-            <label className="field">
-              <span>Satuan bunga</span>
-              <select
-                value={interestMode}
-                onChange={(event) => setInterestMode(event.target.value as "percent" | "flat_minor")}
-              >
-                <option value="percent">Persen (% per bulan, mis. 2.95%)</option>
-                <option value="flat_minor">Nominal tetap ({currency} per bulan)</option>
-              </select>
-            </label>
-          </div>
+          {!isDebtScheduleApplicable && (
+            <div className="field-grid">
+              <label className="field">
+                <span>Bunga / biaya kredit per bulan</span>
+                <input
+                  inputMode="decimal"
+                  value={interestValue}
+                  onChange={(event) => setInterestValue(event.target.value)}
+                  placeholder={interestMode === "percent" ? "Mis. 2.95 atau 0" : "0"}
+                />
+              </label>
+              <label className="field">
+                <span>Satuan bunga</span>
+                <select
+                  value={interestMode}
+                  onChange={(event) => setInterestMode(event.target.value as "percent" | "flat_minor")}
+                >
+                  <option value="percent">Persen (% per bulan, mis. 2.95%)</option>
+                  <option value="flat_minor">Nominal tetap ({currency} per bulan)</option>
+                </select>
+              </label>
+            </div>
+          )}
 
           {creditPlan && (
             <small className="finance-hint">
               {tenorMonths === 1 ? (
-                <>
+                <span>
                   Total tagihan: <strong>{formatMinor(creditPlan.firstMonthTotalMinor, currency, exponent)}</strong>{" "}
                   (pokok {formatMinor(creditPlan.monthlyPrincipalMinor, currency, exponent)} + bunga/biaya {formatMinor(creditPlan.monthlyInterestMinor, currency, exponent)}) → Masuk ke tagihan jatuh tempo <strong>{targetCycle === "next" ? nextDueShort : currentDueShort}</strong>.
-                </>
+                </span>
               ) : (
-                <>
+                <span>
                   Cicilan per bulan: <strong>{formatMinor(creditPlan.firstMonthTotalMinor, currency, exponent)}</strong>{" "}
                   (pokok {formatMinor(creditPlan.monthlyPrincipalMinor, currency, exponent)} + bunga {formatMinor(creditPlan.monthlyInterestMinor, currency, exponent)} / bln · Total {tenorMonths}x = {formatMinor(creditPlan.grandTotalMinor, currency, exponent)}). Cicilan 1/{tenorMonths} masuk ke tagihan <strong>{targetCycle === "next" ? nextDueShort : currentDueShort}</strong>.
-                </>
+                </span>
               )}
             </small>
           )}
         </div>
       )}
 
-      {kind === "transfer" && (
-        <>
-          <label className="field">
-            <span>Aset tujuan</span>
-            <select
-              required
-              value={destination?.id ?? ""}
-              onChange={(event) => setDestinationId(event.target.value)}
-            >
-              <option value="">Pilih aset tujuan</option>
-              {destinationOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {formatAssetOptionLabel(item)}
-                </option>
-              ))}
-            </select>
-          </label>
-        </>
+      {(kind === "transfer" || kind === "borrow" || kind === "repay") && (
+        <label className="field">
+          <span>{kind === "repay" ? "Aset tujuan (akun kewajiban)" : kind === "borrow" ? "Aset tujuan (penerima dana)" : "Aset tujuan"}</span>
+          <select
+            required
+            value={destination?.id ?? ""}
+            onChange={(event) => setDestinationId(event.target.value)}
+          >
+            <option value="">Pilih aset tujuan</option>
+            {effectiveDestinationOptions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {formatAssetOptionLabel(item)}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
       </>}
       {step === 3 && <>
         {kind === "transfer" && (
-          <>
           <OptionalFormSection label="Ada biaya transfer" enabled={feeEnabled} onChange={setFeeEnabled}>
             <label className="field">
               <span>Skema potongan biaya</span>
@@ -638,7 +782,6 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
               <small className="finance-hint">{transferFeeSummaryHint}</small>
             )}
           </OptionalFormSection>
-          </>
         )}
       {(kind === "expense" || kind === "income") && <InlineCatalogSelect
         label="Kategori (opsional)"
@@ -652,6 +795,18 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
       />}
       {kind === "expense" && <OptionalChargesEditor enabled={chargesEnabled} onEnabledChange={setChargesEnabled}
         rows={charges} onChange={setCharges} chargeTypes={chargeTypes} maxRows={20} onChargeTypeCreated={() => void reload()} />}
+      {kind === "repay" && (
+        <label className="field">
+          <span>Bunga pinjaman ({currency}, opsional)</span>
+          <input
+            inputMode="decimal"
+            value={repayInterest}
+            onChange={(event) => setRepayInterest(event.target.value)}
+            placeholder="0"
+          />
+          <small className="finance-hint">Pokok mengurangi saldo utang; bunga pinjaman tercatat sebagai beban biaya.</small>
+        </label>
+      )}
       {!initial && kind === "expense" && !isCreditPurchase && (
         <OptionalFormSection
           label="Ada porsi talangan / bayarin orang lain (Split Bill)"

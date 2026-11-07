@@ -40,5 +40,5 @@ export const metadata: Metadata = {
   },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="id" className={inter.variable} data-scroll-behavior="smooth"><body><a className="skip-link" href="#main-content">Lewati ke konten</a><FinanceFeedbackProvider><AppShell>{children}</AppShell></FinanceFeedbackProvider></body></html>;
+  return <html lang="id" className={inter.variable} data-scroll-behavior="smooth" suppressHydrationWarning><body suppressHydrationWarning><a className="skip-link" href="#main-content">Lewati ke konten</a><FinanceFeedbackProvider><AppShell>{children}</AppShell></FinanceFeedbackProvider></body></html>;
 }
