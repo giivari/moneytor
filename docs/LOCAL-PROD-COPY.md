@@ -24,3 +24,10 @@ docker stop moneytor-prod-copy-18
 # hapus container dan seluruh datanya
 docker rm -f moneytor-prod-copy-18 && docker volume rm moneytor-prod-copy-18-data
 ```
+
+## Cakupan skrip `scripts/user-migrate.mjs`
+
+Hanya memetakan `parent_id` kategori pengguna ke induk katalog, menonaktifkan kategori pengguna yang tidak terpakai, dan membukukan utang awal dari `local-data/opening-debts.csv` bila berisi baris.
+Klasifikasi `asset_class`, pembuatan `credit_installments` dari catatan kartu, dan pemecahan akun piutang per orang tidak dikerjakan: inventaris menunjukkan tidak ada data yang memerlukannya
+(klasifikasi 015 sudah benar, catatan kartu tanpa entri jadwal, tidak ada transfer ke/dari akun piutang).
+Dry-run adalah default; `--apply` wajib `--confirm-db=moneytor_prod_copy`; target hanya `127.0.0.1:55435`.
