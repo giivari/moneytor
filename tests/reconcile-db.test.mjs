@@ -112,10 +112,12 @@ test("rekonsiliasi angka pada data campuran (PostgreSQL terisolasi)", { skip: !e
         detail += BigInt(d.expenseMinor); refunded += BigInt(d.refundMinor);
       }
       assert.equal(detail, expected); assert.equal(refunded, 200000n);
+      console.log("contoh activitySummary dompet:", JSON.stringify((await assets.readAssetDetail(wallet)).activitySummary));
       const client = await pool.connect();
       try {
         const items = await readSpendingItems(client, periodAll, "IDR");
         assert.equal(items.reduce((sum, item) => sum + BigInt(item.amountMinor), 0n), expected);
+        console.log("contoh spendingItem refund:", JSON.stringify(items.find((i) => i.kind === "refund")));
         assert.equal(items.filter((i) => i.kind === "refund").reduce((sum, i) => sum + BigInt(i.amountMinor), 0n), -200000n);
       } finally { client.release(); }
       const month = (key) => BigInt(rows.find((r) => r.dimension === "month" && r.key === key).spendingMinor);

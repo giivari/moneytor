@@ -1,7 +1,7 @@
 import "server-only";
 import type { PoolClient } from "pg";
 import type { ReportingPeriod } from "./periods";
-import type { AnalyticsExpenseItem, AnalyticsObligationItem, ChargeReport, DimensionRow, InvestmentFlows } from "./types";
+import type { AnalyticsExpenseItem, AnalyticsObligationItem, ChargeReport, DimensionRow, InvestmentFlows, SpendingItem } from "./types";
 import { FEE_SYSTEM_KEYS, TAX_SYSTEM_KEYS } from "./domain";
 import { CREDIT_REMINDER_NOTE_PREFIX } from "@/lib/domain/credit";
 
@@ -10,7 +10,7 @@ export type AggregateRow = DimensionRow & { dimension: "summary" | "category" | 
 export async function readAggregates(client: PoolClient, period: ReportingPeriod, currency: string | null, summaryOnly = false): Promise<AggregateRow[]> {
   const result = await client.query<AggregateRow>(`
     WITH RECURSIVE selected AS MATERIALIZED (
-      SELECT * FROM financial_activities WHERE status='posted' AND occurred_at >= $1 AND occurred_at < $2
+      SELECT * FROM financial_activities_effective WHERE status='posted' AND occurred_at >= $1 AND occurred_at < $2
         AND ($3::text IS NULL OR currency_code=$3)
     ), lineage AS (
       SELECT id,id AS ancestor FROM selected
@@ -167,6 +167,7 @@ export async function readExpenseItems(client: PoolClient, period: ReportingPeri
     SELECT f.id::text AS id, f.occurred_at AS "occurredAt", f.currency_code AS currency, c.minor_unit_exponent AS exponent,
       f.base_amount_minor::text AS "baseAmountMinor", COALESCE(ch.total,0)::text AS "chargesMinor",
       (f.base_amount_minor::numeric + COALESCE(ch.total,0))::text AS "spendingMinor",
+      refunded_in_chain(f.id)::text AS "refundedMinor",
       f.category_id::text AS "categoryId", cat.display_name AS "categoryName",
       f.source_asset_id::text AS "sourceAssetId", a.display_name AS "sourceName",
       f.note, o.origin, COALESCE(ch.list, '[]'::jsonb) AS charges
@@ -179,6 +180,19 @@ export async function readExpenseItems(client: PoolClient, period: ReportingPeri
     ...row,
     occurredAt: row.occurredAt instanceof Date ? row.occurredAt.toISOString() : String(row.occurredAt),
     charges: Array.isArray(row.charges) ? row.charges : [],
+  }));
+}
+
+/** One line per activity that spends money in the period (expense, transfer/repay fees, refunds as negative), straight from spending_effects. */
+export async function readSpendingItems(client: PoolClient, period: ReportingPeriod, currency: string | null): Promise<SpendingItem[]> {
+  return (await client.query<SpendingItem>(`
+    SELECT s.activity_id::text AS id, s.kind, min(s.occurred_at) AS "occurredAt", s.currency_code AS currency, c.minor_unit_exponent AS exponent,
+      sum(s.amount_minor)::text AS "amountMinor", s.asset_id::text AS "assetId", s.category_id::text AS "categoryId", cat.display_name AS "categoryName"
+    FROM spending_effects s JOIN currencies c ON c.code=s.currency_code LEFT JOIN transaction_categories cat ON cat.id=s.category_id
+    WHERE s.occurred_at >= $1 AND s.occurred_at < $2 AND ($3::text IS NULL OR s.currency_code=$3)
+    GROUP BY s.activity_id,s.kind,s.currency_code,c.minor_unit_exponent,s.asset_id,s.category_id,cat.display_name
+    ORDER BY min(s.occurred_at) DESC, s.activity_id`, [period.startAt, period.endAt, currency])).rows.map((row) => ({
+    ...row, occurredAt: (row.occurredAt as unknown) instanceof Date ? (row.occurredAt as unknown as Date).toISOString() : String(row.occurredAt),
   }));
 }
 

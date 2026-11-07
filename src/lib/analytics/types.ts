@@ -28,6 +28,9 @@ export type ChargeReport = { currency: string; exponent: number; typeId: string;
   systemKey: string | null; bucket: ChargeBucket; archived: boolean; activityKind: string; amountMinor: string; chargeCount: string };
 export type InvestmentFlows = { currency: string; exponent: number; purchasePrincipalMinor: string;
   saleProceedsMinor: string; feesMinor: string; netCashMinor: string; tradeCount: string };
+/** A spending line of the period; amountMinor sums to the period's spendingMinor (refunds are negative). */
+export type SpendingItem = { id: string; kind: "expense" | "transfer" | "repay" | "refund"; occurredAt: string; currency: string; exponent: number;
+  amountMinor: string; assetId: string; categoryId: string | null; categoryName: string | null };
 export type AnalyticsExpenseItem = {
   id: string;
   occurredAt: string;
@@ -36,6 +39,8 @@ export type AnalyticsExpenseItem = {
   baseAmountMinor: string;
   chargesMinor: string;
   spendingMinor: string;
+  /** Refunded so far against this expense (any date, whole edit chain); spendingMinor stays gross. */
+  refundedMinor?: string;
   categoryId: string | null;
   categoryName: string | null;
   sourceAssetId: string;

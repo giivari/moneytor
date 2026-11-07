@@ -167,3 +167,22 @@ Contoh nyata (fixture `tests/catalog-db.test.mjs`):
 - Analitik (`byCategory` tidak berubah): `byCategoryParent: DimensionRow[]` (pengeluaran dikelompokkan ke induk; kategori induk adalah grupnya sendiri; `key`=id induk atau `uncategorized`)
   dan `byNature: DimensionRow[]` (`key` = sifat efektif atau `none` = "Tanpa sifat"; nama Indonesia: Kebutuhan, Keinginan, Kewajiban, Sosial, Tabungan). Refund dihitung negatif seperti pada `byCategory`.
 - Catatan: `listCatalog` masih menjalankan pembersihan runtime lama untuk penyedia/jaringan demo (hapus bila tak terpakai) dan menandai kategori "biaya admin" sebagai bawaan `bank_admin_fee`; tidak diubah di tugas ini.
+
+## Tambahan: rekonsiliasi angka (migrasi 020)
+
+Satu definisi pengeluaran untuk semua laporan (view `spending_effects`): **pengeluaran = pokok expense + semua biaya (biaya expense, biaya transfer, bunga repay) − refund**.
+Pembelian kartu kredit/cicilan = pengeluaran penuh saat pembelian; pembayaran tagihan kartu = transfer (bukan pengeluaran); bunga cicilan = biaya.
+Pokok borrow, pokok repay, transfer, dan adjustment bukan pengeluaran. Refund dihitung pada TANGGAL REFUND terhadap akun dan kategori versi terbaru pengeluaran asal
+(mengikuti rantai koreksi `replaces_activity_id`). Pengeluaran asal boleh dikoreksi selama tidak di bawah total refund; void pengeluaran ditolak selama masih ada refund aktif.
+Bulan dikelompokkan memakai Asia/Jakarta (1 Nov 00:30 WIB masuk November). **Pengeluaran bersih per kategori/bulan boleh negatif di backend; frontend yang membatasi tampilan di 0.**
+Refund tidak pernah masuk `incomeMinor`. Saldo akun punya satu sumber (`listAssets`; `listAssetBalances` memanggilnya). `netWorthMinor` = Σ saldo akun + nilai pasar investasi (kewajiban bersaldo negatif).
+
+- `AssetDetailInfo.activitySummary.expenseMinor` kini pengeluaran bersih yang dibayar dari akun itu (termasuk biaya transfer dan bunga repay, dikurangi refund); field baru `refundMinor` (sudah terkurang dari `expenseMinor`); `transferOutMinor` hanya pokok.
+  Contoh nyata (fixture `tests/reconcile-db.test.mjs`, akun dompet):
+  `{"activityCount":14,"incomeMinor":"5000000","expenseMinor":"1074500","refundMinor":"200000","transferInMinor":"0","transferOutMinor":"520000"}`
+- Analitik: `expenseItems[].refundedMinor` (total refund sampai kini atas pengeluaran itu; `spendingMinor` tetap bruto) dan daftar baru `spendingItems[]` (`readSpendingItems`) yang jumlahnya persis `spendingMinor` periode (refund negatif).
+  Contoh: `{"id":"…","kind":"refund","occurredAt":"2026-11-04T05:00:00.000Z","currency":"IDR","exponent":0,"amountMinor":"-50000","assetId":"…","categoryId":"50000000-0000-4000-8000-000000000002","categoryName":"Transport"}`
+  `kind`: `expense | transfer | repay | refund`; transfer dan repay hanya memuat biayanya.
+- Dimensi `account` di analitik untuk refund memakai akun pembayar pengeluaran asal.
+- `monthlyExpenses(at?)` / `expenseMinor` snapshot memakai definisi yang sama (refund mengurangi di bulan refund).
+- `listCatalog` kini baca-saja; penyedia/jaringan demo yang tidak terpakai dihapus oleh migrasi 020. Penandaan kategori "biaya admin" sebagai `bank_admin_fee` dihapus dari kode (ditangani skrip lokal terpisah).

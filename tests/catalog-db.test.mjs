@@ -68,8 +68,8 @@ test("katalog bawaan lengkap, idempotent, dan tidak mengubah data lama (PostgreS
       for (const p of marks.CURATED_PROVIDERS) assert.ok(providers.has(p.key.replaceAll("-", "_")), p.key);
       const networks = new Set((await admin.query("SELECT system_key FROM payment_networks")).rows.map((r) => r.system_key));
       for (const n of marks.CURATED_PAYMENT_NETWORKS) assert.ok(networks.has(n.key.replaceAll("-", "_")), n.key);
-      const demo = (await admin.query("SELECT bool_or(is_active) AS active FROM financial_providers WHERE system_key LIKE 'demo\\_%'")).rows[0];
-      assert.equal(demo.active, false);
+      const demo = (await admin.query("SELECT count(*)::int AS n FROM financial_providers WHERE system_key LIKE 'demo\\_%'")).rows[0];
+      assert.equal(demo.n, 0); // migrasi 020 menghapus demo yang tidak terpakai
     });
 
     await t.test("DB berisi data lama: saldo dan total laporan identik, nama bentrok diberi sufiks, seed idempotent", async () => {

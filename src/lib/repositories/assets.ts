@@ -111,28 +111,9 @@ export type AssetBalance = Readonly<{ assetId: string; displayName: string; bala
 /** Read-only exact projection: opening amount plus all signed ledger movements. */
 export async function listAssetBalances(): Promise<AssetBalance[]> {
   await requireOwnerSession();
-  const ready = await hasOpeningCorrections(database());
-  const opening = ready ? "COALESCE(oc.corrected_amount_minor, o.amount_minor, 0)" : "COALESCE(o.amount_minor, 0)";
-  const correctionJoin = ready ? "LEFT JOIN LATERAL (SELECT corrected_amount_minor FROM asset_opening_corrections WHERE asset_id=a.id ORDER BY correction_order DESC LIMIT 1) oc ON true" : "";
-  const result = await database().query<{
-    id: string;
-    display_name: string;
-    currency_code: string;
-    balance_minor: string;
-  }>(`SELECT a.id, a.display_name, a.currency_code,
-       (${opening}::numeric + COALESCE(m.delta_minor, 0))::text AS balance_minor
-     FROM assets a
-     LEFT JOIN asset_opening_states o ON o.asset_id = a.id
-     ${correctionJoin}
-     LEFT JOIN (
-       SELECT asset_id, SUM(amount_minor)::numeric AS delta_minor
-       FROM ledger_movements GROUP BY asset_id
-     ) m ON m.asset_id = a.id
-     ORDER BY a.sort_order, a.created_at, a.id`);
-  return result.rows.map((row) => ({
-    assetId: row.id,
-    displayName: row.display_name,
-    balance: money(parseMinor(row.balance_minor), row.currency_code),
+  // Same query as listAssets, so the balance has one definition.
+  return (await readAssets(true)).map((asset) => ({
+    assetId: asset.id, displayName: asset.displayName, balance: money(parseMinor(asset.balanceMinor), asset.currency),
   }));
 }
 
@@ -496,7 +477,10 @@ export type AssetDetailInfo = Readonly<{
   activitySummary: {
     activityCount: number;
     incomeMinor: string;
+    /** Net spending paid from this account: expense + charges (also transfer fees, loan interest) - refunds. */
     expenseMinor: string;
+    /** Refunds received against expenses paid from this account (already subtracted from expenseMinor). */
+    refundMinor: string;
     transferInMinor: string;
     transferOutMinor: string;
   };
@@ -538,21 +522,18 @@ export async function readAssetDetail(assetId: string): Promise<AssetDetailInfo>
     activity_count: string;
     income_minor: string;
     expense_minor: string;
+    refund_minor: string;
     transfer_in_minor: string;
     transfer_out_minor: string;
   }>(
     `SELECT
        COUNT(*)::text AS activity_count,
        COALESCE(SUM(CASE WHEN f.kind = 'income' AND f.destination_asset_id = $1 THEN f.base_amount_minor ELSE 0 END), 0)::text AS income_minor,
-       COALESCE(SUM(CASE WHEN f.kind = 'expense' AND f.source_asset_id = $1 THEN f.base_amount_minor + COALESCE(ch.charges_minor, 0) ELSE 0 END), 0)::text AS expense_minor,
+       COALESCE((SELECT sum(s.amount_minor) FROM spending_effects s WHERE s.asset_id = $1), 0)::text AS expense_minor,
+       COALESCE((SELECT -sum(s.amount_minor) FROM spending_effects s WHERE s.asset_id = $1 AND s.effect = 'refund'), 0)::text AS refund_minor,
        COALESCE(SUM(CASE WHEN f.kind = 'transfer' AND f.destination_asset_id = $1 THEN f.base_amount_minor ELSE 0 END), 0)::text AS transfer_in_minor,
-       COALESCE(SUM(CASE WHEN f.kind = 'transfer' AND f.source_asset_id = $1 THEN f.base_amount_minor + COALESCE(ch.charges_minor, 0) ELSE 0 END), 0)::text AS transfer_out_minor
+       COALESCE(SUM(CASE WHEN f.kind = 'transfer' AND f.source_asset_id = $1 THEN f.base_amount_minor ELSE 0 END), 0)::text AS transfer_out_minor
      FROM financial_activities f
-     LEFT JOIN (
-       SELECT activity_id, SUM(amount_minor)::numeric AS charges_minor
-       FROM activity_charges
-       GROUP BY activity_id
-     ) ch ON ch.activity_id = f.id
      WHERE f.status = 'posted'
        AND (f.source_asset_id = $1 OR f.destination_asset_id = $1)`,
     [assetId],
@@ -610,6 +591,7 @@ export async function readAssetDetail(assetId: string): Promise<AssetDetailInfo>
       activityCount: Number(sumRow?.activity_count ?? "0"),
       incomeMinor: sumRow?.income_minor ?? "0",
       expenseMinor: sumRow?.expense_minor ?? "0",
+      refundMinor: sumRow?.refund_minor ?? "0",
       transferInMinor: sumRow?.transfer_in_minor ?? "0",
       transferOutMinor: sumRow?.transfer_out_minor ?? "0",
     },

@@ -116,7 +116,7 @@ test("jenis aktivitas utang dan koreksi (PostgreSQL terisolasi)", { skip: !enabl
     await t.test("refund harus merujuk pengeluaran posted bermata uang sama", async () => {
       await assert.rejects(() => postActivity({ kind: "refund", amountMinor: "1", destinationAssetId: wallet, refundOfActivityId: randomUUID(), occurredAt: at }, randomUUID()), /tidak ditemukan/);
       const income = await postActivity({ kind: "income", amountMinor: "10", destinationAssetId: wallet, occurredAt: at }, randomUUID());
-      await assert.rejects(() => postActivity({ kind: "refund", amountMinor: "1", destinationAssetId: wallet, refundOfActivityId: income, occurredAt: at }, randomUUID()), /expense/);
+      await assert.rejects(() => postActivity({ kind: "refund", amountMinor: "1", destinationAssetId: wallet, refundOfActivityId: income, occurredAt: at }, randomUUID()), /tidak ditemukan/); // bukan pengeluaran posted
     });
 
     await t.test("adjustment: rekonsiliasi naik/turun tanpa menjadi pemasukan atau pengeluaran", async () => {

@@ -52,39 +52,6 @@ function toCatalogItem(row: CatalogRow): CatalogRecord {
 export async function listCatalog(catalog: Catalog, includeArchived = false): Promise<CatalogRecord[]> {
   await requireOwnerSession();
   const table = catalogTables[catalog];
-  if (!process.env.MONEYTOR_P4_DB_TEST) {
-    if (catalog === "providers") {
-      await database().query(
-        `DELETE FROM financial_providers fp
-         WHERE fp.system_key IN ('demo_bank', 'demo_wallet', 'demo_investment')
-           AND NOT EXISTS (SELECT 1 FROM assets a WHERE a.provider_id = fp.id)
-           AND NOT EXISTS (SELECT 1 FROM investment_portfolios ip WHERE ip.provider_id = fp.id)`,
-      );
-      await database().query(
-        `UPDATE financial_providers
-         SET is_builtin = false, system_key = NULL
-         WHERE system_key IN ('demo_bank', 'demo_wallet', 'demo_investment')`,
-      );
-    } else if (catalog === "paymentNetworks") {
-      await database().query(
-        `DELETE FROM payment_networks pn
-         WHERE pn.system_key = 'demo_network'
-           AND NOT EXISTS (SELECT 1 FROM assets a WHERE a.payment_network_id = pn.id)`,
-      );
-      await database().query(
-        `UPDATE payment_networks
-         SET is_builtin = false, system_key = NULL
-         WHERE system_key = 'demo_network'`,
-      );
-    } else if (catalog === "transactionCategories") {
-      await database().query(
-        `UPDATE transaction_categories
-         SET is_builtin = true, system_key = 'bank_admin_fee'
-         WHERE display_name ~* '^(biaya\\s*admin\\s*rekening|biaya\\s*admin|administrasi\\s*bank)$'
-           AND (system_key IS NULL OR system_key = '')`,
-      );
-    }
-  }
   const flags = await readLifecycleFlags(database(), table, includeArchived);
   const eligibility = includeArchived ? `, (NOT is_builtin AND system_key IS NULL AND NOT is_active AND ${unreferencedSql(table, "entry.id", flags.planning, flags.automation, flags.event, flags.general, flags.allocation)}) AS can_delete` : "";
   const scope = catalog === "transactionCategories" ? `, applies_to, parent_id, nature,

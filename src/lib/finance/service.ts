@@ -111,7 +111,8 @@ async function buildInput(client: PoolClient, draft: ActivityDraft): Promise<Act
     source: await activeAsset(client, draft.sourceAssetId!), destination: await activeAsset(client, draft.destinationAssetId!),
     interest: draft.charges?.[0] ? await activeCharge(client, draft.charges[0].typeId, draft.charges[0].amountMinor) : undefined };
   if (draft.kind === "refund") {
-    const origin = (await client.query<{ category_id: string | null }>("SELECT category_id FROM financial_activities WHERE id=$1", [draft.refundOfActivityId])).rows[0];
+    const origin = (await client.query<{ category_id: string | null }>(
+      "SELECT o.category_id FROM expense_versions ev JOIN financial_activities o ON o.id=ev.current_id WHERE ev.version_id=$1", [draft.refundOfActivityId])).rows[0];
     if (!origin) throw new Error("Pengeluaran asal refund tidak ditemukan");
     // The category is copied from the expense even if it has since been archived.
     const category = origin.category_id ? (await client.query<{ id: string; display_name: string; system_key: string | null; is_builtin: boolean }>(

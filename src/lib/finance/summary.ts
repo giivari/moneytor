@@ -39,8 +39,8 @@ function planningHorizon() {
   return horizonDay(today, 30);
 }
 
-function monthRange() {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).formatToParts(new Date());
+function monthRange(at: Date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).formatToParts(at);
   const year = Number(parts.find((part) => part.type === "year")!.value);
   const month = Number(parts.find((part) => part.type === "month")!.value);
   const start = new Date(`${year}-${String(month).padStart(2, "0")}-01T00:00:00+07:00`);
@@ -48,19 +48,11 @@ function monthRange() {
   const nextMonth = month === 12 ? 1 : month + 1;
   return [start, new Date(`${nextYear}-${String(nextMonth).padStart(2, "0")}-01T00:00:00+07:00`)];
 }
-async function readMonthlyExpenses(client?: PoolClient) {
+/** Spending of the Asia/Jakarta month containing `at`: the shared spending_effects definition (refunds subtract on their own date). */
+async function readMonthlyExpenses(client?: PoolClient, at: Date = new Date()) {
   const result = await (client ?? database()).query<{ currency: string; exponent: number; expenseMinor: string }>(`
     WITH items AS (
-      SELECT currency_code,base_amount_minor::numeric AS amount FROM financial_activities
-      WHERE kind='expense' AND status='posted' AND occurred_at >= $1 AND occurred_at < $2
-      UNION ALL
-      -- A refund lowers spending (negative expense); it is never income.
-      SELECT currency_code,-base_amount_minor::numeric FROM financial_activities
-      WHERE kind='refund' AND status='posted' AND occurred_at >= $1 AND occurred_at < $2
-      UNION ALL
-      SELECT f.currency_code,ac.amount_minor::numeric FROM activity_charges ac
-      JOIN financial_activities f ON f.id=ac.activity_id
-      WHERE f.status='posted' AND f.occurred_at >= $1 AND f.occurred_at < $2
+      SELECT currency_code,amount_minor AS amount FROM spending_effects WHERE occurred_at >= $1 AND occurred_at < $2
     )
     SELECT c.code AS currency,c.minor_unit_exponent AS exponent,COALESCE(sum(items.amount),0)::text AS "expenseMinor"
     FROM currencies c LEFT JOIN items ON items.currency_code=c.code
@@ -69,13 +61,13 @@ async function readMonthlyExpenses(client?: PoolClient) {
       OR EXISTS (SELECT 1 FROM investment_portfolios p WHERE p.currency_code=c.code)
       OR EXISTS (SELECT 1 FROM investment_opening_positions o WHERE o.currency_code=c.code)
       OR EXISTS (SELECT 1 FROM investment_transactions t WHERE t.currency_code=c.code)
-    GROUP BY c.code,c.minor_unit_exponent ORDER BY c.code`, monthRange());
+    GROUP BY c.code,c.minor_unit_exponent ORDER BY c.code`, monthRange(at));
   return result.rows;
 }
 /** Transactions does not need cash balances or investment replay to show monthly spending. */
-export async function monthlyExpenses() {
+export async function monthlyExpenses(at: Date = new Date()) {
   await requireOwnerSession();
-  return readMonthlyExpenses();
+  return readMonthlyExpenses(undefined, at);
 }
 export async function financeSnapshot({ includeRecent = true, includeExpenses = true }: { includeRecent?: boolean; includeExpenses?: boolean } = {}, existing?: PoolClient) {
   await requireOwnerSession();
