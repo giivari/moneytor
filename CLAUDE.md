@@ -10,7 +10,7 @@ Konteks arsitektur: `docs/ARCHITECTURE.md`. Analisis dan rencana redesign: `docs
 npm ci
 npm run dev
 npm run typecheck          # tsc --noEmit
-npm run lint               # eslint .
+npm run lint               # eslint . && stylelint "src/**/*.css" (stylelint: tanpa daftar pengecualian)
 npm run test:unit          # daftar file test ditulis manual di package.json
 npm run test:ui
 npm run db:list | db:status | db:migrate   # lihat scripts/migrate.mjs
@@ -43,23 +43,34 @@ npm run db:list | db:status | db:migrate   # lihat scripts/migrate.mjs
 - `assets.asset_class` (asset/liability/receivable) adalah sumber tunggal klasifikasi kredit/piutang (`isCreditAsset`, `isReceivableAsset`).
   Jangan menambah regex nama akun atau tag baru di `assets.note` untuk mengklasifikasi.
 - Pembelian cicilan dibukukan penuh (pokok + charge "Bunga cicilan") di ledger; `credit_installments` hanya membagi tagihan per bulan
-  (status scheduled -> cancelled, tanpa hapus). Kekayaan bersih = aset - seluruh kewajiban (`netWorthMinor` dari `summarizeBalances`).
+  (status scheduled -> cancelled, tanpa hapus). Top-up cicilan (transfer dari akun kredit) sama: biaya transfer = bunga SEMUA bulan
+  (`installmentTopUpRequest`), jadwal di `credit_installments`. Kekayaan bersih = aset - seluruh kewajiban (`netWorthMinor` dari `summarizeBalances`).
+- "Dana siap pakai" (`availableMinor`) punya satu definisi: `availableFunds` (`domain/planning.ts`) dengan `creditDebtThrough`
+  (`domain/net-worth.ts`). Beranda (via `financeSnapshot`) dan Rencana memanggilnya; jangan membuat rumus kedua.
 - Ledger single-entry (satu pergerakan di sisi aset). Jangan menulis "double-entry" di kode atau teks baru.
 
 ## Jebakan logika yang masih berlaku (jangan diperluas)
 
-- Top-up cicilan (transfer dari akun kredit) masih memakai jadwal di catatan kredit (`scheduleCreditCharge`): bunga bulan 2..N di luar ledger.
+- Top-up cicilan yang diposting sebelum 2026-11-07 masih punya jadwal di catatan kredit (cabang legacy `scheduleCreditCharge`, bunga bulan 2..N
+  di luar ledger). Yang baru memakai tabel jadwal; jangan memanggil cabang legacy untuk posting baru.
 - Catatan kredit lama yang sudah dikompres `fitCreditNote` (`ref` hilang) tetap membawa bug void: cicilan masa depan pembelian yang
   di-void tetap terhitung utang sampai jadwalnya dimigrasi manual.
 - Belum ada kurs, bruto->neto gaji, dividen/kupon/XIRR; pajak bunga default flat 20% tanpa pengecualian Rp7,5 jt.
 
 ## UI dan gaya
 
-- Tujuan redesign: satu `tokens.css` (satu `:root`), skala tetap untuk font/radius/tinggi kontrol/ikon, 7 modul navigasi satu bahasa Indonesia
-  (Beranda, Mutasi, Aset, Kredit & Talangan, Investasi, Rencana, Analitik), inspector samping/bottom sheet, mobile responsif nyata.
+- Keadaan sekarang: satu `tokens.css` (satu `:root`) dan SEMUA CSS di `src/` lolos stylelint (`.stylelintrc.json`, `ignoreFiles` hanya folder non-sumber;
+  dijaga `tests/style-tokens.test.mjs`). Skala tetap untuk font/radius/tinggi kontrol/ikon, 7 modul navigasi satu bahasa Indonesia
+  (Beranda, Mutasi, Aset, Kredit & Talangan, Investasi, Rencana, Analitik), inspector samping/bottom sheet, mobile responsif.
+- Primitif bersama: `src/app/ui.css` + `src/components/ui.tsx` (Card, Kpi, Chip, Amount, PageHeading), `components/inspector.tsx`, `page-tabs.tsx`.
+  Halaman baru memakainya dulu; CSS halaman hanya untuk tata letak khusus.
+- Editor transaksi (`transaction-editor.tsx`) tiga langkah: Jenis, Akun & nominal, Opsi lanjutan; semua state di induk. Prop `preset`
+  (`TransactionPreset`: jenis, akun, tujuan, jumlah, catatan) dipakai `QuickAdd kind=...` dan tombol "Bayar tagihan" (`PayBillButton`);
+  koreksi atau preset jenis mulai di langkah 2.
 - Jangan menambah hex, radius, ukuran font, ukuran ikon, `!important`, atau `:root` baru di luar token. Teks konten minimal 12px; kontras teks >= AA.
+  Transparansi (scrim, bayangan, sorotan) memakai token (`--scrim`, `--shadow-1..3`) atau `transparent`, jangan hex beralpha yang dipetakan otomatis ke warna pekat.
 - Pertahankan palet netral (ink `#1d2225`, bg `#fafafa`, line `#e1e4e6`, tombol primer `#23282b`), Inter via next/font, ikon Phosphor,
-  `FinancialAmount`, privacy mask, dan dukungan reduced-motion. Nominal harus bisa diseleksi/disalin; jangan `user-select: none` global.
+  `FinancialAmount`, privacy mask, dan dukungan reduced-motion. Nominal harus bisa diseleksi/disalin; jangan `user-select: none` (stylelint melarangnya; `user-select: all` untuk kode pemulihan boleh).
 - Angka di layar berasal dari `financeSnapshot` atau domain, bukan literal. Teks UI Indonesia, satu bahasa per layar.
 
 ## Cara kerja

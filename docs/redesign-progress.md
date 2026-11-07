@@ -25,7 +25,7 @@ Belum selesai, diketahui:
 - Catatan kredit yang sudah dikompres tetap membawa bug void sampai dimigrasi manual (lihat REDESIGN-HANDOFF.md).
 - Mode render analytics (`MONEYTOR_INSIGHTS_RENDER_TEST=1`, tanpa script) gagal me-resolve `next/link`; kerusakan ini sudah ada sebelumnya.
 
-Langkah berikutnya: terapkan 015 di Neon branch dan tinjau NOTICE; pindahkan top-up cicilan ke tabel jadwal.
+Langkah berikutnya: terapkan 015 di Neon branch dan tinjau NOTICE (pemindahan top-up ke tabel jadwal sudah selesai, lihat fase 2026-11-07).
 
 ## Fase token (langkah 1), 2026-11-06
 Keputusan:
@@ -108,3 +108,24 @@ tidak ada laporan), bukan KPI kelima. SVG dashboard disembunyikan dengan ruang t
 - Bug migrasi diperbaiki: hex beralpha (#5263720b sorotan bar, #181d2075 backdrop dialog keuangan) sempat jadi warna pekat;
   kini --neutral-soft dan --scrim. Skrip migrasi harus memeriksa hex 8 digit secara manual bila dipakai lagi.
 - Catatan ops: tiga dev server sempat berbagi .next (aset 404); dimatikan, .next dihapus, satu server dijalankan ulang.
+
+## Fase penyelesaian (6 butir), 2026-11-07
+Keputusan:
+- Dana siap pakai: satu definisi. `availableFunds` (domain/planning) + `creditDebtThrough` (domain/net-worth) dipakai `financeSnapshot` dan Rencana.
+  Rencana menerima tagihan kredit per jangka (7/30/90) dari server dan mengabaikan pengingat tagihan kredit di rencana (sudah ada di tagihan).
+  Tes: `tests/available-funds.test.mjs` (Beranda dan Rencana sama; 30 hari = angka Beranda).
+- CSS: 8 file terakhir bertoken, `ignoreFiles` stylelint kosong (`tests/style-tokens.test.mjs`). Pembanding piksel sebelum/sesudah 14 halaman x 2
+  ukuran (sampel diperiksa mata: Otomatisasi, Katalog, Login): selisih penyesuaian skala (radius/ukuran font/bayangan); tiga transparansi yang diratakan migrasi (backdrop dialog x2, sorotan
+  onboarding) diperbaiki. `!important` onboarding dihapus dengan ambang mobile komponen 640 -> 767px. Stylelint kini hanya melarang `user-select: none`.
+- Kredit: tombol "Bayar tagihan" di kartu aktif yang punya tagihan -> editor Transfer (tujuan = akun kredit, jumlah = tagihan terdekat, sumber =
+  akun non-kredit yang dapat dipakai, `pickTransferSource`). Ekspor: label "Laba/rugi belum terealisasi".
+- Editor transaksi tiga langkah (Jenis, Akun & nominal, Opsi lanjutan); stepper bisa diklik; maju dari langkah 2 memvalidasi isian wajib; simpan
+  tersedia di langkah 2 dan 3. `QuickAdd kind` membuka langkah 2 dengan jenis terpilih (belum dipakai di halaman mana pun).
+- Top-up cicilan -> tabel jadwal TANPA migrasi baru: `credit_installments` tidak membatasi jenis aktivitas, dan transfer membawa biaya
+  `transfer_fee` sebesar bunga semua bulan. Posting baru: ledger = pokok + seluruh bunga, baris per bulan. Top-up lama di catatan kredit tetap
+  terbaca (cabang legacy `scheduleCreditCharge` dipertahankan beserta tesnya). Koreksi top-up memulihkan tenor dan biaya milik pemilik.
+File: domain/{planning,net-worth,credit-purchase,credit-overview,transaction-preset}.ts, finance/summary.ts, components/{planning-manager,
+transaction-editor,quick-add,pay-bill-button,credit-overview}.tsx, app/{forms,credit/credit}.css, .stylelintrc.json, exports/service.ts.
+Hasil: typecheck, lint (eslint + stylelint) bersih; test:unit 146 lulus 1 skip; test:ui 149 lulus; DB container 55434: credit 8, finance 8, planning 8.
+Belum: wordmark halaman login masih berpendar warna (visual.css lama); belum ada tombol "Catat transfer" per halaman yang memakai `QuickAdd kind`;
+koreksi top-up lama (tanpa baris jadwal) tidak menjadwal ulang.
