@@ -5,11 +5,12 @@ import type { FinanceAsset } from "@/lib/finance/types";
 import { formatMinor } from "@/lib/finance/format";
 import { sortNamed } from "@/lib/list-order";
 import { creditBillsDue, receivablesSummary } from "@/lib/domain/home-briefing";
-import { creditFacilities, creditTotals, installmentContracts, receivableAccounts, type CreditFacility } from "@/lib/domain/credit-overview";
+import { billPayment, creditFacilities, creditTotals, installmentContracts, receivableAccounts, type CreditFacility } from "@/lib/domain/credit-overview";
 import { AssetDetail, CreditDetail, creditStatusLabel } from "./entity-details";
 import { Amount, Card, Chip, Kpi, PageHeading, monthLabel, shortDate, toneOf } from "./ui";
 import { InspectorRow, InspectorRowButton } from "./inspector";
 import { PageTabs } from "./page-tabs";
+import { PayBillButton } from "./pay-bill-button";
 import { ICON_SM } from "./icon-size";
 
 type Snapshot = Awaited<ReturnType<typeof financeSnapshot>>;
@@ -20,6 +21,7 @@ function FacilityCard({ facility }: { facility: CreditFacility }) {
   const { asset, bills, status } = facility;
   const money = (value: bigint) => formatMinor(value, asset.currency, asset.exponent);
   const state = creditStatusLabel[status];
+  const payment = billPayment(facility);
   const used = bills.limitMinor > 0n ? Number((bills.totalUnpaidMinor * 1000n) / bills.limitMinor) / 10 : null;
   return <InspectorRow as="div" id={`credit:${asset.id}`} title={asset.displayName} subtitle="Rincian fasilitas kredit" detail={<CreditDetail asset={asset} link={false} />} className="ui-card credit-facility">
     <header className="credit-facility-header">
@@ -36,6 +38,8 @@ function FacilityCard({ facility }: { facility: CreditFacility }) {
       <div><dt>Tagihan {shortDate(bills.currentDueIso)}</dt><dd><Amount value={money(bills.currentBillMinor)} level="entity" tone={bills.currentBillMinor > 0n ? "negative" : ""} /></dd></div>
       <div><dt>Tagihan {shortDate(bills.nextDueIso)}</dt><dd><Amount value={money(bills.nextBillMinor)} level="entity" /></dd></div>
     </dl>
+    {payment && <div className="credit-facility-actions"><PayBillButton assetId={asset.id} name={asset.displayName} exponent={asset.exponent}
+      amountMinor={payment.amountMinor.toString()} dueIso={payment.dueIso} /></div>}
     <footer className="credit-facility-footer">
       <span>{bills.overpaidMinor > 0n ? "Lebih bayar" : "Sisa seluruh utang"}</span>
       <Amount value={money(bills.overpaidMinor > 0n ? bills.overpaidMinor : bills.totalUnpaidMinor)} tone={bills.overpaidMinor > 0n ? "positive" : bills.totalUnpaidMinor > 0n ? "negative" : ""} />

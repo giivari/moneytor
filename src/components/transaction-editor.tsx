@@ -24,6 +24,7 @@ import {
   parseCreditMeta,
 } from "@/lib/domain/credit";
 import { planSplitBill } from "@/lib/domain/split-bill";
+import { pickTransferSource, type TransactionPreset } from "@/lib/domain/transaction-preset";
 import type { ActivityDraft, ActivityKind, FinanceActivity, FinanceAsset } from "@/lib/finance/types";
 
 function localDate(iso?: string) {
@@ -42,7 +43,7 @@ function formatAssetOptionLabel(item: FinanceAsset) {
   return `${item.displayName} · ${formatMinor(item.balanceMinor, item.currency, item.exponent)}`;
 }
 
-export function TransactionEditor({ onClose, initial }: { onClose: () => void; initial?: FinanceActivity }) {
+export function TransactionEditor({ onClose, initial, preset }: { onClose: () => void; initial?: FinanceActivity; preset?: TransactionPreset }) {
   const { refresh, notify } = useFinanceFeedback();
   const dialog = useFinanceDialog(onClose);
   const replay = useRef<{ payload: string; key: string } | null>(null);
@@ -52,13 +53,13 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   const { options, optionsError, retry, reload } = useFinanceOptions();
   const [error, setError] = useState("");
   const { pending, begin, finish } = useMutationPending();
-  const [kind, setKind] = useState<ActivityKind>(initial?.kind ?? "expense");
-  const [amount, setAmount] = useState(initial ? minorToInput(initial.baseAmountMinor, initial.exponent) : "");
-  const [accountId, setAccountId] = useState(initial?.sourceAssetId ?? initial?.destinationAssetId ?? "");
-  const [destinationId, setDestinationId] = useState(initial?.destinationAssetId ?? "");
+  const [kind, setKind] = useState<ActivityKind>(initial?.kind ?? preset?.kind ?? "expense");
+  const [amount, setAmount] = useState(initial ? minorToInput(initial.baseAmountMinor, initial.exponent) : preset?.amount ?? "");
+  const [accountId, setAccountId] = useState(initial?.sourceAssetId ?? initial?.destinationAssetId ?? preset?.accountId ?? "");
+  const [destinationId, setDestinationId] = useState(initial?.destinationAssetId ?? preset?.destinationId ?? "");
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [occurredAt, setOccurredAt] = useState(localDate(initial?.occurredAt));
-  const [note, setNote] = useState(initial?.note ?? "");
+  const [note, setNote] = useState(initial?.note ?? preset?.note ?? "");
   // Correcting an installment purchase starts from its stored tenor and monthly interest.
   const initialInstallment = initial?.kind === "expense" ? installmentEditDefaults(initial.creditInstallments) : null;
   const [tenorMonths, setTenorMonths] = useState<number>(initialInstallment?.tenorMonths ?? 1);
@@ -84,7 +85,9 @@ export function TransactionEditor({ onClose, initial }: { onClose: () => void; i
   const [receivableAssetId, setReceivableAssetId] = useState("");
 
   const active = options?.assets ?? [];
-  const account = accountId ? active.find((item) => item.id === accountId) : active[0];
+  // A transfer preset names only the destination (a credit account to pay): the source defaults to a spendable account, not to that credit account.
+  const account = accountId ? active.find((item) => item.id === accountId)
+    : (kind === "transfer" && destinationId ? pickTransferSource(active, destinationId) : undefined) ?? active[0];
   const currency = account?.currency ?? "IDR";
   const exponent = account?.exponent ?? 0;
   const destinationOptions = active.filter((item) => item.id !== account?.id && item.currency === currency);

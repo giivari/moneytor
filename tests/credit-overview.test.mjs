@@ -71,3 +71,22 @@ test("receivables list open balances first and never clamps negatives", () => {
   ], "IDR");
   assert.deepEqual(list.map((item) => [item.asset.displayName, item.status]), [["Budi", "terbuka"], ["Kelebihan", "terbuka"], ["Lunas", "lunas"]]);
 });
+
+test("billPayment prefills the next open bill and skips settled, overpaid and archived accounts", async () => {
+  const { billPayment } = await import("../src/lib/domain/credit-overview.ts");
+  const byName = Object.fromEntries(creditFacilities([
+    card({ displayName: "Tagihan", balanceMinor: "-500000" }),
+    card({ displayName: "Lunas", balanceMinor: "0" }),
+    card({ displayName: "Lebih", balanceMinor: "75000" }),
+    card({ displayName: "Arsip", balanceMinor: "-90000", isActive: false }),
+    card({ displayName: "Cicilan jauh", balanceMinor: "-600000", creditInstallments: rows("a", 3, 190000, 10000, "2027-06") }),
+  ], NOW).map((item) => [item.asset.displayName, item]));
+  const bills = byName.Tagihan.bills;
+  assert.deepEqual(billPayment(byName.Tagihan), { amountMinor: bills.currentBillMinor > 0n ? bills.currentBillMinor : bills.nextBillMinor,
+    dueIso: bills.currentBillMinor > 0n ? bills.currentDueIso : bills.nextDueIso });
+  assert.ok(billPayment(byName.Tagihan).amountMinor > 0n);
+  assert.equal(billPayment(byName.Lunas), null);
+  assert.equal(billPayment(byName.Lebih), null);
+  assert.equal(billPayment(byName.Arsip), null);
+  assert.equal(billPayment(byName["Cicilan jauh"]), null);
+});

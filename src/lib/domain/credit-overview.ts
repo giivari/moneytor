@@ -73,3 +73,15 @@ export function receivableAccounts(assets: readonly FinanceAsset[], currency: st
     .map((asset) => ({ asset, status: (BigInt(asset.balanceMinor) === 0n ? "lunas" : "terbuka") as ReceivableStatus }))
     .sort((a, b) => Number(a.status === "lunas") - Number(b.status === "lunas") || a.asset.displayName.localeCompare(b.asset.displayName, "id"));
 }
+
+/**
+ * What "Bayar tagihan" prefills for a credit account: the bill due next (the current one, or the following one
+ * when nothing is due yet). Null when no bill is open, an archived account or an account without a bill.
+ */
+export function billPayment(facility: CreditFacility): { amountMinor: bigint; dueIso: string } | null {
+  const { asset, bills } = facility;
+  if (!asset.isActive) return null;
+  if (bills.currentBillMinor > 0n) return { amountMinor: bills.currentBillMinor, dueIso: bills.currentDueIso };
+  if (bills.nextBillMinor > 0n) return { amountMinor: bills.nextBillMinor, dueIso: bills.nextDueIso };
+  return null;
+}

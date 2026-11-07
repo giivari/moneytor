@@ -88,3 +88,24 @@ test('archived facilities stay listed with their remaining debt', () => {
  assert.match(output,/Kartu Lama/);
  assert.ok(output.includes(money('120000')));
 });
+
+test('Bayar tagihan appears only on active cards with an open bill', () => {
+ const output=html(snapshotOf([
+  asset({displayName:'BNI',balanceMinor:'5000000'}),
+  card({displayName:'Kartu Utama',balanceMinor:'-800000'}),
+  card({displayName:'Kartu Lunas',balanceMinor:'0'}),
+  card({displayName:'Kartu Lama',balanceMinor:'-120000',isActive:false}),
+ ]));
+ assert.equal(output.split('Bayar tagihan</button>').length-1,1);
+ assert.match(output,/aria-label="Bayar tagihan Kartu Utama"/);
+ assert.doesNotMatch(output,/aria-label="Bayar tagihan Kartu Lunas"/);
+ assert.doesNotMatch(output,/aria-label="Bayar tagihan Kartu Lama"/);
+});
+
+test('the editor accepts a preset and the card passes credit account, amount and a note', () => {
+ const button=fs.readFileSync(new URL('src/components/pay-bill-button.tsx',root),'utf8');
+ assert.match(button,/kind: "transfer", destinationId: assetId, amount: minorToInput\(amountMinor, exponent\)/);
+ const editor=fs.readFileSync(new URL('src/components/transaction-editor.tsx',root),'utf8');
+ assert.match(editor,/preset\?: TransactionPreset/);
+ assert.match(editor,/preset\?\.destinationId/);
+});
