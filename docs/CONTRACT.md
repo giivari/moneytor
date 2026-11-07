@@ -148,3 +148,22 @@ Analitik (`FinancialMeasures`) mendapat `adjustmentInMinor`, `adjustmentOutMinor
 `expensePrincipalMinor`/`spendingMinor` sudah dikurangi refund (bisa negatif per kategori) dan memuat bunga repay; `incomeMinor` tidak terpengaruh.
 `monthlyExpenses`/`expenseMinor` dan anggaran terpakai juga mengurangi refund dan menghitung bunga repay.
 Ekspor transaksi memberi label "Pinjaman cair", "Pelunasan pinjaman", "Refund", "Penyesuaian saldo".
+
+## Tambahan: katalog bertingkat dan sifat kategori (migrasi 018/019)
+
+Sumber isi katalog bawaan: `docs/CATALOG.md` (seed 019). Kategori dua tingkat: induk (`parentId: null`) dan anak. Anak selalu sejenis dengan induknya (income/expense).
+`nature` (sifat, hanya pengeluaran): `need | want | obligation | social | saving`; anak tanpa sifat mewarisi sifat induk saat dibuat.
+`parentId` dan `nature` hanya boleh berubah dari `null` ke nilai (sekali); setelah terisi terkunci. Sifat efektif: `effectiveNature = natureOverride ?? nature ?? sifat induk`.
+
+`GET /api/finance/options` (`catalogs.transactionCategories[]`) dan `listCatalog("transactionCategories")` kini memuat `parentId`, `nature`, `natureOverride`, `effectiveNature`.
+Contoh nyata (fixture `tests/catalog-db.test.mjs`):
+```json
+{"id":"50000000-0000-4000-8000-000000000120","displayName":"Makan di luar","systemKey":"food_dining","isBuiltIn":true,"isActive":true,
+ "appliesTo":"expense","parentId":"50000000-0000-4000-8000-000000000001","nature":"want","natureOverride":null,"effectiveNature":"want"}
+```
+- `POST /api/finance/catalog-create` dengan `catalog: "transactionCategories"` menerima `parentId?` (induk tingkat 1, jenis sama). Tanpa `parentId` kategori menjadi induk. Respons `{ item }` memuat field di atas.
+- `POST /api/finance/category-nature` body `{ "id": "<uuid kategori pengeluaran>", "nature": "saving" | null }` -> `{ "ok": true }`. Override milik pengguna; `null` menghapusnya; entri bawaan tidak diubah.
+- Entri demo 002 yang tidak terpakai dinonaktifkan; jenis aset baru (`time_deposit, gold, prepaid_card, credit_card, paylater, loan, receivable`) dan jenis biaya baru (`cash_withdrawal_fee, stamp_duty, penalty_fee, shipping_fee, top_up_fee`) tersedia.
+- Analitik (`byCategory` tidak berubah): `byCategoryParent: DimensionRow[]` (pengeluaran dikelompokkan ke induk; kategori induk adalah grupnya sendiri; `key`=id induk atau `uncategorized`)
+  dan `byNature: DimensionRow[]` (`key` = sifat efektif atau `none` = "Tanpa sifat"; nama Indonesia: Kebutuhan, Keinginan, Kewajiban, Sosial, Tabungan). Refund dihitung negatif seperti pada `byCategory`.
+- Catatan: `listCatalog` masih menjalankan pembersihan runtime lama untuk penyedia/jaringan demo (hapus bila tak terpakai) dan menandai kategori "biaya admin" sebagai bawaan `bank_admin_fee`; tidak diubah di tugas ini.
