@@ -21,6 +21,20 @@ export type CurrencyBalances = {
 
 export type InvestmentMarketTotal = Readonly<{ currency: string; exponent: number; marketMinor: string; unpricedCount: number }>;
 
+/** Credit bills of one active credit account that fall due on or before `throughDay` (current bill plus the next one when it is inside). */
+export function creditDebtDue(asset: FinanceAsset, throughDay: string, now: Date = new Date()): bigint {
+  if (!asset.isActive || !isCreditAsset(asset)) return 0n;
+  const bills = computeCreditBills(asset, now);
+  return bills.currentBillMinor + (bills.nextDueIso <= throughDay ? bills.nextBillMinor : 0n);
+}
+
+/** Sum of creditDebtDue for one currency; summarizeBalances and Rencana share this definition. */
+export function creditDebtThrough(assets: readonly FinanceAsset[], currency: string, throughDay: string, now: Date = new Date()): bigint {
+  let total = 0n;
+  for (const asset of assets) if (asset.currency === currency) total += creditDebtDue(asset, throughDay, now);
+  return total;
+}
+
 export function emptyCurrencyBalances(currency: string, exponent: number): CurrencyBalances {
   return { currency, exponent, total: 0n, liquid: 0n, spendable: 0n, expense: 0n, creditDebt: 0n, liabilities: 0n, netWorth: 0n, unpricedCount: 0 };
 }
@@ -44,10 +58,7 @@ export function summarizeBalances(
       // Archived accounts still owe (or hold) what their balance says, like archived assets still count.
       entry.liabilities += bills.totalUnpaidMinor;
       entry.total += bills.overpaidMinor;
-      if (asset.isActive) {
-        entry.creditDebt += bills.currentBillMinor;
-        if (bills.nextDueIso <= throughDay) entry.creditDebt += bills.nextBillMinor;
-      }
+      entry.creditDebt += creditDebtDue(asset, throughDay, now);
     } else {
       entry.total += balance;
       const isReceivable = isReceivableAsset(asset);

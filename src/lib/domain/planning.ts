@@ -1,3 +1,4 @@
+import { isCreditReminderNote } from "./credit.ts";
 import { assertStoredMinor, parseMinor } from "./money.ts";
 
 export type PlanKind = "budget" | "goal" | "reserve" | "obligation";
@@ -8,6 +9,11 @@ export type ReserveAllocation = Readonly<{
 }>;
 export type ObligationCommitment = Readonly<{
   id: string; currency: string; amountMinor: string; dueOn: string; status: ObligationStatus;
+  /** Reminders for credit bills are skipped: their amounts already sit in the credit bills (creditDebt). */
+  note?: string | null;
+}>;
+export type PlanningAggregateMinor = Readonly<{
+  reservedMinor: string | bigint; dueMinor: string | bigint; coveredMinor: string | bigint; uncoveredMinor: string | bigint;
 }>;
 
 function positive(raw: string) {
@@ -27,9 +33,21 @@ export function planningTotals(baseMinor: string | bigint, reservedMinor: string
   };
 }
 
+/**
+ * The single definition of "dana siap pakai" (availableMinor). Credit bills due inside the horizon are
+ * obligations nothing has reserved for, so they add to both the due and the uncovered totals. Beranda
+ * (via financeSnapshot) and Rencana both end here.
+ */
+export function availableFunds(baseMinor: string | bigint, aggregate: PlanningAggregateMinor, creditDebtMinor: string | bigint = 0n) {
+  const credit = BigInt(creditDebtMinor);
+  if (credit < 0n) throw new Error("Invalid credit debt");
+  return planningTotals(baseMinor, aggregate.reservedMinor,
+    BigInt(aggregate.dueMinor) + credit, aggregate.coveredMinor, BigInt(aggregate.uncoveredMinor) + credit);
+}
+
 /** Explicit coverage is capped separately for each open, due obligation. */
 export function planningPosition(baseMinor: string | bigint, currency: string, reserves: ReserveAllocation[],
-  obligations: ObligationCommitment[], throughDay: string) {
+  obligations: ObligationCommitment[], throughDay: string, creditDebtMinor: string | bigint = 0n) {
   let reserved = 0n, due = 0n, covered = 0n;
   const byObligation = new Map<string, bigint>();
   for (const reserve of reserves) {
@@ -42,12 +60,17 @@ export function planningPosition(baseMinor: string | bigint, currency: string, r
   for (const obligation of obligations) {
     if (obligation.currency !== currency) throw new Error("Currency mismatch");
     const amount = positive(obligation.amountMinor);
-    if (obligation.status !== "open" || obligation.dueOn > throughDay) continue;
+    if (obligation.status !== "open" || obligation.dueOn > throughDay || isCreditReminderNote(obligation.note)) continue;
     due += amount;
     const linked = byObligation.get(obligation.id) ?? 0n;
     covered += linked > amount ? amount : linked;
   }
-  return planningTotals(baseMinor, reserved, due, covered, due - covered);
+  return availableFunds(baseMinor, { reservedMinor: reserved, dueMinor: due, coveredMinor: covered, uncoveredMinor: due - covered }, creditDebtMinor);
+}
+
+/** The "today" a financeSnapshot throughDay (today + 30 days) was derived from. */
+export function planningToday(throughDay: string) {
+  return horizonDay(throughDay, -30);
 }
 
 export function goalProgress(goalId: string, currency: string, reserves: ReserveAllocation[]) {

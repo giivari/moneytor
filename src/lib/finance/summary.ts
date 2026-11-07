@@ -5,7 +5,7 @@ import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { prepareOwnerAssetRead } from "@/lib/repositories/assets";
 import { listActivities } from "./service";
 import { prepareOwnerInvestmentSummaryRead } from "@/lib/investments/read";
-import { horizonDay, planningTotals } from "@/lib/domain/planning";
+import { availableFunds, horizonDay } from "@/lib/domain/planning";
 import { emptyCurrencyBalances, summarizeBalances } from "@/lib/domain/net-worth";
 import { planningSchemaReady, readPlanningSummary } from "@/lib/planning/repository";
 import { readAutomation } from "@/lib/automation/service";
@@ -100,10 +100,10 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
     }
     return { assets, recent, pendingAutomations, investment, planningReady, throughDay, currencies: [...byCurrency.values()].map((entry) => {
       const commitmentsForCurrency = planning.get(entry.currency);
-      const totalDue = (BigInt(commitmentsForCurrency?.dueMinor ?? "0") + entry.creditDebt).toString();
-      const totalUncovered = (BigInt(commitmentsForCurrency?.uncoveredMinor ?? "0") + entry.creditDebt).toString();
-      const position = planningTotals(entry.spendable, commitmentsForCurrency?.reservedMinor ?? "0",
-        totalDue, commitmentsForCurrency?.coveredMinor ?? "0", totalUncovered);
+      const position = availableFunds(entry.spendable, {
+        reservedMinor: commitmentsForCurrency?.reservedMinor ?? "0", dueMinor: commitmentsForCurrency?.dueMinor ?? "0",
+        coveredMinor: commitmentsForCurrency?.coveredMinor ?? "0", uncoveredMinor: commitmentsForCurrency?.uncoveredMinor ?? "0",
+      }, entry.creditDebt);
       return { currency: entry.currency, exponent: entry.exponent, totalMinor: entry.total.toString(),
         liquidMinor: entry.liquid.toString(), eligibleMinor: entry.spendable.toString(),
         creditDebtMinor: entry.creditDebt.toString(), liabilitiesMinor: entry.liabilities.toString(), netWorthMinor: entry.netWorth.toString(), ...position,

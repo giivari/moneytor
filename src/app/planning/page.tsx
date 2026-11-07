@@ -1,5 +1,7 @@
 import { financeSnapshot } from "@/lib/finance/summary";
 import { isReserveSourceAsset } from "@/lib/domain/credit";
+import { creditDebtThrough } from "@/lib/domain/net-worth";
+import { horizonDay, planningToday } from "@/lib/domain/planning";
 import { listPlanning } from "@/lib/planning/repository";
 import { PlanningManager } from "@/components/planning-manager";
 
@@ -16,5 +18,12 @@ export default async function PlanningPage() {
   }
   const sources = snapshot.assets.filter(isReserveSourceAsset)
     .map((asset) => ({ id: asset.id,name: asset.displayName,currency: asset.currency,balanceMinor: asset.balanceMinor }));
-  return <PlanningManager data={planning} positions={positions} sources={sources} throughDay={snapshot.throughDay} />;
+  // Credit bills due inside each horizon, from the same function financeSnapshot uses for Beranda.
+  const today = planningToday(snapshot.throughDay);
+  const creditDebt: Record<string, Record<number, string>> = {};
+  for (const { currency } of positions) {
+    creditDebt[currency] = Object.fromEntries([7, 30, 90].map((days) =>
+      [days, creditDebtThrough(snapshot.assets, currency, horizonDay(today, days)).toString()]));
+  }
+  return <PlanningManager data={planning} positions={positions} sources={sources} throughDay={snapshot.throughDay} creditDebt={creditDebt} />;
 }

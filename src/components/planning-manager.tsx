@@ -17,7 +17,7 @@ import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import { requestJson } from "@/lib/finance/client";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
-import { horizonDay, planningPosition, type PlanKind, type ReservePurpose } from "@/lib/domain/planning";
+import { horizonDay, planningPosition, planningToday, type PlanKind, type ReservePurpose } from "@/lib/domain/planning";
 import { isDedicatedCategory } from "@/lib/domain/catalog";
 import type { PlanningData, PlanningItem, PlanningLabel } from "@/lib/planning/repository";
 
@@ -44,11 +44,6 @@ function usePlanningRequest() {
     return requestJson<{ id: string }>("/api/planning", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, idempotencyKey: last.current.key }), cache: "no-store" });
   };
-}
-function todayFromEnd(throughDay: string) {
-  const date = new Date(`${throughDay}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - 30);
-  return date.toISOString().slice(0,10);
 }
 
 function PlanningForm({ kind, initial, data, sources, positions, today, onClose }: {
@@ -257,15 +252,17 @@ function PlanRow({ item, today, onEdit, onConfirm, onReactivate, busy }: {
   </article>;
 }
 
-export function PlanningManager({ data, positions, sources, throughDay }: {
+export function PlanningManager({ data, positions, sources, throughDay, creditDebt }: {
   data: PlanningData; positions: Position[]; sources: Source[]; throughDay: string;
+  /** Credit bills due inside each horizon (7/30/90 days) per currency, minor units as strings. */
+  creditDebt: Record<string, Record<number, string>>;
 }) {
   const [horizon,setHorizon] = useState<7 | 30 | 90>(30), [showArchived,setShowArchived] = useState(false);
   const [form,setForm] = useState<{ kind: PlanKind; item?: PlanningItem } | null>(null);
   const [confirm,setConfirm] = useState<{ item: PlanningItem; action: "archive" | "settle" | "cancel" | "delete" } | null>(null);
   const [busy,setBusy] = useState<string | null>(null), [error,setError] = useState("");
   const send = usePlanningRequest(), { notify,refresh } = useFinanceFeedback();
-  const today = todayFromEnd(throughDay), end = horizonDay(today,horizon);
+  const today = planningToday(throughDay), end = horizonDay(today,horizon);
   const budgetSort = useListPreference("planning.budgets.contextual",planningSortOptions.budget.map(option=>option.value),planningSortOptions.budget[0].value);
   const goalSort = useListPreference("planning.goals.contextual",planningSortOptions.goal.map(option=>option.value),planningSortOptions.goal[0].value);
   const reserveSort = useListPreference("planning.reserves.contextual",planningSortOptions.reserve.map(option=>option.value),planningSortOptions.reserve[0].value);
@@ -306,13 +303,13 @@ export function PlanningManager({ data, positions, sources, throughDay }: {
       const total = planningPosition(entry.eligibleMinor,entry.currency,data.reserves.filter((row) => row.currency === entry.currency).map((row) => ({
         currency: row.currency,amountMinor: row.amountMinor,isActive: row.isActive,goalId: row.goalId,obligationId: row.obligationId })),
       data.obligations.filter((row) => row.currency === entry.currency).map((row) => ({
-        id: row.id,currency: row.currency,amountMinor: row.amountMinor,dueOn: row.dueOn,status: row.status })),end);
+        id: row.id,currency: row.currency,amountMinor: row.amountMinor,dueOn: row.dueOn,status: row.status,note: row.note })),end,creditDebt[entry.currency]?.[horizon] ?? "0");
       const money = (value: string) => formatMinor(value, entry.currency, entry.exponent);
       const tone = (value: string) => (BigInt(value) < 0n ? "negative" : "") as "" | "negative";
       return <div className="planning-position" key={entry.currency} data-warning={BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n}>
         <div className="ui-kpis" aria-label={`Ringkasan rencana ${entry.currency}`}>
           <Kpi title="Dapat digunakan" icon={Wallet} tone="info" value={money(total.spendableMinor)} valueTone={tone(total.spendableMinor)} note={<>Saldo dapat dipakai {money(entry.eligibleMinor)} − cadangan</>} />
-          <Kpi title={`Setelah kewajiban rencana ${horizon} hari`} icon={CalendarCheck} tone="warning" value={money(total.availableMinor)} valueTone={tone(total.availableMinor)} note="Belum termasuk tagihan kredit; lihat Dana siap pakai di Beranda" />
+          <Kpi title={`Setelah kewajiban rencana ${horizon} hari`} icon={CalendarCheck} tone="warning" value={money(total.availableMinor)} valueTone={tone(total.availableMinor)} note={horizon === 30 ? "Sama dengan Dana siap pakai di Beranda" : "Termasuk tagihan kredit dalam jangka ini"} />
           <Kpi title="Cadangan aktif" icon={ShieldCheck} tone="positive" value={money(total.reservedMinor)} note={<>Likuid {money(entry.liquidMinor)} · {entry.currency}</>} />
           <Kpi title="Kewajiban belum tercakup" icon={CalendarBlank} tone="negative" value={money(total.uncoveredMinor)} valueTone={BigInt(total.uncoveredMinor) > 0n ? "negative" : ""} note={<>Jatuh tempo {money(total.dueMinor)}, tercakup {money(total.coveredMinor)}</>} />
         </div>
