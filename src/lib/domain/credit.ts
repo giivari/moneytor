@@ -407,9 +407,10 @@ export type CreditInstallmentTerms = Readonly<{ count: number; principalMinor: b
  *
  * - Single payment, current cycle: nothing to schedule.
  * - Single payment, next cycle: the whole impact is due next month.
- * - Installment top-up (transfer, full principal posted): installment 1 = impact minus future principal;
- *   each later month carries its principal (ledger) and its interest (off-ledger).
- * - Installment purchase (expense, only installment 1 posted): each later month carries principal +
+ * - Installment top-up / purchase with `installments`: LEGACY note schedule, kept for old data and tests. New
+ *   postings are scheduled as credit_installments rows (applyCreditPost) and never reach this branch.
+ *   Top-up: installment 1 = impact minus future principal; each later month carries its principal (ledger)
+ *   and its interest (off-ledger). Purchase (only installment 1 posted): later months carry principal +
  *   interest off-ledger.
  *
  * Installment 1 is due this cycle, or next cycle when `cycle` is "next"; installment k follows k-1 months later.

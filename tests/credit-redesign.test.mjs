@@ -145,3 +145,35 @@ test("koreksi pembelian cicilan: editor mengirim ulang tenor dan seluruh request
   assert.equal(purchase.installmentEditDefaults({ count: 1, principalMinor: "0", interestMinor: "0" }), null);
   assert.throws(() => purchase.installmentPurchaseRequest(plan12x(1200000, 2.95), 12), /Bunga cicilan/);
 });
+
+test("(e) top-up cicilan: pokok dan seluruh bunga masuk ledger, jadwal di tabel, catatan kredit tidak dipakai", () => {
+  const plan = credit.calculateCreditInstallmentPlan({ principalMinorStr: "900000", tenorMonths: 3, interestMode: "percent", interestRatePercent: 2.95, interestFlatMinorStr: "0" });
+  // 900.000 over 3x at 2,95%: 300.000 principal + 26.550 interest per month.
+  const request = purchase.installmentTopUpRequest(plan, 3);
+  assert.deepEqual(request, { transferFeeMinor: "79650", creditInstallments: { count: 3, principalMinor: "300000", interestMinor: "26550" } });
+  const impact = 900000n + BigInt(request.transferFeeMinor);
+  const terms = request.creditInstallments;
+  const state = purchase.applyCreditPost({ note: CREDIT_NOTE, installments: [] }, { activityId: "topup", impactMinor: impact, cycle: "current", kind: "transfer",
+    installments: { count: terms.count, principalMinor: BigInt(terms.principalMinor), interestMinor: BigInt(terms.interestMinor) } }, NOW);
+  assert.equal(state.note, CREDIT_NOTE, "the credit note carries no schedule for new top-ups");
+  assert.deepEqual(state.installments.map((row) => [row.period, row.principalMinor, row.interestMinor]),
+    [["2026-12", "300000", "26550"], ["2027-01", "300000", "26550"], ["2027-02", "300000", "26550"]]);
+  assert.equal(state.installments.reduce((sum, row) => sum + BigInt(row.principalMinor) + BigInt(row.interestMinor), 0n), impact);
+
+  const account = creditAccount({ balanceMinor: (-impact).toString(), note: state.note, creditInstallments: state.installments });
+  const bills = credit.computeCreditBills(account, NOW);
+  assert.equal(bills.totalUnpaidMinor, impact);
+  assert.equal(bills.currentBillMinor + bills.nextBillMinor + bills.laterBillMinor, impact);
+  assert.equal(idr([account]).liabilities, impact);
+
+  // Void: every row is cancelled by the voiding activity and nothing is owed.
+  const voided = purchase.applyCreditVoid(state, { activityId: "topup", occurredAtIso: "2026-11-24T03:00:00.000Z", reversedImpactMinor: impact }, NOW);
+  assert.ok(voided.installments.every((row) => row.status === "cancelled"));
+  assert.equal(credit.computeCreditBills(creditAccount({ balanceMinor: "0", note: voided.note, creditInstallments: voided.installments }), NOW).totalUnpaidMinor, 0n);
+});
+
+test("(e) top-up satu bulan: bunga tetap seluruhnya di biaya transfer dan tidak ada jadwal cicilan", () => {
+  const plan = credit.calculateCreditInstallmentPlan({ principalMinorStr: "500000", tenorMonths: 1, interestMode: "percent", interestRatePercent: 2, interestFlatMinorStr: "0" });
+  assert.deepEqual(purchase.installmentTopUpRequest(plan, 1), { transferFeeMinor: "10000", creditInstallments: null });
+  assert.throws(() => purchase.installmentTopUpRequest(plan, 0), /Tenor/);
+});

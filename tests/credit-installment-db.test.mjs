@@ -150,6 +150,55 @@ test("(d) pembelian cicilan 12x membukukan seluruh pokok dan bunga (PostgreSQL t
       assert.deepEqual(listed.creditInstallments, { count: 6, principalMinor: "150000", interestMinor: "26550" });
       assert.deepEqual(listed.charges.map((charge) => [charge.systemKey, charge.amountMinor]), [["installment_interest", "159300"]]);
     });
+    await t.test("top-up cicilan: ledger memuat pokok + seluruh bunga, jadwal di tabel, void dan koreksi menjadwal ulang", async () => {
+      const { installmentTopUpRequest } = await import("../src/lib/domain/credit-purchase.ts");
+      const { parseCreditMeta } = await import("../src/lib/domain/credit.ts");
+      const topUpCard = await insertAssetWithOpening({
+        displayName: "PayLater Top-up", currency: "IDR", assetTypeId: typeId, normallyLiquid: false, normallySpendable: false,
+        openingAmountMinor: 0n, openingEffectiveAt: new Date("2026-01-01T00:00:00Z"), assetClass: "liability",
+        note: encodeCreditNote("", true, { dueDay: 1, cutoffDay: 20, limitMinor: 0n, carryCurrentMinor: 0n, schedule: [] }),
+      });
+      const wallet = await insertAssetWithOpening({
+        displayName: "Dompet Digital", currency: "IDR", assetTypeId: typeId, normallyLiquid: true, normallySpendable: true,
+        openingAmountMinor: 0n, openingEffectiveAt: new Date("2026-01-01T00:00:00Z"), assetClass: "asset", note: null,
+      });
+      const card = async () => (await listAssets()).find((item) => item.id === topUpCard);
+      const topUp = async (principal, tenor, id) => {
+        const p = calculateCreditInstallmentPlan({ principalMinorStr: String(principal), tenorMonths: tenor, interestMode: "percent", interestRatePercent: 2.95, interestFlatMinorStr: "0" });
+        const r = installmentTopUpRequest(p, tenor);
+        const draft = { kind: "transfer", amountMinor: String(principal), sourceAssetId: topUpCard, destinationAssetId: wallet, transferFeeMinor: r.transferFeeMinor,
+          occurredAt: new Date().toISOString(), note: "Top-up sintetis" };
+        const options = { creditCycle: "current", creditInstallments: r.creditInstallments ?? undefined };
+        return id ? replaceActivity(id, draft, randomUUID(), options) : postActivity(draft, randomUUID(), options);
+      };
+      const id = await topUp(900000, 3); // 3 x (300.000 pokok + 26.550 bunga)
+      const ledger = async (assetId, activity) => (await admin.query("SELECT COALESCE(sum(amount_minor),0)::text AS total FROM ledger_movements WHERE activity_id=$1 AND asset_id=$2 AND component <> 'reversal'", [activity, assetId])).rows[0].total;
+      assert.equal(await ledger(topUpCard, id), "-979650");
+      assert.equal(await ledger(wallet, id), "900000");
+      const rows = (await admin.query(`SELECT count(*)::int AS n, sum(principal_minor)::text AS principal, sum(interest_minor)::text AS interest,
+        count(DISTINCT due_period)::int AS months, bool_and(status='scheduled') AS scheduled FROM credit_installments WHERE activity_id=$1`, [id])).rows[0];
+      assert.deepEqual(rows, { n: 3, principal: "900000", interest: "79650", months: 3, scheduled: true });
+      const asset = await card();
+      assert.equal(parseCreditMeta(asset.note).schedule.length, 0, "the credit note carries no schedule for a new top-up");
+      const bills = computeCreditBills(asset);
+      assert.equal(bills.totalUnpaidMinor, 979650n);
+      assert.equal(bills.currentBillMinor + bills.nextBillMinor + bills.laterBillMinor, 979650n);
+      const listed = (await listActivities()).find((item) => item.id === id);
+      assert.deepEqual(listed.creditInstallments, { count: 3, principalMinor: "300000", interestMinor: "26550" });
+      assert.deepEqual(listed.charges.map((charge) => [charge.systemKey, charge.amountMinor]), [["transfer_fee", "79650"]]);
+
+      const replacement = await topUp(600000, 2, id); // 2 x (300.000 + 17.700)
+      const old = (await admin.query("SELECT count(*)::int AS n, bool_and(status='cancelled' AND cancelled_by_activity_id=$2) AS cancelled FROM credit_installments WHERE activity_id=$1", [id, replacement])).rows[0];
+      assert.deepEqual(old, { n: 3, cancelled: true });
+      assert.equal((await card()).balanceMinor, "-635400");
+      assert.equal(computeCreditBills(await card()).totalUnpaidMinor, 635400n);
+
+      await voidActivity(replacement, randomUUID());
+      const open = (await admin.query("SELECT count(*)::int AS n FROM credit_installments WHERE activity_id=$1 AND status<>'cancelled'", [replacement])).rows[0];
+      assert.equal(open.n, 0);
+      assert.equal((await card()).balanceMinor, "0");
+      assert.equal(computeCreditBills(await card()).totalUnpaidMinor, 0n);
+    });
     hooks.deregister();
   } finally {
     globalThis.__creditTestAuthorized = false;

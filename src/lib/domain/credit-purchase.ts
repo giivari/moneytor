@@ -45,7 +45,24 @@ export function installmentPurchaseRequest(
 }
 
 /**
- * Installment rows of an expense whose whole amount (`impactMinor` = principal + every month's interest) is
+ * Amounts the transaction editor posts for an installment top-up (a transfer out of a credit account): the
+ * transfer fee carries the interest of every month, so the ledger holds the whole debt like an installment
+ * purchase, and the per-month terms become installment rows on the server. A single payment (tenor 1) has
+ * one month's interest and no schedule.
+ */
+export function installmentTopUpRequest(
+  plan: Pick<InstallmentPlanAmounts, "monthlyPrincipalMinor" | "monthlyInterestMinor">,
+  tenorMonths: number,
+): { transferFeeMinor: string; creditInstallments: { count: number; principalMinor: string; interestMinor: string } | null } {
+  if (!Number.isInteger(tenorMonths) || tenorMonths < 1) throw new Error("Tenor cicilan tidak valid");
+  return {
+    transferFeeMinor: (BigInt(plan.monthlyInterestMinor) * BigInt(tenorMonths)).toString(),
+    creditInstallments: tenorMonths > 1 ? { count: tenorMonths, principalMinor: plan.monthlyPrincipalMinor, interestMinor: plan.monthlyInterestMinor } : null,
+  };
+}
+
+/**
+ * Installment rows of an expense or top-up whose whole amount (`impactMinor` = principal + every month's interest) is
  * in the ledger. Month 1 takes the principal remainder; month k is due k-1 months after `firstPeriod`.
  */
 export function installmentRowsFor(activityId: string, impactMinor: bigint, terms: CreditInstallmentTerms, firstPeriod: string): CreditInstallmentRow[] {
@@ -63,8 +80,8 @@ export function installmentRowsFor(activityId: string, impactMinor: bigint, term
 
 /**
  * Credit state after a posted outflow with ledger impact `impactMinor` is scheduled into its due months.
- * An installment expense becomes installment rows; anything else (single payments deferred to the next
- * cycle, installment top-ups) keeps the note schedule.
+ * An installment expense or top-up becomes installment rows; a single payment deferred to the next cycle
+ * keeps the note schedule. (Top-ups posted before the schedule table still carry their months in the note.)
  */
 export function applyCreditPost(
   state: CreditAccountState,
@@ -73,7 +90,7 @@ export function applyCreditPost(
 ): CreditAccountState {
   if (input.impactMinor <= 0n) return state;
   const meta = parseCreditMeta(state.note, now);
-  if (input.kind === "expense" && input.installments && input.installments.count > 1) {
+  if (input.installments && input.installments.count > 1) {
     const first = addCreditPeriods(creditPeriodOf(nextMonthlyDueDayIso(meta.dueDay, 0, now)), input.cycle === "next" ? 1 : 0);
     return { ...state, installments: [...state.installments, ...installmentRowsFor(input.activityId, input.impactMinor, input.installments, first)] };
   }

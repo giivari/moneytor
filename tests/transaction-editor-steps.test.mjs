@@ -41,3 +41,10 @@ test("Catat with a kind opens the editor on that kind", () => {
   const quick = read("src/components/quick-add.tsx");
   assert.match(quick, /preset=\{kind \? \{ kind \} : undefined\}/);
 });
+
+test("an installment top-up books the interest of every month and a correction restores its tenor and own fee", () => {
+  assert.match(editor, /installmentTopUpRequest\(plan, tenorMonths\)\.transferFeeMinor/);
+  assert.match(editor, /initial\?\.kind === "expense" \|\| initial\?\.kind === "transfer" \? installmentEditDefaults/);
+  assert.match(editor, /storedTopUpInterest = initialInstallment && initial\?\.kind === "transfer"/);
+  assert.match(editor, /BigInt\(initial\.charges\[0\]\.amountMinor\) - storedTopUpInterest/);
+});

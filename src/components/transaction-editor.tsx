@@ -10,7 +10,7 @@ import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./fin
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
-import { editableInstallmentCharges, installmentEditDefaults, installmentPurchaseRequest } from "@/lib/domain/credit-purchase";
+import { editableInstallmentCharges, installmentEditDefaults, installmentPurchaseRequest, installmentTopUpRequest } from "@/lib/domain/credit-purchase";
 import { isDedicatedCategory } from "@/lib/domain/catalog";
 import {
   CREDIT_REMINDER_NOTE_PREFIX,
@@ -70,8 +70,11 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [occurredAt, setOccurredAt] = useState(localDate(initial?.occurredAt));
   const [note, setNote] = useState(initial?.note ?? preset?.note ?? "");
-  // Correcting an installment purchase starts from its stored tenor and monthly interest.
-  const initialInstallment = initial?.kind === "expense" ? installmentEditDefaults(initial.creditInstallments) : null;
+  // Correcting an installment purchase or top-up starts from its stored tenor and monthly interest.
+  const initialInstallment = initial?.kind === "expense" || initial?.kind === "transfer" ? installmentEditDefaults(initial.creditInstallments) : null;
+  // The fee of a stored top-up holds the interest of every month; only the rest is the owner's own transfer fee.
+  const storedTopUpInterest = initialInstallment && initial?.kind === "transfer" ? BigInt(initialInstallment.interestFlatMinor) * BigInt(initialInstallment.tenorMonths) : 0n;
+  const storedOwnFee = initial?.kind === "transfer" && initial.charges[0] ? BigInt(initial.charges[0].amountMinor) - storedTopUpInterest : 0n;
   const [tenorMonths, setTenorMonths] = useState<number>(initialInstallment?.tenorMonths ?? 1);
   const [interestMode, setInterestMode] = useState<"percent" | "flat_minor">(initialInstallment?.interestMode ?? "percent");
   const [interestValue, setInterestValue] = useState<string>(
@@ -81,11 +84,10 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
     initial?.kind === "expense" ? (initialInstallment ? editableInstallmentCharges(initial.charges) : initial.charges).map((charge) => ({
       id: charge.id, typeId: charge.typeId, amount: minorToInput(charge.amountMinor, initial.exponent),
     })) : []);
-  const [fee, setFee] = useState(initial?.kind === "transfer" && initial.charges[0]
-    ? minorToInput(initial.charges[0].amountMinor, initial.exponent) : "");
+  const [fee, setFee] = useState(initial?.kind === "transfer" && storedOwnFee > 0n ? minorToInput(storedOwnFee.toString(), initial.exponent) : "");
   const [chargesEnabled, setChargesEnabled] = useState(initial?.kind === "expense"
     && (initialInstallment ? editableInstallmentCharges(initial.charges) : initial.charges).length > 0);
-  const [feeEnabled, setFeeEnabled] = useState(initial?.kind === "transfer" && initial.charges.length > 0);
+  const [feeEnabled, setFeeEnabled] = useState(initial?.kind === "transfer" && storedOwnFee > 0n);
   const [feeMode, setFeeMode] = useState<"addon" | "deducted" | "both">("addon");
   const [deductedFee, setDeductedFee] = useState("");
 
@@ -312,8 +314,8 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
 
       let finalAmountMinor = rawPrincipalMinor;
       let finalTransferFeeMinor: string | undefined = undefined;
-      // Installment top-up: the destination gets the full principal now; the server schedules the principal
-      // and interest of installments 2..N into their own due months of the credit account.
+      // Installment top-up: the destination gets the full principal now and the ledger carries principal plus the
+      // interest of every month; the server splits it into one installment row per due month of the credit account.
       const isInstallmentTopUp = kind === "transfer" && isCreditPurchase && Boolean(plan) && tenorMonths > 1;
 
       if (kind === "transfer") {
@@ -338,7 +340,8 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
 
         finalAmountMinor = (BigInt(transferPrincipalMinor) - deductedFeeBig).toString();
 
-        const creditInterest = isCreditPurchase && plan ? BigInt(plan.monthlyInterestMinor) : 0n;
+        // Interest of every month is booked now, like an installment purchase; the schedule rows only split the bill.
+        const creditInterest = isCreditPurchase && plan ? BigInt(installmentTopUpRequest(plan, tenorMonths).transferFeeMinor) : 0n;
         const totalFee = addonFeeBig + deductedFeeBig + creditInterest;
         if (totalFee > 0n) {
           finalTransferFeeMinor = totalFee.toString();
