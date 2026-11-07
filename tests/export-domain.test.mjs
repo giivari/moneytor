@@ -182,3 +182,10 @@ test("export summaries total every currency separately instead of dropping non-I
   const service = readFileSync(new URL("../src/lib/exports/service.ts", import.meta.url), "utf8");
   assert.doesNotMatch(service, /currency !== "IDR"|currency === "IDR"/);
 });
+
+test("export summary labels the unrealized result in Indonesian", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../src/lib/exports/service.ts", import.meta.url), "utf8");
+  assert.match(source, /Laba\/rugi belum terealisasi\$\{investmentSuffix\}/);
+  assert.doesNotMatch(source, /Unrealized/);
+});

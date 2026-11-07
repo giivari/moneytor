@@ -339,7 +339,7 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
       summaryItems: [
         { label: `Nilai Pasar Portofolio${investmentSuffix}`, value: formatCurrencyTotals(marketTotals) },
         { label: `Biaya Perolehan Tersisa${investmentSuffix}`, value: formatCurrencyTotals(investmentTotals((t) => t.costBasisMinor)) },
-        { label: `Unrealized P/L${investmentSuffix}`, value: formatCurrencyTotals(investmentTotals((t) => t.unrealizedMinor)) },
+        { label: `Laba/rugi belum terealisasi${investmentSuffix}`, value: formatCurrencyTotals(investmentTotals((t) => t.unrealizedMinor)) },
         {
           label: "Jumlah Posisi & Transaksi",
           value: `${inv.holdings.length} posisi / ${inv.trades.length} trade`,
