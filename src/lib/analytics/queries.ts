@@ -168,6 +168,7 @@ export async function readExpenseItems(client: PoolClient, period: ReportingPeri
       f.base_amount_minor::text AS "baseAmountMinor", COALESCE(ch.total,0)::text AS "chargesMinor",
       (f.base_amount_minor::numeric + COALESCE(ch.total,0))::text AS "spendingMinor",
       refunded_in_chain(f.id)::text AS "refundedMinor",
+      (f.base_amount_minor::numeric + COALESCE(ch.total,0) - refunded_in_chain(f.id))::text AS "netMinor",
       f.category_id::text AS "categoryId", cat.display_name AS "categoryName",
       f.source_asset_id::text AS "sourceAssetId", a.display_name AS "sourceName",
       f.note, o.origin, COALESCE(ch.list, '[]'::jsonb) AS charges

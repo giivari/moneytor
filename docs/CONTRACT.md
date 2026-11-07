@@ -186,3 +186,336 @@ Refund tidak pernah masuk `incomeMinor`. Saldo akun punya satu sumber (`listAsse
 - Dimensi `account` di analitik untuk refund memakai akun pembayar pengeluaran asal.
 - `monthlyExpenses(at?)` / `expenseMinor` snapshot memakai definisi yang sama (refund mengurangi di bulan refund).
 - `listCatalog` kini baca-saja; penyedia/jaringan demo yang tidak terpakai dihapus oleh migrasi 020. Penandaan kategori "biaya admin" sebagai `bank_admin_fee` dihapus dari kode (ditangani skrip lokal terpisah).
+
+<!-- contract-examples:start -->
+## Contoh nyata dari fixture tes
+
+Dibangkitkan oleh `scripts/contract-examples.mjs` (jangan edit tangan; jalankan ulang untuk memperbarui). Nominal selalu string minor unit; **boleh negatif** ditandai di arti field.
+
+### Arti field
+
+- **Aktivitas:** `kind` jenis aktivitas; `baseAmountMinor` pokok (string minor unit, selalu positif); `sourceAssetId`/`destinationAssetId` akun asal/tujuan; `status` posted|voided|superseded; `charges[]` biaya (`amountMinor` > 0); `refundOfActivityId` pengeluaran yang di-refund; `adjustmentReason` reconciliation|opening_debt.
+- **Akun:** `assetClass` asset|liability|receivable; `balanceMinor` saldo = saldo awal + ledger (**boleh negatif** untuk liability); `openingMinor` saldo awal (>= 0); `creditInstallments[]` jadwal tagihan per bulan (`period` YYYY-MM, `principalMinor`, `interestMinor`, `status` scheduled|cancelled).
+- **Katalog:** `parentId` induk tingkat 1 (null = induk); `nature` sifat sendiri; `natureOverride` sifat pilihan pengguna; `effectiveNature` = override, lalu sifat sendiri, lalu sifat induk (null = tanpa sifat).
+- **Item:** `id` aktivitas; `kind` expense|transfer|repay|refund; `amountMinor` (**refund negatif**); `refundedMinor` total refund atas pengeluaran itu; `netMinor` bruto dikurangi refund.
+- **Ringkasan akun:** `expenseMinor` pengeluaran bersih yang dibayar dari akun (sudah dikurangi refund; **boleh negatif**); `refundMinor` refund yang diterima atas pengeluaran akun itu; `transferOutMinor` pokok transfer keluar.
+- **Analitik:** `expensePrincipalMinor` pokok pengeluaran dikurangi refund (**boleh negatif**); `spendingMinor` pengeluaran bersih termasuk semua biaya (**boleh negatif**); `netMinor` pemasukan - pengeluaran (**boleh negatif**); `debtBorrowedMinor`/`debtRepaidMinor` arus pokok utang (bukan pemasukan/pengeluaran); `adjustmentInMinor`/`adjustmentOutMinor` penyesuaian saldo; `refundCount` jumlah refund.
+- **Snapshot:** `totalMinor` total aset; `liabilitiesMinor` seluruh kewajiban kredit; `creditDebtMinor` tagihan jatuh tempo s.d. horizon; `netWorthMinor` kekayaan bersih (**boleh negatif**); `eligibleMinor` saldo akun yang dapat dipakai; `availableMinor` dana siap pakai = eligible - reserved - uncovered (**boleh negatif**); `expenseMinor` pengeluaran bulan berjalan (**boleh negatif** bila refund melebihi).
+
+### Contoh
+
+#### Aktivitas `borrow` (hasil `listActivities`)
+
+Pinjaman cair: dari akun liability ke akun tujuan. Bukan pemasukan.
+
+```json
+{
+  "id": "<id-1>",
+  "kind": "borrow",
+  "baseAmountMinor": "2000000",
+  "currency": "IDR",
+  "sourceAssetId": "<id-2>",
+  "destinationAssetId": "<id-3>",
+  "status": "posted",
+  "occurredAt": "2026-10-26T05:00:00.000Z"
+}
+```
+
+#### Aktivitas `repay`
+
+Pokok pelunasan bukan pengeluaran; bunga ada di `charges` (jenis loan_interest) dan adalah biaya.
+
+```json
+{
+  "id": "<id-4>",
+  "kind": "repay",
+  "baseAmountMinor": "500000",
+  "sourceAssetId": "<id-3>",
+  "destinationAssetId": "<id-2>",
+  "charges": [
+    {
+      "id": "<id-5>",
+      "typeId": "60000000-0000-4000-8000-000000000007",
+      "typeName": "Bunga pinjaman",
+      "systemKey": "loan_interest",
+      "amountMinor": "20000"
+    }
+  ],
+  "status": "posted"
+}
+```
+
+#### Aktivitas `refund`
+
+Mengurangi pengeluaran asal (`refundOfActivityId`), tidak masuk pemasukan; kategori mengikuti pengeluaran asal.
+
+```json
+{
+  "id": "<id-6>",
+  "kind": "refund",
+  "baseAmountMinor": "100000",
+  "destinationAssetId": "<id-3>",
+  "categoryId": "50000000-0000-4000-8000-000000000003",
+  "categoryName": "Belanja",
+  "refundOfActivityId": "<id-7>",
+  "status": "posted"
+}
+```
+
+#### Aktivitas `adjustment`
+
+Selisih saldo; hanya satu sisi akun; dilaporkan terpisah dari pemasukan/pengeluaran.
+
+```json
+{
+  "id": "<id-8>",
+  "kind": "adjustment",
+  "baseAmountMinor": "700",
+  "destinationAssetId": "<id-3>",
+  "adjustmentReason": "reconciliation",
+  "status": "posted"
+}
+```
+
+#### Hasil `POST /api/finance/split-bill`
+
+Satu transaksi, satu kunci idempoten.
+
+```json
+{
+  "personalActivityId": "<id-9>",
+  "transferActivityId": "<id-10>",
+  "receivableAssetId": "<id-11>",
+  "receivableCreated": true
+}
+```
+
+#### Akun kredit dengan `assetClass` dan `creditInstallments` (`listAssets`/`options`)
+
+`assetClass` adalah satu-satunya sumber klasifikasi; `balanceMinor` akun liability bernilai negatif.
+
+```json
+{
+  "id": "<id-12>",
+  "displayName": "Kartu kredit",
+  "assetClass": "liability",
+  "balanceMinor": "-630000",
+  "openingMinor": "0",
+  "creditInstallments": [
+    {
+      "activityId": "<id-13>",
+      "seq": 1,
+      "period": "2026-12",
+      "principalMinor": "200000",
+      "interestMinor": "10000",
+      "status": "scheduled"
+    },
+    {
+      "activityId": "<id-13>",
+      "seq": 2,
+      "period": "2027-01",
+      "principalMinor": "200000",
+      "interestMinor": "10000",
+      "status": "scheduled"
+    },
+    {
+      "activityId": "<id-13>",
+      "seq": 3,
+      "period": "2027-02",
+      "principalMinor": "200000",
+      "interestMinor": "10000",
+      "status": "scheduled"
+    }
+  ]
+}
+```
+
+#### Katalog kategori (`listCatalog`/`catalogs.transactionCategories`) bawaan
+
+Anak katalog dengan `parentId`, `nature` sendiri, dan `effectiveNature`.
+
+```json
+{
+  "id": "50000000-0000-4000-8000-000000000120",
+  "displayName": "Makan di luar",
+  "systemKey": "food_dining",
+  "isBuiltIn": true,
+  "isActive": true,
+  "appliesTo": "expense",
+  "parentId": "50000000-0000-4000-8000-000000000001",
+  "nature": "want",
+  "natureOverride": null,
+  "effectiveNature": "want"
+}
+```
+
+#### Katalog kategori buatan pengguna dengan override (`category-nature`)
+
+Request `POST /api/finance/category-nature` = `{ "id": "<id kategori>", "nature": "saving" }` -> `{ "ok": true }`; hasilnya terlihat di sini.
+
+```json
+{
+  "id": "<id-14>",
+  "displayName": "Kopi susu",
+  "systemKey": null,
+  "isBuiltIn": false,
+  "isActive": true,
+  "appliesTo": "expense",
+  "parentId": "50000000-0000-4000-8000-000000000001",
+  "nature": "need",
+  "natureOverride": "saving",
+  "effectiveNature": "saving"
+}
+```
+
+#### `spendingItems[]` (refund dan biaya repay)
+
+Satu baris per aktivitas yang membelanjakan uang dalam periode; jumlahnya persis `spendingMinor` periode.
+
+```json
+[
+  {
+    "id": "<id-6>",
+    "kind": "refund",
+    "occurredAt": "2026-11-02T05:00:00.000Z",
+    "currency": "IDR",
+    "exponent": 0,
+    "amountMinor": "-100000",
+    "assetId": "<id-3>",
+    "categoryId": "50000000-0000-4000-8000-000000000003",
+    "categoryName": "Belanja"
+  },
+  {
+    "id": "<id-4>",
+    "kind": "repay",
+    "occurredAt": "2026-10-28T05:00:00.000Z",
+    "currency": "IDR",
+    "exponent": 0,
+    "amountMinor": "20000",
+    "assetId": "<id-3>",
+    "categoryId": null,
+    "categoryName": null
+  },
+  {
+    "id": "<id-9>",
+    "kind": "expense",
+    "occurredAt": "2026-10-25T05:00:00.000Z",
+    "currency": "IDR",
+    "exponent": 0,
+    "amountMinor": "180000",
+    "assetId": "<id-3>",
+    "categoryId": null,
+    "categoryName": null
+  }
+]
+```
+
+#### `expenseItems[]` dengan `refundedMinor` dan `netMinor`
+
+`spendingMinor` tetap bruto; `refundedMinor` total refund sampai kini; `netMinor` = bruto - refund.
+
+```json
+[
+  {
+    "id": "<id-7>",
+    "baseAmountMinor": "420000",
+    "chargesMinor": "0",
+    "spendingMinor": "420000",
+    "refundedMinor": "100000",
+    "netMinor": "320000",
+    "categoryName": "Belanja"
+  }
+]
+```
+
+#### `activitySummary` pada detail akun (`GET /api/finance/asset-detail`)
+
+Ringkasan akun dompet.
+
+```json
+{
+  "activityCount": 8,
+  "incomeMinor": "5000000",
+  "expenseMinor": "520000",
+  "refundMinor": "100000",
+  "transferInMinor": "0",
+  "transferOutMinor": "120000"
+}
+```
+
+#### `byCategoryParent` dan `byNature` (analitik)
+
+Pengeluaran dikelompokkan ke induk katalog dan sifat efektif (`none` = tanpa sifat).
+
+```json
+{
+  "byCategoryParent": [
+    {
+      "key": "50000000-0000-4000-8000-000000000003",
+      "name": "Belanja",
+      "expensePrincipalMinor": "320000",
+      "spendingMinor": "320000",
+      "netMinor": "-320000",
+      "adjustmentInMinor": "0",
+      "debtBorrowedMinor": "0",
+      "debtRepaidMinor": "0",
+      "refundCount": "1"
+    },
+    {
+      "key": "uncategorized",
+      "name": "Tanpa kategori",
+      "expensePrincipalMinor": "780000",
+      "spendingMinor": "810000",
+      "netMinor": "-810000",
+      "adjustmentInMinor": "0",
+      "debtBorrowedMinor": "0",
+      "debtRepaidMinor": "0",
+      "refundCount": "0"
+    }
+  ],
+  "byNature": [
+    {
+      "key": "none",
+      "name": "Tanpa sifat",
+      "expensePrincipalMinor": "780000",
+      "spendingMinor": "810000",
+      "netMinor": "-810000",
+      "adjustmentInMinor": "0",
+      "debtBorrowedMinor": "0",
+      "debtRepaidMinor": "0",
+      "refundCount": "0"
+    },
+    {
+      "key": "want",
+      "name": "Keinginan",
+      "expensePrincipalMinor": "320000",
+      "spendingMinor": "320000",
+      "netMinor": "-320000",
+      "adjustmentInMinor": "0",
+      "debtBorrowedMinor": "0",
+      "debtRepaidMinor": "0",
+      "refundCount": "1"
+    }
+  ]
+}
+```
+
+#### Ringkasan mata uang di `financeSnapshot().currencies[]`
+
+`netWorthMinor` dan `availableMinor` (dana siap pakai).
+
+```json
+{
+  "currency": "IDR",
+  "totalMinor": "15980700",
+  "liabilitiesMinor": "2130000",
+  "creditDebtMinor": "1710000",
+  "netWorthMinor": "13850700",
+  "eligibleMinor": "15860700",
+  "reservedMinor": "0",
+  "uncoveredMinor": "1710000",
+  "availableMinor": "14150700",
+  "expenseMinor": "-100000"
+}
+```
+<!-- contract-examples:end -->

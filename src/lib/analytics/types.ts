@@ -41,6 +41,8 @@ export type AnalyticsExpenseItem = {
   spendingMinor: string;
   /** Refunded so far against this expense (any date, whole edit chain); spendingMinor stays gross. */
   refundedMinor?: string;
+  /** spendingMinor - refundedMinor (all-time refunds; may be negative only if refunds exceed the expense, which the database forbids). */
+  netMinor?: string;
   categoryId: string | null;
   categoryName: string | null;
   sourceAssetId: string;
