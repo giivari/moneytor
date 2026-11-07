@@ -52,6 +52,16 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const splitReplay = useRef<{ payload: string; personalKey: string; transferKey: string; receivableId?: string } | null>(null);
   const { options, optionsError, retry, reload } = useFinanceOptions();
   const [error, setError] = useState("");
+  // Steps: 1 jenis, 2 akun & nominal, 3 opsi lanjutan. All field state lives here, so switching steps loses nothing.
+  // A correction or a preset kind (Catat per jenis, Bayar tagihan) starts at step 2.
+  const formRef = useRef<HTMLFormElement>(null);
+  const [step, setStep] = useState<1 | 2 | 3>(initial || preset?.kind ? 2 : 1);
+  function goTo(next: 1 | 2 | 3) {
+    const target = step === 1 && next === 3 ? 2 : next;
+    // Moving on from step 2 needs its required fields (amount, accounts); moving back never does.
+    if (step === 2 && target === 3 && formRef.current && !formRef.current.reportValidity()) return;
+    setStep(target);
+  }
   const { pending, begin, finish } = useMutationPending();
   const [kind, setKind] = useState<ActivityKind>(initial?.kind ?? preset?.kind ?? "expense");
   const [amount, setAmount] = useState(initial ? minorToInput(initial.baseAmountMinor, initial.exponent) : preset?.amount ?? "");
@@ -434,17 +444,29 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
     finally { finish(); }
   }
 
+
+  const stepTitles = ["Jenis", "Akun & nominal", "Opsi lanjutan"] as const;
+  const kindLabel = { expense: "Pengeluaran", income: "Pemasukan", transfer: "Transfer" }[kind];
   return <dialog ref={dialog} className="finance-dialog transaction-dialog" aria-labelledby="transaction-editor-title"
     onCancel={(event) => { if (pending) event.preventDefault(); }}>
     <div className="dialog-heading"><div><span className="eyebrow">CATAT PERGERAKAN</span><h2 id="transaction-editor-title">{initial ? "Koreksi transaksi" : "Transaksi baru"}</h2></div>
       <button className="icon-button" type="button" onClick={() => dialog.current?.close()} aria-label="Tutup" disabled={pending}><X size={20} /></button></div>
     {initial && <p className="finance-hint">Koreksi membalik catatan lama dan menyimpan penggantinya. Riwayat lama tetap tersedia.</p>}
-    {!options ? <FinanceOptionsStatus error={optionsError} retry={retry} /> : <form onSubmit={save} aria-busy={pending}><fieldset className="finance-fieldset" disabled={pending}>
+    {!options ? <FinanceOptionsStatus error={optionsError} retry={retry} /> : <form ref={formRef} onSubmit={save} aria-busy={pending}><fieldset className="finance-fieldset" disabled={pending}>
+      <ol className="transaction-steps" aria-label="Langkah pencatatan">
+        {stepTitles.map((title, index) => <li key={title}><button type="button" className="transaction-step" data-state={step === index + 1 ? "current" : step > index + 1 ? "done" : "todo"}
+          aria-current={step === index + 1 ? "step" : undefined} onClick={() => goTo((index + 1) as 1 | 2 | 3)}><span aria-hidden="true">{index + 1}</span>{title}</button></li>)}
+      </ol>
       {!active.length && <p className="finance-hint">Buat aset di halaman Assets sebelum mencatat transaksi.</p>}
+
+      {step === 1 && <>
       <div className="field"><span>Jenis transaksi</span><div className="segmented" role="group" aria-label="Jenis transaksi">
         {(["expense", "income", "transfer"] as const).map((item) => <button type="button" key={item} className={kind === item ? "selected" : ""}
-          onClick={() => { setKind(item); setCategoryId(""); }}>{item === "expense" ? "Pengeluaran" : item === "income" ? "Pemasukan" : "Transfer"}</button>)}
+          onClick={() => { setKind(item); setCategoryId(""); goTo(2); }}>{item === "expense" ? "Pengeluaran" : item === "income" ? "Pemasukan" : "Transfer"}</button>)}
       </div></div>
+      </>}
+      {step === 2 && <>
+        <p className="transaction-kind-summary"><span>Jenis</span><strong>{kindLabel}</strong><button type="button" className="text-link" onClick={() => goTo(1)}>Ubah</button></p>
       <label className="field transaction-amount-field"><span>{isCreditPurchase ? `Harga pokok transaksi (${currency})` : `Jumlah (${currency})`}</span><input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" /></label>
       <label className="field"><span>{kind === "income" ? "Aset penerima" : "Aset sumber"}</span><select required value={account?.id ?? ""}
         onChange={(event) => setAccountId(event.target.value)}><option value="">Pilih aset aktif</option>{active.map((item) => <option key={item.id} value={item.id}>{formatAssetOptionLabel(item)}</option>)}</select></label>
@@ -538,6 +560,12 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
               ))}
             </select>
           </label>
+        </>
+      )}
+      </>}
+      {step === 3 && <>
+        {kind === "transfer" && (
+          <>
           <OptionalFormSection label="Ada biaya transfer" enabled={feeEnabled} onChange={setFeeEnabled}>
             <label className="field">
               <span>Skema potongan biaya</span>
@@ -596,8 +624,8 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
               <small className="finance-hint">{transferFeeSummaryHint}</small>
             )}
           </OptionalFormSection>
-        </>
-      )}
+          </>
+        )}
       {kind !== "transfer" && <InlineCatalogSelect
         label="Kategori (opsional)"
         catalog="transactionCategories"
@@ -654,13 +682,18 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
           )}
         </OptionalFormSection>
       )}
-      <details className="transaction-optional" open={Boolean(initial) || isCreditPurchase || undefined}><summary>Waktu & catatan <span>opsional</span></summary>
+      <section className="transaction-step-group" aria-label="Waktu dan catatan"><h3>Waktu &amp; catatan <span>opsional</span></h3>
         <div className="field-grid"><label className="field"><span>Waktu</span><input required type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} /></label>
           <label className="field"><span>Catatan</span><textarea rows={2} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Tambahkan keterangan bila perlu" /></label></div>
-      </details>
+      </section>
+      </>}
       {error && <p className="finance-error" role="alert">{error}</p>}
-      <div className="finance-actions"><button type="button" className="finance-secondary" onClick={() => dialog.current?.close()} disabled={pending}>Batal</button>
-        <button type="submit" className="button-primary" disabled={pending || !active.length} aria-busy={pending}>{pending ? <LoadingIndicator>{initial ? "Memperbarui…" : "Menyimpan…"}</LoadingIndicator> : initial ? "Simpan koreksi" : "Simpan transaksi"}</button></div>
+      <div className="finance-actions">
+        {step === 1 ? <button type="button" className="finance-secondary" onClick={() => dialog.current?.close()} disabled={pending}>Batal</button>
+          : <button type="button" className="finance-secondary" onClick={() => goTo((step - 1) as 1 | 2)} disabled={pending}>Kembali</button>}
+        {step === 2 && <button type="button" className="finance-secondary" onClick={() => goTo(3)} disabled={pending}>Lanjut</button>}
+        {step > 1 && <button type="submit" className="button-primary" disabled={pending || !active.length} aria-busy={pending}>{pending ? <LoadingIndicator>{initial ? "Memperbarui…" : "Menyimpan…"}</LoadingIndicator> : initial ? "Simpan koreksi" : "Simpan transaksi"}</button>}
+      </div>
     </fieldset></form>}
   </dialog>;
 }
