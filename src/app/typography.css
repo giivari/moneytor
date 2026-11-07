@@ -13,9 +13,9 @@ small { font-size: var(--type-meta); font-weight: var(--weight-regular); }
 .investment-onboarding h2 { font-size: var(--type-section); font-weight: var(--weight-semibold); line-height: 1.25; }
 .dialog-heading h2, .finance-dialog h2, .detail-dialog h2,
 .planning-dialog-heading h2, .security-confirm h2 { font-size: var(--type-dialog); }
-.auth-card h1 { font-size: 28px; }
+.auth-card h1 { font-size: var(--text-2xl); }
 .eyebrow, .hero-kicker {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   line-height: 1.4;
 }

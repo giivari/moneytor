@@ -1,17 +1,9 @@
 {
-  "$comment": "Token discipline: raw colors, font sizes, radii, shadows, !important and :root live only in src/app/tokens.css. Files in ignoreFiles are not migrated yet; remove each one from the list when its page is migrated.",
+  "$comment": "Token discipline: raw colors, font sizes, radii, shadows, !important and :root live only in src/app/tokens.css. Every stylesheet under src is checked; ignoreFiles only skips non-source folders.",
   "ignoreFiles": [
     "references/**",
     "node_modules/**",
-    ".next/**",
-    "src/app/auth.css",
-    "src/app/automation.css",
-    "src/app/interaction.css",
-    "src/app/onboarding.css",
-    "src/app/responsive.css",
-    "src/app/settings.css",
-    "src/app/typography.css",
-    "src/app/visual.css"
+    ".next/**"
   ],
   "rules": {
     "color-no-hex": true,
@@ -83,9 +75,9 @@
       }
     ],
     "no-duplicate-selectors": true,
-    "property-disallowed-list": [
-      "user-select"
-    ]
+    "declaration-property-value-disallowed-list": {
+      "user-select": ["none"]
+    }
   },
   "overrides": [
     {

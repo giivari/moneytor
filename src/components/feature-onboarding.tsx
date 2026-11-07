@@ -498,8 +498,8 @@ export function FeatureOnboarding() {
     if (typeof window === "undefined" || !spotlight) return undefined;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    if (vw <= 640) {
-      // On mobile screens, dock the callout cleanly above the bottom navigation or near top
+    if (vw <= 767) {
+      // At the mobile breakpoint (same as the stylesheet), dock the callout cleanly above the bottom navigation or near top
       const targetInLowerHalf = spotlight.top > vh * 0.48;
       return targetInLowerHalf
         ? ({ top: "16px", bottom: "auto" } as React.CSSProperties)
