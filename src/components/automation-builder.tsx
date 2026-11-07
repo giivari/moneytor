@@ -24,6 +24,8 @@ export function automationMutation(action: string, body: Record<string, unknown>
   return requestJson<{ id?: string }>("/api/automation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...body }), cache: "no-store" });
 }
 type BuilderSection = "basics" | "trigger" | "conditions" | "action" | "amount" | "execution" | "optional";
+type AutomationKind = keyof typeof actionRegistry;
+const actionMeta = (kind: string) => actionRegistry[kind as AutomationKind] ?? actionRegistry.expense;
 const referenceLabels = { configured_asset: "Pilih aset", trigger_source_asset: "Aset sumber transaksi pemicu", trigger_destination_asset: "Aset penerima transaksi pemicu" };
 const operatorLabels: Record<Operator, string> = { equals: "Sama dengan", not_equals: "Tidak sama dengan", greater_than: "Lebih dari", greater_or_equal: "Minimal",
   less_than: "Kurang dari", less_or_equal: "Maksimal", between: "Di antara" };
@@ -100,9 +102,9 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
   const summaries: Record<BuilderSection, string> = {
     basics: [draft.title.trim() || "Beri nama otomatisasi", localCategories.find((item) => item.id === draft.automationCategoryId)?.name].filter(Boolean).join(" · "),
     trigger: !triggerChosen ? "Pilih pemicu" : schedule ? `Waktu tertentu · ${frequencySummary} · ${schedule.localTime || "Pilih waktu"} WIB`
-      : `Transaksi terjadi · ${draft.trigger.namespace === "transaction_posted" && draft.trigger.activityKind ? actionRegistry[draft.trigger.activityKind].label : "Semua jenis"}`,
+      : `Transaksi terjadi · ${draft.trigger.namespace === "transaction_posted" && draft.trigger.activityKind ? actionMeta(draft.trigger.activityKind).label : "Semua jenis"}`,
     conditions: draft.conditions.length ? `${draft.conditions.length} kondisi · ${draft.conditionMode === "ALL" ? "Semua harus cocok" : "Salah satu cukup"}` : "Tanpa kondisi",
-    action: !actionChosen ? "Pilih tindakan" : `${actionRegistry[action.kind].label} · ${action.kind === "income" ? assetSummary(action.destination)
+    action: !actionChosen ? "Pilih tindakan" : `${actionMeta(action.kind).label} · ${action.kind === "income" ? assetSummary(action.destination)
       : action.kind === "transfer" ? `${assetSummary(action.source)} → ${assetSummary(action.destination)}` : assetSummary(action.source)}${action.kind !== "transfer" ? ` · ${categoryName ?? "Tanpa kategori"}` : ""}`,
     amount: amountSummary,
     execution: meta.executions.length === 1 ? "Konfirmasi diperlukan" : draft.execution === "automatic" ? "Jalankan otomatis" : "Minta konfirmasi",
@@ -271,16 +273,16 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
         </div>)}
       </CompactFormSection>}
       {(!mobile || triggerChosen) && <CompactFormSection {...sectionProps("action", "Lakukan")}>
-        <CompactChoice label="Tindakan" required value={actionChosen ? action.kind : undefined} options={meta.actionKinds.map((value) => ({ value, label: actionRegistry[value].label }))} onChange={(kind) => { setActionChosen(true); setChargesEnabled(false); setChargeRows(null);setFeeEnabled(false);setFeeInput(null);
-          changeAction({ kind, source: actionRegistry[kind].source ? storage==="income_event"?{strategy:"trigger_destination_asset"}:{ strategy: "configured_asset", assetId: "" } : undefined,
-            destination: actionRegistry[kind].destination ? { strategy: "configured_asset", assetId: "" } : undefined, categoryId: undefined, charges: [], transferFeeMinor: undefined });
+        <CompactChoice label="Tindakan" required value={actionChosen ? action.kind : undefined} options={meta.actionKinds.map((value) => ({ value, label: actionMeta(value).label }))} onChange={(kind) => { setActionChosen(true); setChargesEnabled(false); setChargeRows(null);setFeeEnabled(false);setFeeInput(null);
+          changeAction({ kind, source: actionMeta(kind).source ? storage==="income_event"?{strategy:"trigger_destination_asset"}:{ strategy: "configured_asset", assetId: "" } : undefined,
+            destination: actionMeta(kind).destination ? { strategy: "configured_asset", assetId: "" } : undefined, categoryId: undefined, charges: [], transferFeeMinor: undefined });
         }} />
         {triggerChosen && actionChosen && <>
           <div className="automation-form-pair">
-            {actionRegistry[action.kind].source && <AssetField label="Aset sumber" value={action.source} onChange={(source) => changeAction({ source })} allowed={meta.sourceReferences} options={options} disabled={pending} />}
-            {actionRegistry[action.kind].destination && <AssetField label="Aset tujuan" value={action.destination} onChange={(destination) => changeAction({ destination })} allowed={meta.destinationReferences} options={options} disabled={pending} />}
+            {actionMeta(action.kind).source && <AssetField label="Aset sumber" value={action.source} onChange={(source) => changeAction({ source })} allowed={meta.sourceReferences} options={options} disabled={pending} />}
+            {actionMeta(action.kind).destination && <AssetField label="Aset tujuan" value={action.destination} onChange={(destination) => changeAction({ destination })} allowed={meta.destinationReferences} options={options} disabled={pending} />}
           </div>
-          {action.kind !== "transfer" && <InlineCatalogSelect
+          {(action.kind === "expense" || action.kind === "income") && <InlineCatalogSelect
             label="Kategori transaksi"
             catalog="transactionCategories"
             appliesTo={action.kind}
@@ -328,7 +330,7 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
 function RuleSummary({ summaries, conditions, options }: { summaries: Record<BuilderSection, string>; conditions: Condition[]; options: FinanceOptions | null }) {
   function conditionText(condition: Condition) {
     const display = (value: string) => {
-      if (condition.field === "transaction_type") return actionRegistry[value as FinancialAction["kind"]]?.label ?? "Pilih jenis";
+      if (condition.field === "transaction_type") return actionRegistry[value as AutomationKind]?.label ?? "Pilih jenis";
       if (condition.field === "source_asset" || condition.field === "destination_asset") return options?.assets.find((item) => item.id === value)?.displayName ?? "Pilih aset";
       if (condition.field === "transaction_category") return options?.catalogs.transactionCategories.find((item) => item.id === value)?.displayName ?? "Pilih kategori";
       if (condition.field === "base_amount") {

@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { Plus } from "@phosphor-icons/react";
 import { TransactionEditor } from "@/components/transaction-editor";
-import type { ActivityKind } from "@/lib/finance/types";
+import type { AnyActivityKind } from "@/lib/finance/types";
 import { ICON_MD } from "./icon-size";
 
 /** The Catat button. With `kind` the editor opens on "Akun & nominal" with that type chosen; without it, on "Jenis". */
-export function QuickAdd({ compact = false, kind, label = "Catat" }: { compact?: boolean; kind?: ActivityKind; label?: string }) {
+export function QuickAdd({ compact = false, kind, label = "Catat" }: { compact?: boolean; kind?: AnyActivityKind; label?: string }) {
   const [open, setOpen] = useState(false);
   return <>
     <button className={compact ? "dock-add" : "button-primary"} type="button" onClick={() => setOpen(true)} aria-label={kind ? label : "Catat transaksi"}>

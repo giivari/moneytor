@@ -33,7 +33,7 @@ type Occurrence = { id: string; rule_title: string; scheduled_at: string; kind: 
 const empty = (): RuleInput => ({ title:"",kind:"expense",amountMode:"fixed",amountMinor:"",executionMode:"confirm_before_post",
   sourceAssetId:"",destinationAssetId:"",categoryId:"",transferFeeMinor:"",note:"",charges:[],frequency:"monthly_day",
   monthDay:1,localTime:"09:00",startOn:jakartaToday() });
-const kindLabel = { income:"Pemasukan", expense:"Pengeluaran", transfer:"Transfer" };
+const kindLabel: Record<string, string> = { income:"Pemasukan", expense:"Pengeluaran", transfer:"Transfer", borrow:"Pinjam", repay:"Lunas", refund:"Refund", adjustment:"Koreksi" };
 const weekdayLabel = ["", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
 function scheduleLabel(frequency: RuleInput["frequency"], weekday?: number | null, monthDay?: number | null) {
   if (frequency === "daily") return "Setiap hari";

@@ -1,5 +1,5 @@
 import { AppLink as Link } from "./app-link";
-import { ArrowRight, ArrowDownLeft, ArrowUpRight, ArrowsLeftRight, CreditCard, HandCoins, Scales, Wallet } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, ArrowCounterClockwise, ArrowDownLeft, ArrowUpRight, ArrowsLeftRight, CreditCard, HandCoins, Scales, Wallet } from "@phosphor-icons/react/dist/ssr";
 import type { financeSnapshot } from "@/lib/finance/summary";
 import type { AnalyticsReport } from "@/lib/analytics/types";
 import type { FinanceActivity, FinanceAsset } from "@/lib/finance/types";
@@ -25,12 +25,13 @@ function RecentActivity({ recent }: { recent: FinanceActivity[] }) {
       <ul className="home-recent-list">{recent.slice(0, 6).map((item) => {
         const { total, sign, kind, accounts } = activityParts(item);
         const amount = `${sign}${formatMinor(total, item.currency, item.exponent)}`;
-        const Icon = item.kind === "income" ? ArrowDownLeft : item.kind === "expense" ? ArrowUpRight : ArrowsLeftRight;
-        const fee = item.kind === "transfer" && item.charges[0] ? `Biaya ${formatMinor(item.charges[0].amountMinor, item.currency, item.exponent)}` : null;
+        const Icon = item.kind === "income" ? ArrowDownLeft : item.kind === "expense" ? ArrowUpRight : item.kind === "refund" ? ArrowCounterClockwise : item.kind === "adjustment" ? Scales : ArrowsLeftRight;
+        const toneKind = item.kind === "income" || item.kind === "expense" ? item.kind : "transfer";
+        const fee = (item.kind === "transfer" || item.kind === "borrow" || item.kind === "repay") && item.charges[0] ? `Biaya ${formatMinor(item.charges[0].amountMinor, item.currency, item.exponent)}` : null;
         const context = [accounts, item.recurringRuleName ? "Otomatisasi" : item.categoryName, fee].filter(Boolean).join(" · ");
         return <InspectorRow key={item.id} id={`activity:${item.id}`} title={item.note || kind} subtitle={`${kind} · ${shortDate(item.occurredAt)}`} detail={<ActivityDetail item={item} />} className="home-recent-row">
           <span className="home-recent-date">{shortDate(item.occurredAt)}</span>
-          <span className={`ui-kind ui-kind--${item.kind}`}><Icon size={ICON_SM} aria-hidden="true" /><span>{kind}</span></span>
+          <span className={`ui-kind ui-kind--${toneKind}`} data-kind={item.kind}><Icon size={ICON_SM} aria-hidden="true" /><span>{kind}</span></span>
           <div className="home-recent-copy"><InspectorRowButton><strong>{item.note || kind}</strong></InspectorRowButton><small>{context}</small></div>
           <Amount value={amount} tone={item.kind === "expense" ? "negative" : item.kind === "income" ? "positive" : ""} />
         </InspectorRow>;

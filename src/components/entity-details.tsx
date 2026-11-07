@@ -10,29 +10,41 @@ import { ICON_SM } from "./icon-size";
 
 /** Inspector bodies for each entity, rendered on the server and handed to InspectorRow. */
 
+const activityKindLabels: Record<FinanceActivity["kind"], string> = {
+  income: "Pemasukan",
+  expense: "Pengeluaran",
+  transfer: "Transfer",
+  borrow: "Pinjam",
+  repay: "Lunas",
+  refund: "Refund",
+  adjustment: "Koreksi",
+};
+
 export function activityParts(item: FinanceActivity) {
+  const isFlow = item.kind === "transfer" || item.kind === "borrow" || item.kind === "repay";
   const charges = item.charges.reduce((sum, charge) => sum + BigInt(charge.amountMinor), 0n);
-  const total = item.kind === "transfer" ? BigInt(item.baseAmountMinor) : BigInt(item.baseAmountMinor) + charges;
+  const total = isFlow ? BigInt(item.baseAmountMinor) : BigInt(item.baseAmountMinor) + charges;
   const sign = item.kind === "expense" ? "−" : item.kind === "income" ? "+" : "";
-  const kind = item.kind === "income" ? "Pemasukan" : item.kind === "expense" ? "Pengeluaran" : "Transfer";
-  const accounts = item.kind === "transfer" ? [item.sourceName, item.destinationName].filter(Boolean).join(" → ") : (item.sourceName || item.destinationName || "");
+  const kind = activityKindLabels[item.kind];
+  const accounts = item.sourceName && item.destinationName ? `${item.sourceName} → ${item.destinationName}` : (item.sourceName || item.destinationName || "");
   return { total, sign, kind, accounts };
 }
 
 export function ActivityDetail({ item }: { item: FinanceActivity }) {
   const money = (value: string | bigint) => formatMinor(value, item.currency, item.exponent);
   const { total, sign, kind, accounts } = activityParts(item);
+  const isFlow = item.kind === "transfer" || item.kind === "borrow" || item.kind === "repay";
   const occurred = new Date(item.occurredAt).toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" });
   return <>
     <InspectorFacts items={[
       { label: "Jenis", value: kind },
       { label: "Waktu", value: occurred },
-      { label: item.kind === "transfer" ? "Alur rekening" : "Rekening", value: accounts || "—" },
+      { label: isFlow ? "Alur rekening" : "Rekening", value: accounts || "—" },
       ...(item.categoryName ? [{ label: "Kategori", value: item.categoryName }] : []),
       ...(item.recurringRuleName ? [{ label: "Otomatisasi", value: item.recurringRuleName }] : []),
       { label: "Jumlah dasar", value: <Amount value={money(item.baseAmountMinor)} /> },
       ...item.charges.map((charge) => ({ label: charge.typeName, value: <Amount value={money(charge.amountMinor)} /> })),
-      { label: item.kind === "transfer" ? "Dipindahkan" : "Total mutasi", value: <Amount value={`${sign}${money(total)}`} tone={item.kind === "expense" ? "negative" : item.kind === "income" ? "positive" : ""} /> },
+      { label: isFlow ? "Dipindahkan" : "Total mutasi", value: <Amount value={`${sign}${money(total)}`} tone={item.kind === "expense" ? "negative" : item.kind === "income" ? "positive" : ""} /> },
     ]} />
     {item.note && <p className="inspector-note">{item.note}</p>}
     <Link href="/transactions" className="text-link">Buka di Mutasi <ArrowRight size={ICON_SM} aria-hidden="true" /></Link>

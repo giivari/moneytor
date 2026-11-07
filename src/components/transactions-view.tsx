@@ -24,7 +24,19 @@ import { useInspector } from "./inspector";
 import { Card, Kpi, PageHeading } from "./ui";
 import { ICON_SM } from "./icon-size";
 
-const labels = { income: "Pemasukan", expense: "Pengeluaran", transfer: "Transfer" };
+const labels: Record<FinanceActivity["kind"], string> = {
+  income: "Pemasukan",
+  expense: "Pengeluaran",
+  transfer: "Transfer",
+  borrow: "Pinjam",
+  repay: "Lunas",
+  refund: "Refund",
+  adjustment: "Koreksi",
+};
+const isFlowKind = (kind: FinanceActivity["kind"]) => kind === "transfer" || kind === "borrow" || kind === "repay";
+const visualKind = (kind: FinanceActivity["kind"]) => (kind === "income" || kind === "expense" ? kind : "transfer");
+const activityRouteText = (item: FinanceActivity) =>
+  item.sourceName && item.destinationName ? `${item.sourceName} → ${item.destinationName}` : item.sourceName || item.destinationName || "";
 const statusLabel = (item: FinanceActivity) => (item.status === "posted" ? "Aktif" : item.status === "voided" ? "Dibatalkan" : "Dikoreksi");
 function describeCharges(item: FinanceActivity): string | undefined {
   if (!item.charges.length) return undefined;
@@ -32,10 +44,10 @@ function describeCharges(item: FinanceActivity): string | undefined {
   const formattedTotal = formatMinor(totalFee.toString(), item.currency, item.exponent);
   if (item.charges.length === 1) {
     const label = item.charges[0].typeName?.trim() || "Biaya tambahan";
-    return item.kind === "transfer" ? `${label}: ${formattedTotal}` : `Termasuk ${label} ${formattedTotal}`;
+    return isFlowKind(item.kind) ? `${label}: ${formattedTotal}` : `Termasuk ${label} ${formattedTotal}`;
   }
   const names = item.charges.map((c) => c.typeName?.trim() || "Biaya").join(" + ");
-  return item.kind === "transfer" ? `${names}: ${formattedTotal}` : `Termasuk ${names} (${formattedTotal})`;
+  return isFlowKind(item.kind) ? `${names}: ${formattedTotal}` : `Termasuk ${names} (${formattedTotal})`;
 }
 function totalMinor(item: FinanceActivity) {
   return (BigInt(item.baseAmountMinor) + item.charges.reduce((sum, charge) => sum + BigInt(charge.amountMinor), 0n)).toString();
@@ -75,11 +87,11 @@ function ActivityInspector({ item, onEdit }: { item: FinanceActivity; onEdit: (i
       <div><dt>Waktu</dt><dd>{new Date(item.occurredAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</dd></div>
       <div><dt>Jumlah dasar</dt><dd>{money(item.baseAmountMinor)}</dd></div>
       {item.charges.map((charge) => <div key={charge.id}><dt>{charge.typeName}</dt><dd>{money(charge.amountMinor)}</dd></div>)}
-      <div className="detail-total"><dt>{item.kind === "transfer" ? "Pokok + biaya" : "Total"}</dt><dd>{money(totalMinor(item))}</dd></div>
+      <div className="detail-total"><dt>{isFlowKind(item.kind) ? "Pokok + biaya" : "Total"}</dt><dd>{money(totalMinor(item))}</dd></div>
     </dl>
     {item.allocationAdjustmentId && <p className="inspector-note">Penyesuaian alokasi: transaksi tambahan dari peninjauan pemasukan. Transaksi awal tetap tersimpan; hasil ini mengikuti alur koreksi dan pembatalan biasa.</p>}
     {item.note && <p className="inspector-note">{item.note}</p>}
-    {item.kind === "transfer" && <p className="inspector-note ui-muted">Pokok transfer berpindah antar aset tanpa mengubah total. Hanya biayanya mengurangi total.</p>}
+    {isFlowKind(item.kind) && <p className="inspector-note ui-muted">Pokok berpindah antar akun tanpa mengubah total. Hanya biayanya mengurangi total.</p>}
     {item.status === "posted" && !confirmVoid && <div className="finance-actions"><button type="button" className="finance-secondary" disabled={pending} onClick={() => { close(); onEdit(item); }}>Koreksi</button>
       <button type="button" className="finance-danger" disabled={pending} onClick={() => setConfirmVoid(true)}>Batalkan transaksi</button></div>}
     {confirmVoid && <div className="finance-confirm"><p>Batalkan transaksi ini? Semua pergerakannya akan dibalik. Catatan asli tetap ada dalam riwayat.</p>
@@ -120,7 +132,7 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
       <div className="transactions-toolbar">
         <ListToolbar label="Filter dan urutan transaksi"
           visibility={<label className="finance-history-toggle"><input type="checkbox" checked={history} onChange={(event) => setHistory(event.target.checked)} /> Tampilkan koreksi & pembatalan</label>}>
-          <ListFilterControl value={filter} onChange={setFilter} label="Jenis" options={[{ value: "all", label: "Semua" }, { value: "expense", label: "Pengeluaran" }, { value: "income", label: "Pemasukan" }, { value: "transfer", label: "Transfer" }]} />
+          <ListFilterControl value={filter} onChange={setFilter} label="Jenis" options={[{ value: "all", label: "Semua" }, { value: "expense", label: "Pengeluaran" }, { value: "income", label: "Pemasukan" }, { value: "transfer", label: "Transfer" }, { value: "borrow", label: "Pinjam" }, { value: "repay", label: "Lunas" }, { value: "refund", label: "Refund" }, { value: "adjustment", label: "Koreksi" }]} />
           <ListSortControl {...sort} />
         </ListToolbar>
       </div>
@@ -129,15 +141,15 @@ export function TransactionsView({ activities, monthly }: { activities: FinanceA
         {shown.length > 0 && (
           <FinancialDataTable label="Riwayat transaksi" records={shown} identity={(item) => item.id} rowAction={{ onActivate: (item) => openDetails(item), disabled: refreshing }} columns={[
             { key: "date", heading: "Tanggal", render: (item) => <time dateTime={item.occurredAt}>{new Date(item.occurredAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</time> },
-            { key: "activity", heading: "Aktivitas", render: (item) => <><button type="button" className="record-title-button" disabled={refreshing} aria-haspopup="dialog" aria-label={`Buka rincian transaksi: ${item.note || labels[item.kind]}`} onClick={(event) => openDetails(item, event.currentTarget)}>{item.note || labels[item.kind]}</button><small data-kind={item.kind}>{labels[item.kind]}</small></> },
-            { key: "asset", heading: "Akun / aset", render: (item) => <>{item.kind === "transfer" ? <>{item.sourceName} → {item.destinationName}</> : item.sourceName || item.destinationName}{item.categoryName && <small>{item.categoryName}</small>}</> },
+            { key: "activity", heading: "Aktivitas", render: (item) => <><button type="button" className="record-title-button" disabled={refreshing} aria-haspopup="dialog" aria-label={`Buka rincian transaksi: ${item.note || labels[item.kind]}`} onClick={(event) => openDetails(item, event.currentTarget)}>{item.note || labels[item.kind]}</button><small data-kind={visualKind(item.kind)}>{labels[item.kind]}</small></> },
+            { key: "asset", heading: "Akun / aset", render: (item) => <>{activityRouteText(item)}{item.categoryName && <small>{item.categoryName}</small>}</> },
             { key: "origin", heading: "Asal", secondary: true, render: (item) => <span className="record-muted">{item.recurringRuleName ? <>Otomatisasi<small>{item.recurringRuleName}</small></> : "Manual"}</span> },
-            { key: "amount", heading: "Nominal", numeric: true, render: (item) => { const feeText = describeCharges(item); return <><strong className="financial-value financial-value--row" data-kind={item.kind}>{item.kind === "expense" ? "−" : item.kind === "income" ? "+" : ""}{formatMinor(activityValueMinor(item), item.currency, item.exponent)}</strong>{feeText && <small>{feeText}</small>}</>; } },
+            { key: "amount", heading: "Nominal", numeric: true, render: (item) => { const feeText = describeCharges(item); return <><strong className="financial-value financial-value--row" data-kind={visualKind(item.kind)}>{item.kind === "expense" ? "−" : item.kind === "income" ? "+" : ""}{formatMinor(activityValueMinor(item), item.currency, item.exponent)}</strong>{feeText && <small>{feeText}</small>}</>; } },
             { key: "status", heading: "Status", render: (item) => <small>{statusLabel(item)}</small> },
           ]} compact={(item) => <button type="button" className="transaction-button" key={item.id} disabled={refreshing} onClick={(event) => openDetails(item, event.currentTarget)}>
             <MoneyMovementRow kind={item.kind} title={item.note || labels[item.kind]}
-              context={`${item.categoryName || labels[item.kind]} · ${item.kind === "transfer" ? `${item.sourceName} → ${item.destinationName}` : item.sourceName || item.destinationName}`} provenance={item.recurringRuleName}
-              compactContext={item.kind === "transfer" ? `${item.sourceName} → ${item.destinationName}` : item.sourceName || item.destinationName}
+              context={`${item.categoryName || labels[item.kind]} · ${activityRouteText(item)}`} provenance={item.recurringRuleName}
+              compactContext={activityRouteText(item)}
               status={item.status !== "posted" ? statusLabel(item) : undefined}
               amount={`${item.kind === "expense" ? "−" : item.kind === "income" ? "+" : ""}${formatMinor(activityValueMinor(item), item.currency, item.exponent)}`}
               date={new Date(item.occurredAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}

@@ -43,7 +43,7 @@ export type FinanceAsset = {
 };
 export type FinanceActivity = {
   cursorTime?: string;
-  id: string; kind: ActivityKind; baseAmountMinor: string; currency: string; exponent: number;
+  id: string; kind: AnyActivityKind; baseAmountMinor: string; currency: string; exponent: number;
   sourceAssetId: string | null; sourceName: string | null;
   destinationAssetId: string | null; destinationName: string | null;
   categoryId: string | null; categoryName: string | null;
@@ -63,7 +63,7 @@ export type FinanceActivity = {
   allocationAssessmentId?: string;
   originalAutomationResultId?: string;
   automationSourceActivityId?: string;
-  automationSourceKind?: ActivityKind;
+  automationSourceKind?: AnyActivityKind;
   charges: { id: string; typeId: string; typeName: string; systemKey?: string | null; amountMinor: string }[];
   /** Installment terms of an installment purchase (from credit_installments), so a correction can keep them. */
   creditInstallments?: InstallmentTerms;

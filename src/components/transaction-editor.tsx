@@ -24,8 +24,10 @@ import {
   parseCreditMeta,
 } from "@/lib/domain/credit";
 import { planSplitBill } from "@/lib/domain/split-bill";
-import { pickTransferSource, type TransactionPreset } from "@/lib/domain/transaction-preset";
-import type { ActivityDraft, ActivityKind, FinanceActivity, FinanceAsset } from "@/lib/finance/types";
+import { pickTransferSource, type TransactionPreset as BaseTransactionPreset } from "@/lib/domain/transaction-preset";
+import type { ActivityDraft, AnyActivityKind, FinanceActivity, FinanceAsset } from "@/lib/finance/types";
+
+type TransactionPreset = Omit<BaseTransactionPreset, "kind"> & { kind?: AnyActivityKind };
 
 function localDate(iso?: string) {
   const date = iso ? new Date(iso) : new Date();
@@ -63,7 +65,7 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
     setStep(target);
   }
   const { pending, begin, finish } = useMutationPending();
-  const [kind, setKind] = useState<ActivityKind>(initial?.kind ?? preset?.kind ?? "expense");
+  const [kind, setKind] = useState<AnyActivityKind>(initial?.kind ?? preset?.kind ?? "expense");
   const [amount, setAmount] = useState(initial ? minorToInput(initial.baseAmountMinor, initial.exponent) : preset?.amount ?? "");
   const [accountId, setAccountId] = useState(initial?.sourceAssetId ?? initial?.destinationAssetId ?? preset?.accountId ?? "");
   const [destinationId, setDestinationId] = useState(initial?.destinationAssetId ?? preset?.destinationId ?? "");
@@ -449,7 +451,16 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
 
 
   const stepTitles = ["Jenis", "Akun & nominal", "Opsi lanjutan"] as const;
-  const kindLabel = { expense: "Pengeluaran", income: "Pemasukan", transfer: "Transfer" }[kind];
+  const kindLabels: Record<AnyActivityKind, string> = {
+    expense: "Pengeluaran",
+    income: "Pemasukan",
+    transfer: "Transfer",
+    borrow: "Pinjam",
+    repay: "Lunas",
+    refund: "Refund",
+    adjustment: "Koreksi",
+  };
+  const kindLabel = kindLabels[kind];
   return <dialog ref={dialog} className="finance-dialog transaction-dialog" aria-labelledby="transaction-editor-title"
     onCancel={(event) => { if (pending) event.preventDefault(); }}>
     <div className="dialog-heading"><div><span className="eyebrow">CATAT PERGERAKAN</span><h2 id="transaction-editor-title">{initial ? "Koreksi transaksi" : "Transaksi baru"}</h2></div>
@@ -629,7 +640,7 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
           </OptionalFormSection>
           </>
         )}
-      {kind !== "transfer" && <InlineCatalogSelect
+      {(kind === "expense" || kind === "income") && <InlineCatalogSelect
         label="Kategori (opsional)"
         catalog="transactionCategories"
         appliesTo={kind}

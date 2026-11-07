@@ -1,0 +1,1 @@
+- `transaction-editor` / `automation`: persempit referensi `ActivityKind` di `src/lib/automation/{allocation-service,composable-domain,composable-facade}.ts` menjadi 3 jenis otomasi dan lebarkan `TransactionPreset.kind` di `src/lib/domain/transaction-preset.ts` ke `AnyActivityKind`, karena `src/lib/**` selain `src/lib/finance/types.ts` tidak boleh diubah oleh frontend.
