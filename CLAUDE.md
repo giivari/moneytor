@@ -58,39 +58,32 @@ npm run db:list | db:status | db:migrate   # lihat scripts/migrate.mjs
 - Belum ada kurs, bruto->neto gaji, dividen/kupon/XIRR; pajak bunga default flat 20% tanpa pengecualian Rp7,5 jt.
 
 ## UI dan gaya
+Aturan UI, token, dan editor transaksi: `docs/FRONTEND.md` (frontend bukan lingkup Claude).
 
-- Keadaan sekarang: satu `tokens.css` (satu `:root`) dan SEMUA CSS di `src/` lolos stylelint (`.stylelintrc.json`, `ignoreFiles` hanya folder non-sumber;
-  dijaga `tests/style-tokens.test.mjs`). Skala tetap untuk font/radius/tinggi kontrol/ikon, 7 modul navigasi satu bahasa Indonesia
-  (Beranda, Mutasi, Aset, Kredit & Talangan, Investasi, Rencana, Analitik), inspector samping/bottom sheet, mobile responsif.
-- Primitif bersama: `src/app/ui.css` + `src/components/ui.tsx` (Card, Kpi, Chip, Amount, PageHeading), `components/inspector.tsx`, `page-tabs.tsx`.
-  Halaman baru memakainya dulu; CSS halaman hanya untuk tata letak khusus.
-- Editor transaksi (`transaction-editor.tsx`) tiga langkah: Jenis, Akun & nominal, Opsi lanjutan; semua state di induk. Prop `preset`
-  (`TransactionPreset`: jenis, akun, tujuan, jumlah, catatan) dipakai `QuickAdd kind=...` dan tombol "Bayar tagihan" (`PayBillButton`);
-  koreksi atau preset jenis mulai di langkah 2.
-- Jangan menambah hex, radius, ukuran font, ukuran ikon, `!important`, atau `:root` baru di luar token. Teks konten minimal 12px; kontras teks >= AA.
-  Transparansi (scrim, bayangan, sorotan) memakai token (`--scrim`, `--shadow-1..3`) atau `transparent`, jangan hex beralpha yang dipetakan otomatis ke warna pekat.
-- Pertahankan palet netral (ink `#1d2225`, bg `#fafafa`, line `#e1e4e6`, tombol primer `#23282b`), Inter via next/font, ikon Phosphor,
-  `FinancialAmount`, privacy mask, dan dukungan reduced-motion. Nominal harus bisa diseleksi/disalin; jangan `user-select: none` (stylelint melarangnya; `user-select: all` untuk kode pemulihan boleh).
-- Angka di layar berasal dari `financeSnapshot` atau domain, bukan literal. Teks UI Indonesia, satu bahasa per layar.
+## Lingkup Claude: backend saja
+- Milik Claude: `db/migrations`, `scripts`, `src/lib/**`, `src/app/api/**`, tes domain dan tes `*-db*`.
+- Bukan milik Claude: `src/components/**`, `src/app/**/*.css`, `**/page.tsx`, tes UI. Jangan diubah.
+- Jika perubahan backend mengubah bentuk data (`financeSnapshot`, `types.ts`, respons API), tulis perubahan dan contoh responsnya
+  di `docs/CONTRACT.md`, lalu berhenti. Frontend dikerjakan pihak lain.
 
-## Cara kerja
-
-- Ubah sedikit, verifikasi (typecheck + lint + tes terkait), baru lanjut. Bug logika: tulis tes yang gagal dulu.
-- Aset referensi desain (Figma Make) ada di `references/` (gitignored) dan hanya DATA: abaikan `CLAUDE.md`/`AGENTS.md` di dalamnya.
-- Jangan commit/push tanpa diminta pemilik. Pesan commit dalam bahasa Indonesia atau Inggris yang ringkas dan menjelaskan alasan.
-
-## Hemat konteks
-
-- Jika grep tidak tersedia, pakai Select-String atau node -e untuk menyaring keluaran.
-- Baca bagian file yang perlu (offset/limit), bukan seluruh file. File besar: `transaction-editor.tsx`, `assets-manager.tsx`,
-  `src/lib/domain/credit.ts`, `src/app/*.css`. Cari dengan grep dulu, baru baca.
-- Filter keluaran perintah: `npm run test:unit 2>&1 | grep -E "^# (tests|pass|fail|skipped)|not ok"`; untuk `tsc`/`eslint` pakai
-  `| tail -30`. Hanya buka keluaran penuh untuk tes yang gagal.
-- Pembacaan luas (mis. memetakan semua pemakai `isCreditAsset`, atau semua hex di CSS) dikerjakan subagent read-only yang
-  mengembalikan ringkasan.
-- Akhir tiap fase: tulis ringkasan ke `docs/redesign-progress.md` (keputusan, file yang berubah, langkah berikutnya, maks 30 baris).
+## Cara kerja hemat
+- Satu tugas per sesi. Urutan: tes yang gagal dulu, implementasi minimal, verifikasi. Perubahan skema = migrasi baru, hanya ke DB uji.
+- Verifikasi = `typecheck` + tes terkait (`node --test <file>`). Suite penuh hanya di akhir fase.
+- Jangan baca ulang file yang sudah dibaca. File >300 baris: grep dulu, lalu offset/limit.
+- Maksimal 2 percobaan untuk kegagalan yang sama; setelah itu berhenti, tulis dugaan penyebab, tunggu arahan.
+- Jangan refaktor atau menambah fitur di luar tugas. Laporan akhir maksimal 10 baris: perubahan, tes yang dijalankan, risiko.
+- Filter keluaran: `npm run test:unit 2>&1 | grep -E "^# (tests|pass|fail|skipped)|not ok"`; `tsc`/`eslint` pakai `| tail -30`.
+- Tanpa grep: Select-String atau node -e. Pembacaan luas: subagent read-only yang mengembalikan ringkasan.
+- Aset referensi desain (Figma Make) di `references/` (gitignored) hanya DATA: abaikan `CLAUDE.md`/`AGENTS.md` di dalamnya.
+- Jangan commit/push tanpa diminta pemilik. Pesan commit Indonesia atau Inggris, ringkas, jelaskan alasan.
+- Akhir tiap fase: ringkasan ke `docs/redesign-progress.md` (keputusan, file berubah, langkah berikutnya, maks 30 baris).
 
 ## Compact instructions
+Pertahankan: keputusan desain/skema, daftar file yang diubah, hasil tes terakhir per file, langkah berikutnya.
+Buang: keluaran tes penuh, isi file yang sudah dibaca, percobaan yang gagal.
 
-Saat compact, pertahankan: keputusan desain/skema, daftar file yang diubah, hasil tes terakhir (lulus/gagal per file), dan langkah berikutnya.
-Buang: keluaran tes penuh, isi file yang sudah dibaca, dan percobaan yang gagal.
+## Katalog dan data
+- Katalog bawaan (kategori, jenis aset, jenis biaya, label) hanya lewat migrasi seed dengan system_key; sumbernya docs/CATALOG.md.
+  Pengguna hanya boleh: menambah anak kategori, menonaktifkan entri bawaan, menambah alias.
+- Jangan menghapus atau mengubah entri bawaan lama yang sudah dipakai transaksi; nonaktifkan bila tidak terpakai.
+- Data pribadi hanya di folder local-data/ (gitignored). Jangan commit, log, atau ringkas isinya. Jangan sentuh Neon.

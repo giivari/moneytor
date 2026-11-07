@@ -199,6 +199,31 @@ test("(d) pembelian cicilan 12x membukukan seluruh pokok dan bunga (PostgreSQL t
       assert.equal((await card()).balanceMinor, "0");
       assert.equal(computeCreditBills(await card()).totalUnpaidMinor, 0n);
     });
+    await t.test("ubah asset_class: ditolak bila ada jadwal scheduled, idempoten, tercatat", async () => {
+      const { changeAssetClass } = await import("../src/lib/repositories/assets.ts");
+      const card = await insertAssetWithOpening({
+        displayName: "Kartu Ubah Kelas", currency: "IDR", assetTypeId: typeId, normallyLiquid: false, normallySpendable: false,
+        openingAmountMinor: 0n, openingEffectiveAt: new Date("2026-01-01T00:00:00Z"), assetClass: "liability",
+        note: encodeCreditNote("", true, { dueDay: 1, cutoffDay: 20, limitMinor: 0n, carryCurrentMinor: 0n, schedule: [] }),
+      });
+      const p = calculateCreditInstallmentPlan({ principalMinorStr: "600000", tenorMonths: 3, interestMode: "percent", interestRatePercent: 2.95, interestFlatMinorStr: "0" });
+      const r = installmentPurchaseRequest(p, 3, interestTypeId);
+      const purchase = await postActivity({ kind: "expense", amountMinor: r.amountMinor, sourceAssetId: card, charges: r.charges,
+        occurredAt: new Date().toISOString(), note: "Cicilan sintetis" }, randomUUID(), { creditCycle: "current", creditInstallments: r.creditInstallments });
+      const before = (await admin.query("SELECT count(*)::int AS n FROM asset_class_changes")).rows[0].n;
+      await assert.rejects(() => changeAssetClass(card, "asset", randomUUID()), /cicilan/i);
+      assert.equal((await admin.query("SELECT asset_class FROM assets WHERE id=$1", [card])).rows[0].asset_class, "liability");
+      assert.equal((await admin.query("SELECT count(*)::int AS n FROM asset_class_changes")).rows[0].n, before);
+      await voidActivity(purchase, randomUUID()); // jadwal menjadi cancelled
+      const key = randomUUID();
+      assert.deepEqual(await changeAssetClass(card, "asset", key), { assetId: card, assetClass: "asset", changed: true });
+      assert.deepEqual(await changeAssetClass(card, "asset", key), { assetId: card, assetClass: "asset", changed: true }); // ulang kunci sama
+      assert.deepEqual(await changeAssetClass(card, "asset", randomUUID()), { assetId: card, assetClass: "asset", changed: false }); // sudah asset
+      await assert.rejects(() => changeAssetClass(card, "receivable", key), /Kunci permintaan/);
+      const log = (await admin.query("SELECT previous_class,new_class FROM asset_class_changes WHERE asset_id=$1", [card])).rows;
+      assert.deepEqual(log, [{ previous_class: "liability", new_class: "asset" }]);
+      await assert.rejects(() => changeAssetClass(card, "bogus", randomUUID()), /kelas aset/i);
+    });
     hooks.deregister();
   } finally {
     globalThis.__creditTestAuthorized = false;

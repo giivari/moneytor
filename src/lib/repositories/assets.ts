@@ -10,6 +10,7 @@ import { encodeAssetTermsNote, parseAssetTerms } from "@/lib/domain/asset-terms"
 import { assertUuid, requireActive, validateCatalogName } from "@/lib/domain/catalog";
 import { parseCreditMeta } from "@/lib/domain/credit";
 import { assertCurrencyCode, assertStoredMinor, money, parseMinor, type Money } from "@/lib/domain/money";
+import { LifecycleError } from "./lifecycle";
 import { ASSET_CLASSES, type AssetClass, type CreditInstallment, type FinanceAsset } from "@/lib/finance/types";
 
 export type NewAsset = Readonly<{
@@ -54,6 +55,16 @@ async function activeReference(client: PoolClient, table: string, id: string): P
 /** Original opening is immutable; corrections have their own append-only history. */
 export async function insertAssetWithOpening(input: NewAsset): Promise<string> {
   await requireOwnerSession();
+  const id = await inDatabaseTransaction((client) => insertAssetOnClient(client, input));
+  const terms = parseAssetTerms(input.note);
+  if (terms.autoPostAdminFee || terms.adminRuleId) {
+    await syncAssetAdminAutomation(id, null);
+  }
+  return id;
+}
+
+/** Same validation and inserts as insertAssetWithOpening, inside the caller's transaction (caller authorizes). */
+export async function insertAssetOnClient(client: PoolClient, input: NewAsset): Promise<string> {
   const displayName = validateCatalogName(input.displayName);
   const currency = assertCurrencyCode(input.currency);
   const openingAmountMinor = assertStoredMinor(input.openingAmountMinor);
@@ -65,7 +76,7 @@ export async function insertAssetWithOpening(input: NewAsset): Promise<string> {
   if (input.safeSuffix && !/^[A-Za-z0-9]{1,4}$/.test(input.safeSuffix)) throw new Error("Invalid safe suffix");
   if (input.note && input.note.length > 1000) throw new Error("Asset note is too long");
   const id = randomUUID();
-  await inDatabaseTransaction(async (client) => {
+  {
     const currencyResult = await client.query<{ code: string; is_active: boolean }>(
       "SELECT code, is_active FROM currencies WHERE code = $1 FOR SHARE",
       [currency],
@@ -91,10 +102,6 @@ export async function insertAssetWithOpening(input: NewAsset): Promise<string> {
       "INSERT INTO asset_opening_states (asset_id, amount_minor, effective_at) VALUES ($1,$2,$3)",
       [id, openingAmountMinor.toString(), input.openingEffectiveAt],
     );
-  });
-  const terms = parseAssetTerms(input.note);
-  if (terms.autoPostAdminFee || terms.adminRuleId) {
-    await syncAssetAdminAutomation(id, null);
   }
   return id;
 }
@@ -628,4 +635,36 @@ export async function readAssetDetail(assetId: string): Promise<AssetDetailInfo>
       };
     }),
   };
+}
+
+export type AssetClassChange = Readonly<{ assetId: string; assetClass: AssetClass; changed: boolean }>;
+
+/**
+ * Changes assets.asset_class. Refused while the account still has scheduled credit installments (the schedule
+ * only makes sense on a liability). Idempotent by key; each real change is logged in asset_class_changes.
+ */
+export async function changeAssetClass(assetId: string, assetClass: unknown, key: string): Promise<AssetClassChange> {
+  await requireOwnerSession();
+  assertUuid(assetId); assertUuid(key);
+  if (!ASSET_CLASSES.includes(assetClass as AssetClass)) throw new Error("Kelas aset tidak valid");
+  const target = assetClass as AssetClass;
+  const requestHash = createHash("sha256").update(JSON.stringify({ operation: "asset-class", assetId, target })).digest("hex");
+  return inDatabaseTransaction(async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [key]);
+    const prior = await client.query<{ request_hash: string; asset_id: string; new_class: AssetClass }>(
+      "SELECT request_hash,asset_id,new_class FROM asset_class_changes WHERE idempotency_key=$1", [key]);
+    if (prior.rows[0]) {
+      if (prior.rows[0].request_hash !== requestHash) throw new Error("Kunci permintaan sudah digunakan untuk perubahan lain");
+      return { assetId, assetClass: prior.rows[0].new_class, changed: true };
+    }
+    const row = (await client.query<{ asset_class: AssetClass }>("SELECT asset_class FROM assets WHERE id=$1 FOR UPDATE", [assetId])).rows[0];
+    if (!row) throw new Error("Aset tidak ditemukan");
+    if (row.asset_class === target) return { assetId, assetClass: target, changed: false };
+    const scheduled = await client.query("SELECT 1 FROM credit_installments WHERE asset_id=$1 AND status='scheduled' LIMIT 1", [assetId]);
+    if (scheduled.rowCount) throw new LifecycleError("Kelas akun tidak dapat diubah selama masih ada jadwal cicilan. Batalkan atau lunasi cicilannya dulu.");
+    await client.query("UPDATE assets SET asset_class=$2 WHERE id=$1", [assetId, target]);
+    await client.query(`INSERT INTO asset_class_changes (id,idempotency_key,asset_id,previous_class,new_class,request_hash)
+      VALUES ($1,$2,$3,$4,$5,$6)`, [randomUUID(), key, assetId, row.asset_class, target, requestHash]);
+    return { assetId, assetClass: target, changed: true };
+  });
 }

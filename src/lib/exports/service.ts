@@ -711,8 +711,8 @@ export async function commitWorkbookAccountMigration(input: {
       const assetId = randomUUID();
       await client.query(
         `INSERT INTO assets (id, display_name, provider_id, asset_type_id, asset_group_id,
-          payment_network_id, currency_code, normally_liquid, normally_spendable, safe_suffix, note)
-         VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,NULL,$9)`,
+          payment_network_id, currency_code, normally_liquid, normally_spendable, safe_suffix, note, asset_class)
+         VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,NULL,$9,'asset')`,
         [
           assetId,
           validateCatalogName(acc.displayName),

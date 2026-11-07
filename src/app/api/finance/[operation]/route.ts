@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertRequestOrigin, boundedBody } from "@/lib/auth/http";
 import { currentOwnerSession } from "@/lib/auth/session";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
-import { insertAssetWithOpening, updateAsset, archiveAsset, restoreAsset, listAssets, assetOpeningHistory, readAssetDetail, correctAssetOpening, OpeningCorrectionError } from "@/lib/repositories/assets";
+import { insertAssetWithOpening, updateAsset, archiveAsset, restoreAsset, listAssets, assetOpeningHistory, readAssetDetail, correctAssetOpening, changeAssetClass, OpeningCorrectionError } from "@/lib/repositories/assets";
 import { deleteCustomCatalogItem, restoreCustomCatalogItem, archiveCustomCatalogItem, insertCustomCatalogItem, insertCustomCategory, listCatalog, renameCustomCatalogItem, type Catalog } from "@/lib/repositories/catalogs";
 import { postActivity, replaceActivity, voidActivity } from "@/lib/finance/service";
+import { postSplitBill } from "@/lib/finance/split-bill-service";
 import { LifecycleError } from "@/lib/repositories/lifecycle";
 import type { ActivityDraft, AssetClass } from "@/lib/finance/types";
 
@@ -49,6 +50,16 @@ function assetFields(body: Record<string, unknown>) {
     assetClass: body.assetClass === undefined ? undefined : str(body.assetClass, 20) as AssetClass,
   };
 }
+function splitBillRequest(body: Record<string, unknown>) {
+  if (body.charges !== undefined && !Array.isArray(body.charges)) throw new Error("Invalid charges");
+  const charges = (body.charges as unknown[] | undefined)?.map((item) => {
+    const charge = object(item);
+    return { typeId: str(charge.typeId, 36), amountMinor: str(charge.amountMinor, 24) };
+  });
+  return { sourceAssetId: str(body.sourceAssetId, 36), totalMinor: str(body.totalMinor, 24), reimbursedMinor: str(body.reimbursedMinor, 24),
+    occurredAt: str(body.occurredAt, 40), categoryId: optional(body.categoryId, 36), charges, person: optional(body.person, 120),
+    note: optional(body.note, 1000), receivableAssetId: optional(body.receivableAssetId, 36) };
+}
 export async function GET(request: NextRequest, { params }: { params: Promise<{ operation: string }> }) {
   const operation = (await params).operation;
   if (operation !== "options" && operation !== "asset-opening" && operation !== "asset-detail") {
@@ -79,7 +90,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (operation === "asset-create") {
       const opening = assertStoredMinor(parseMinor(str(body.openingAmountMinor, 25)));
       if (opening < 0n) throw new Error("Negative opening");
-      const id = await insertAssetWithOpening({ ...assetFields(body), currency: str(body.currency, 3),
+      const fields = assetFields(body);
+      const id = await insertAssetWithOpening({ ...fields, assetClass: fields.assetClass ?? "asset", currency: str(body.currency, 3),
         openingAmountMinor: opening, openingEffectiveAt: new Date(str(body.openingEffectiveAt, 40)) });
       return json({ id });
     }
@@ -91,6 +103,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         correctedMinor: str(body.correctedMinor, 25), note: optional(body.note, 1000), idempotencyKey: str(body.idempotencyKey, 36) });
       return json({ id });
     }
+    if (operation === "asset-class-change") return json(await changeAssetClass(str(body.id, 36), body.assetClass, str(body.idempotencyKey, 36)));
+    if (operation === "split-bill") return json(await postSplitBill(splitBillRequest(body), str(body.idempotencyKey, 36)));
     if (operation === "asset-restore") {
       await restoreAsset(str(body.id, 36)); return json({ ok: true });
     }
