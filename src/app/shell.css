@@ -142,40 +142,44 @@
 }
 .rail-modules,
 .rail-footer { display: grid; gap: var(--space-1); }
-.rail-footer { padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.rail-footer { padding-top: var(--space-2); border-top: 1px solid var(--line-shell); }
 
 .rail-item {
   position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: var(--control-lg);
+  height: 36px;
+  min-height: 36px;
   padding-inline: var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   color: var(--ink-soft);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--weight-medium);
+  white-space: nowrap;
   transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease, border-color var(--duration-fast) ease;
 }
 .rail-item:hover { background: var(--surface-hover); color: var(--ink); }
 .rail-item[aria-current="page"] {
-  border-color: var(--line);
+  border-color: var(--line-shell);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--primary);
   font-weight: var(--weight-semibold);
   box-shadow: var(--shadow-1);
 }
 .rail-item[aria-current="page"]::before {
   content: "";
   position: absolute;
-  inset-block: var(--space-2);
+  top: 50%;
   inset-inline-start: 0;
+  transform: translateY(-50%);
   width: 3px;
+  height: 16px;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--nav-accent);
+  background: var(--primary);
 }
-.rail-item[aria-current="page"] svg { color: var(--nav-accent); }
+.rail-item[aria-current="page"] svg { color: var(--primary); }
 
 [data-area] { --nav-accent: var(--primary); }
 [data-area="transactions"] { --nav-accent: var(--accent-transactions); }
@@ -273,13 +277,20 @@
     flex-direction: column;
     justify-content: center;
     gap: var(--space-1);
-    min-height: 56px;
+    height: auto;
+    min-height: 48px;
     padding: var(--space-1);
     font-size: var(--text-xs);
     line-height: var(--leading-tight);
     text-align: center;
+    white-space: normal;
   }
-  .rail-item[aria-current="page"]::before { inset-block: var(--space-3); }
+  .rail-item[aria-current="page"]::before {
+    top: 50%;
+    transform: translateY(-50%);
+    height: 16px;
+    inset-block: auto;
+  }
 
   .inspector-scrim {
     display: block;

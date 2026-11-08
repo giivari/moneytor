@@ -5,11 +5,11 @@ export type NavModule = { href: string; label: string; area: ModuleArea };
 
 export const modules: readonly NavModule[] = [
   { href: "/", label: "Beranda", area: "home" },
-  { href: "/transactions", label: "Mutasi", area: "transactions" },
-  { href: "/assets", label: "Aset", area: "assets" },
+  { href: "/transactions", label: "Buku Mutasi", area: "transactions" },
+  { href: "/assets", label: "Rekening & Aset", area: "assets" },
   { href: "/credit", label: "Kredit & Talangan", area: "credit" },
   { href: "/assets/investments", label: "Investasi", area: "investments" },
-  { href: "/planning", label: "Rencana", area: "planning" },
+  { href: "/planning", label: "Perencanaan", area: "planning" },
   { href: "/insights", label: "Analitik", area: "insights" },
 ];
 
