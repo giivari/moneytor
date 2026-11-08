@@ -16,8 +16,12 @@ function MonthFigures({ report, currency, exponent, expenseMinor }: { report: An
   const row = report?.monthly.find((item) => item.currency === currency && item.key === reportMonth(report));
   const money = (value: string) => formatMinor(value, currency, exponent);
   const net = row ? BigInt(row.netMinor) : null;
+  const rawSpend = row?.spendingMinor ?? expenseMinor;
+  const rawSpendBig = BigInt(rawSpend);
+  const clampedSpend = rawSpendBig < 0n ? "0" : rawSpend;
+  const refundCount = BigInt(row?.refundCount ?? "0");
   return <dl className="home-month-figures">
-    <div><dt>Belanja bulan ini</dt><dd><FinancialAmount value={money(row?.spendingMinor ?? expenseMinor)} as="span" className="ui-amount" /></dd></div>
+    <div><dt>Belanja bulan ini</dt><dd><FinancialAmount value={money(clampedSpend)} as="span" className="ui-amount" />{(rawSpendBig < 0n || refundCount > 0n) && <small className="ui-muted"> ({refundCount > 0n ? `Refund ${row?.refundCount}x` : "Refund"}{rawSpendBig < 0n ? ` · bersih ${money(rawSpend)}` : ""})</small>}</dd></div>
     {row && net !== null && <div><dt>Selisih dengan pemasukan</dt><dd><FinancialAmount value={`${net > 0n ? "+" : ""}${money(row.netMinor)}`} as="span" className={`ui-amount${net < 0n ? " pnl-negative" : net > 0n ? " pnl-positive" : ""}`} /></dd></div>}
   </dl>;
 }

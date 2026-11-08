@@ -302,3 +302,88 @@ test('generalized Kredit & Tagihan (multi-facility ready), 4+ categories, Transf
  assert.match(insightsCss,/\.insights-page \.insight-fit-chart \.insight-axis\s*\{[^}]*font-size:\s*var\(--text-xs\)/); // 12px minimum for content text
  assert.match(dataCss,/\.u-subgrid\b/);
 });
+
+test('Fase 5: byCategoryParent and byNature, separate refund & clamped negative spending at 0, netWorthMinor/availableMinor as-is, and money-moved separation',()=>{
+ const r=fixture();
+ r.summary[0]={
+  ...r.summary[0],
+  incomeMinor:'5000000',
+  expensePrincipalMinor:'320000',
+  spendingMinor:'329000',
+  netMinor:'4671000',
+  transferPrincipalMinor:'750000',
+  debtBorrowedMinor:'2000000',
+  debtRepaidMinor:'500000',
+  adjustmentInMinor:'700',
+  adjustmentOutMinor:'0',
+  refundCount:'1',
+ };
+ r.byCategory=[
+  row('cat-shop',{name:'Belanja Online',expensePrincipalMinor:'-50000',spendingMinor:'-50000',refundCount:'1',expenseCount:'1'}),
+  row('cat-save',{name:'Dana Darurat',expensePrincipalMinor:'370000',spendingMinor:'370000',refundCount:'0',expenseCount:'1'}),
+ ];
+ r.byCategoryParent=[
+  row('parent-shop',{name:'Belanja',expensePrincipalMinor:'-50000',spendingMinor:'-50000',refundCount:'1',expenseCount:'1'}),
+  row('parent-save',{name:'Tabungan & Alokasi',expensePrincipalMinor:'370000',spendingMinor:'370000',refundCount:'0',expenseCount:'1'}),
+ ];
+ r.byNature=[
+  row('want',{name:'Keinginan',expensePrincipalMinor:'-50000',spendingMinor:'-50000',refundCount:'1',expenseCount:'1'}),
+  row('saving',{name:'Tabungan',expensePrincipalMinor:'370000',spendingMinor:'370000',refundCount:'0',expenseCount:'1'}),
+  row('none',{name:'Tanpa sifat',expensePrincipalMinor:'0',spendingMinor:'9000',refundCount:'0',expenseCount:'0'}),
+ ];
+ r.monthly=[
+  row('2026-09',{incomeMinor:'0',expensePrincipalMinor:'-40000',spendingMinor:'-40000',netMinor:'40000',refundCount:'1',activityCount:'1'}),
+  row('2026-10',r.summary[0]),
+ ];
+ r.daily=[
+  row('2026-10-02',{incomeMinor:'0',expensePrincipalMinor:'-40000',spendingMinor:'-40000',netMinor:'40000',refundCount:'1',activityCount:'1'}),
+  row('2026-10-08',r.summary[0]),
+ ];
+ r.expenseItems=[
+  {id:'exp-ref',occurredAt:'2026-10-08T08:00:00Z',currency:'IDR',exponent:0,baseAmountMinor:'420000',chargesMinor:'0',spendingMinor:'420000',refundedMinor:'100000',netMinor:'320000',categoryId:'cat-shop',categoryName:'Belanja Online',sourceAssetId:'cash',sourceName:'Rekening lama',note:'Sepatu lari',origin:'manual',charges:[]},
+ ];
+ r.context.currencies[0]={
+  ...r.context.currencies[0],
+  netWorthMinor:'13850700',
+  availableMinor:'14150700',
+ };
+
+ const out=desktopHtml(r,{'Grafik pemasukan dan kategori':'categories','Mutasi akun dan posisi aset':'investments'});
+ // (a) byCategoryParent & byNature
+ assert.match(out,/Pengeluaran per induk kategori/);
+ assert.match(out,/Tabungan &amp; Alokasi/);
+ assert.match(out,/Pengeluaran per sifat efektif/);
+ assert.match(out,/Keinginan/);
+ assert.match(out,/Tanpa sifat/);
+ // (b) Refund as separate deduction, negative category & month spending clamped at 0 while showing refund
+ assert.match(out,/Pengurang refund/);
+ assert.match(out,/Refund 1x/);
+ assert.match(out,/Bersih −Rp50\.000 \(dibatasi Rp0\)/);
+ assert.match(out,/Refund −Rp100\.000 · Bersih Rp320\.000/);
+ // (c) netWorthMinor and availableMinor as-is from contract
+ assert.match(out,/Kekayaan bersih/);
+ assert.match(out,/Rp13\.850\.700/);
+ assert.match(out,/Dana siap pakai/);
+ assert.match(out,/Rp14\.150\.700/);
+ // (d) Genuine income/spending vs "uang berpindah"
+ assert.match(out,/Pemasukan &amp; pengeluaran sungguhan/);
+ assert.match(out,/Uang berpindah &amp; penyesuaian/);
+ assert.match(out,/Transfer antar akun \(pokok\)/);
+ assert.match(out,/Rp750\.000/);
+ assert.match(out,/Tabungan \(sifat efektif\)/);
+ assert.match(out,/Rp370\.000/);
+ assert.match(out,/Pembelian investasi \(pokok\)/);
+ assert.match(out,/Pinjaman cair \(borrow\)/);
+ assert.match(out,/Rp2\.000\.000/);
+ assert.match(out,/Pelunasan pokok utang \(repay\)/);
+ assert.match(out,/Rp500\.000/);
+ assert.match(out,/Penyesuaian saldo masuk/);
+
+ const outIntervals=desktopHtml(r,{'Grafik pemasukan dan kategori':'intervals'});
+ assert.match(outIntervals,/1 Okt 2026 – 4 Okt 2026/);
+ assert.match(outIntervals,/Refund 1x · Bersih −Rp40\.000/);
+ r.period=reportingPeriod({kind:'current_year'},now);
+ const outMonthlyIntervals=desktopHtml(r,{'Grafik pemasukan dan kategori':'intervals'});
+ assert.match(outMonthlyIntervals,/Sep 2026/);
+ assert.match(outMonthlyIntervals,/Refund 1x · Bersih −Rp40\.000/);
+});

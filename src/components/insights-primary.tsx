@@ -35,13 +35,15 @@ export function InsightsPrimary({
 }) {
   const model = useInsightsVisualTrend({ report, currency, exponent, selection, granularity });
   const totalCount = categories.length + charges.length;
+  const categoryParents = (report.byCategoryParent ?? []).filter((row) => row.currency === currency);
+  const natures = (report.byNature ?? []).filter((row) => row.currency === currency);
 
   if (model.mobile) {
     return (
       <InsightsCarousel selection={slides}>
         {[
           <InsightsTrendSummary key="trend" model={model} inlineDetails />,
-          <InsightsComposition key="categories" rows={categories} charges={charges} />,
+          <InsightsComposition key="categories" rows={categories} charges={charges} categoryParents={categoryParents} natures={natures} />,
           <InsightsCashflowSlide key="cashflow" model={model} />,
         ]}
       </InsightsCarousel>
@@ -64,8 +66,8 @@ export function InsightsPrimary({
             key: "categories",
             title: "Komposisi belanja",
             action: `Semua kategori & biaya (${totalCount})`,
-            content: <InsightsComposition rows={categories} charges={charges} inlineDetails={false} />,
-            details: <InsightsCategoryDetails rows={categories} charges={charges} />,
+            content: <InsightsComposition rows={categories} charges={charges} categoryParents={categoryParents} natures={natures} inlineDetails={false} />,
+            details: <InsightsCategoryDetails rows={categories} charges={charges} categoryParents={categoryParents} natures={natures} />,
           },
         ]}
       />

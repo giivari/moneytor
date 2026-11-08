@@ -30,6 +30,40 @@ import { FinancialAmount } from "./financial-amount";
 
 const colors = ["#526f99", "#6c5b98", "#357c85", "#8c6943", "#747b86", "#44535f"];
 
+export function clampSpendingMinor(value: string): string {
+  return BigInt(value) < 0n ? "0" : value;
+}
+
+function clampCategoryRows(rows: DimensionRow[]): DimensionRow[] {
+  return rows.map((row) => ({
+    ...row,
+    spendingMinor: clampSpendingMinor(row.spendingMinor),
+    ...(row.expensePrincipalMinor !== undefined
+      ? { expensePrincipalMinor: clampSpendingMinor(row.expensePrincipalMinor) }
+      : {}),
+  }));
+}
+
+function intervalRefundCount(
+  row: { key: string; startDay: string; endDayExclusive: string },
+  report: AnalyticsReport,
+  currency: string,
+  granularity: string,
+): bigint {
+  if (granularity === "month") {
+    const found = report.monthly.find((r) => r.currency === currency && r.key === row.key);
+    return BigInt(found?.refundCount ?? "0");
+  }
+  if (granularity === "year") {
+    return report.monthly
+      .filter((r) => r.currency === currency && r.key.slice(0, 4) === row.key)
+      .reduce((s, r) => s + BigInt(r.refundCount ?? "0"), 0n);
+  }
+  return (report.daily ?? [])
+    .filter((r) => r.currency === currency && r.key >= row.startDay && r.key < row.endDayExclusive)
+    .reduce((s, r) => s + BigInt(r.refundCount ?? "0"), 0n);
+}
+
 type VisualTrendProps = {
   report: AnalyticsReport;
   currency: string;
@@ -70,7 +104,8 @@ export function useInsightsVisualTrend({
     setManual({ key, month: selection ? month : undefined });
   };
   const maximum = rows.reduce(
-    (max, row) => [BigInt(row.incomeMinor), BigInt(row.spendingMinor)].reduce((a, b) => (a > b ? a : b), max),
+    (max, row) =>
+      [BigInt(row.incomeMinor), BigInt(clampSpendingMinor(row.spendingMinor))].reduce((a, b) => (a > b ? a : b), max),
     0n,
   );
   // Beranda (dashboard) keeps all bins but narrows the viewBox on phones so axis text is not scaled below 12px.
@@ -154,8 +189,9 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
           const x = (model.axisLeft ?? 68) + step * (index + 0.5);
           const size = Math.min(18, step * 0.3);
           const income = plotPercent(row.incomeMinor, maximum) * (dashboard ? 0.72 : 1.48);
-          const spending = plotPercent(row.spendingMinor, maximum) * (dashboard ? 0.72 : 1.48);
-          const label = `${row.label}, ${visualIntervalState(row, report)}: pemasukan ${money(row.incomeMinor)}, belanja ${money(row.spendingMinor)}, net ${money(row.netMinor)}`;
+          const clampedSpend = clampSpendingMinor(row.spendingMinor);
+          const spending = plotPercent(clampedSpend, maximum) * (dashboard ? 0.72 : 1.48);
+          const label = `${row.label}, ${visualIntervalState(row, report)}: pemasukan ${money(row.incomeMinor)}, belanja ${money(clampedSpend)}${BigInt(row.spendingMinor) < 0n ? ` (bersih ${money(row.spendingMinor)})` : ""}, net ${money(row.netMinor)}`;
           const isCompact = mobile || dashboard;
           const axisLabel = (() => {
             if (data.granularity === "year") {
@@ -236,7 +272,8 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
             <div>
               <dt>Belanja</dt>
               <dd>
-                <FinancialAmount value={money(active.spendingMinor)} as="span" className="insight-negative" />
+                <FinancialAmount value={money(clampSpendingMinor(active.spendingMinor))} as="span" className="insight-negative" />
+                {BigInt(active.spendingMinor) < 0n && <small className="u-cell-sub"> (Refund · bersih {money(active.spendingMinor)})</small>}
               </dd>
             </div>
             <div>
@@ -272,8 +309,9 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
             </div>
             <div>
               <dt>Belanja</dt>
-              <dd className={BigInt(active.spendingMinor) === 0n ? "insight-zero-muted" : "insight-negative"}>
-                <FinancialAmount value={money(active.spendingMinor)} as="span" />
+              <dd className={BigInt(clampSpendingMinor(active.spendingMinor)) === 0n ? "insight-zero-muted" : "insight-negative"}>
+                <FinancialAmount value={money(clampSpendingMinor(active.spendingMinor))} as="span" />
+                {BigInt(active.spendingMinor) < 0n && <small className="u-cell-sub">Refund · bersih {money(active.spendingMinor)}</small>}
               </dd>
             </div>
             <div>
@@ -323,6 +361,9 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
             <tbody>
               {activeRows.map((row) => {
                 const net = BigInt(row.netMinor);
+                const exp = BigInt(row.spendingMinor);
+                const clampedExp = clampSpendingMinor(row.spendingMinor);
+                const refundCount = intervalRefundCount(row, model.report, model.currency, model.data.granularity);
                 const state = visualIntervalState(row, model.report);
                 return (
                   <tr key={row.key}>
@@ -332,7 +373,10 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
                         {state}
                       </em>
                       <small className="u-cell-sub">
-                        Masuk {model.money(row.incomeMinor)} · Belanja {model.money(row.spendingMinor)}
+                        Masuk {model.money(row.incomeMinor)} · Belanja {model.money(clampedExp)}
+                        {(exp < 0n || refundCount > 0n)
+                          ? ` · ${refundCount > 0n ? `Refund ${refundCount.toString()}x` : "Refund"}${exp < 0n ? ` (bersih ${model.money(row.spendingMinor)})` : ""}`
+                          : ""}
                       </small>
                     </th>
                     <td className={net < 0n ? "insight-negative" : net > 0n ? "insight-positive" : "insight-zero-muted"}>
@@ -373,6 +417,8 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
             {activeRows.map((row) => {
               const inc = BigInt(row.incomeMinor);
               const exp = BigInt(row.spendingMinor);
+              const clampedExp = clampSpendingMinor(row.spendingMinor);
+              const refundCount = intervalRefundCount(row, model.report, model.currency, model.data.granularity);
               const net = BigInt(row.netMinor);
               const state = visualIntervalState(row, model.report);
               return (
@@ -386,8 +432,14 @@ export function InsightsIntervalDetails({ model }: { model: VisualTrendModel }) 
                   <td className={inc === 0n ? "insight-zero-muted" : "insight-positive"}>
                     {model.money(row.incomeMinor)}
                   </td>
-                  <td className={exp === 0n ? "insight-zero-muted" : "insight-negative"}>
-                    {model.money(row.spendingMinor)}
+                  <td className={BigInt(clampedExp) === 0n ? "insight-zero-muted" : "insight-negative"}>
+                    {model.money(clampedExp)}
+                    {(exp < 0n || refundCount > 0n) && (
+                      <small className="u-cell-sub">
+                        {refundCount > 0n ? `Refund ${refundCount.toString()}x` : "Refund"}
+                        {exp < 0n ? ` · Bersih ${model.money(row.spendingMinor)}` : ""}
+                      </small>
+                    )}
                   </td>
                   <td className={net < 0n ? "insight-negative" : net > 0n ? "insight-positive" : "insight-zero-muted"}>
                     {signedMoney(row.netMinor, model.currency, model.exponent)}
@@ -411,7 +463,14 @@ function renderCompositionRow(
     "key" | "name" | "archived" | "badge" | "subtitle" | "spendingMinor" | "currency" | "exponent" | "shareBps"
   >,
   color?: string,
+  rawRow?: DimensionRow,
 ) {
+  const refundCount = BigInt(rawRow?.refundCount ?? "0");
+  const rawSpendBig = rawRow ? BigInt(rawRow.spendingMinor) : 0n;
+  const refundNote =
+    rawRow && (rawSpendBig < 0n || refundCount > 0n)
+      ? ` (${refundCount > 0n ? `Refund ${rawRow.refundCount}x` : "Refund"}${rawSpendBig < 0n ? ` · bersih ${formatMinor(rawRow.spendingMinor, row.currency, row.exponent)}` : ""})`
+      : "";
   return (
     <li key={row.key} className="insight-comp-row--compact">
       <span className="insight-comp-name">
@@ -419,6 +478,7 @@ function renderCompositionRow(
         <span className="insight-comp-label">
           {row.name}
           {row.archived ? " · Diarsipkan" : ""}
+          {refundNote}
         </span>
       </span>
       <strong>
@@ -432,18 +492,28 @@ function renderCompositionRow(
 export function InsightsComposition({
   rows,
   charges,
+  categoryParents = [],
+  natures = [],
   inlineDetails = true,
   dashboard = false,
 }: {
   rows: DimensionRow[];
   charges?: ChargeReport[];
+  categoryParents?: DimensionRow[];
+  natures?: DimensionRow[];
   inlineDetails?: boolean;
   dashboard?: boolean;
 }) {
-  const shares = compositionShares(rows, charges);
+  const rawByKey = new Map(rows.map((r) => [r.key, r]));
+  const shares = compositionShares(clampCategoryRows(rows), charges);
   const id = useId();
   const sorted = shares.rows;
   const active = sorted.filter((row) => BigInt(row.spendingMinor) > 0n);
+  const refundedZeroRows = sorted.filter((row) => {
+    if (BigInt(row.spendingMinor) > 0n) return false;
+    const raw = rawByKey.get(row.key);
+    return Boolean(raw && (BigInt(raw.spendingMinor) < 0n || BigInt(raw.refundCount ?? "0") > 0n));
+  });
   const colorMap = new Map(active.map((row, index) => [row.key, colors[index % colors.length]]));
   const maxLines = dashboard ? 4 : 5;
   const total = BigInt(shares.totalMinor);
@@ -458,7 +528,10 @@ export function InsightsComposition({
   }[] = [];
 
   if (first && active.length <= maxLines) {
-    displayRows = active.map((row) => ({ row, color: colorMap.get(row.key) ?? colors[0] }));
+    displayRows = [
+      ...active.map((row) => ({ row, color: colorMap.get(row.key) ?? colors[0] })),
+      ...refundedZeroRows.map((row) => ({ row, color: "#94a3b1" })),
+    ];
   } else if (first && active.length > maxLines) {
     const head = active.slice(0, maxLines - 1);
     const tail = active.slice(maxLines - 1);
@@ -480,15 +553,21 @@ export function InsightsComposition({
         },
         color: "#94a3b1",
       },
+      ...refundedZeroRows.map((row) => ({ row, color: "#94a3b1" })),
     ];
   }
 
-  const hasHiddenRows = sorted.length > active.length || active.length > maxLines || (charges?.length ?? 0) > 0;
+  const hasHiddenRows =
+    sorted.length > active.length ||
+    active.length > maxLines ||
+    (charges?.length ?? 0) > 0 ||
+    categoryParents.length > 0 ||
+    natures.length > 0;
 
   return (
     <>
       <SectionHeading title="Komposisi belanja" helper="Distribusi pengeluaran & biaya pada periode terpilih." />
-      {!first || total === 0n ? (
+      {!first || (total === 0n && refundedZeroRows.length === 0) ? (
         <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p>
       ) : (
         <>
@@ -529,11 +608,72 @@ export function InsightsComposition({
               <FinancialAmount value={formatMinor(total, first.currency, first.exponent)} level="summary" className="insight-money" />
             </div>
           </div>
-          <ol className="insight-visual-ranking">{displayRows.map(({ row, color }) => renderCompositionRow(row, color))}</ol>
+          <ol className="insight-visual-ranking">
+            {displayRows.map(({ row, color }) => renderCompositionRow(row, color, rawByKey.get(row.key)))}
+          </ol>
+          {!dashboard && (categoryParents.length > 0 || natures.length > 0) && (
+            <div className="insight-parent-nature-summary">
+              {categoryParents.length > 0 && (
+                <div>
+                  <small className="insight-note">Per induk kategori</small>
+                  <ul className="insight-visual-ranking">
+                    {categoryParents.map((parent) => {
+                      const rawSpend = BigInt(parent.spendingMinor);
+                      const clamped = clampSpendingMinor(parent.spendingMinor);
+                      const refCnt = BigInt(parent.refundCount ?? "0");
+                      return (
+                        <li key={`parent-${parent.key}`} className="insight-comp-row--compact">
+                          <span className="insight-comp-name">
+                            <span className="insight-comp-label">
+                              {parent.name}
+                              {parent.archived ? " · Diarsipkan" : ""}
+                              {(rawSpend < 0n || refCnt > 0n)
+                                ? ` (${refCnt > 0n ? `Refund ${parent.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · bersih ${formatMinor(parent.spendingMinor, parent.currency, parent.exponent)}` : ""})`
+                                : ""}
+                            </span>
+                          </span>
+                          <strong>
+                            <FinancialAmount as="span" value={formatMinor(clamped, parent.currency, parent.exponent)} />
+                          </strong>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+              {natures.length > 0 && (
+                <div>
+                  <small className="insight-note">Per sifat efektif</small>
+                  <ul className="insight-visual-ranking">
+                    {natures.map((nature) => {
+                      const rawSpend = BigInt(nature.spendingMinor);
+                      const clamped = clampSpendingMinor(nature.spendingMinor);
+                      const refCnt = BigInt(nature.refundCount ?? "0");
+                      return (
+                        <li key={`nature-${nature.key}`} className="insight-comp-row--compact">
+                          <span className="insight-comp-name">
+                            <span className="insight-comp-label">
+                              {nature.name}
+                              {(rawSpend < 0n || refCnt > 0n)
+                                ? ` (${refCnt > 0n ? `Refund ${nature.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · bersih ${formatMinor(nature.spendingMinor, nature.currency, nature.exponent)}` : ""})`
+                                : ""}
+                            </span>
+                          </span>
+                          <strong>
+                            <FinancialAmount as="span" value={formatMinor(clamped, nature.currency, nature.exponent)} />
+                          </strong>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
           {inlineDetails && hasHiddenRows && (
             <details className="insight-inline-detail">
               <summary>Semua kategori &amp; biaya ({sorted.length})</summary>
-              <InsightsCategoryDetails rows={rows} charges={charges} />
+              <InsightsCategoryDetails rows={rows} charges={charges} categoryParents={categoryParents} natures={natures} />
             </details>
           )}
         </>
@@ -542,11 +682,23 @@ export function InsightsComposition({
   );
 }
 
-export function InsightsCategoryDetails({ rows, charges = [] }: { rows: DimensionRow[]; charges?: ChargeReport[] }) {
-  const shares = compositionShares(rows, charges);
+export function InsightsCategoryDetails({
+  rows,
+  charges = [],
+  categoryParents = [],
+  natures = [],
+}: {
+  rows: DimensionRow[];
+  charges?: ChargeReport[];
+  categoryParents?: DimensionRow[];
+  natures?: DimensionRow[];
+}) {
+  const rawByKey = new Map(rows.map((r) => [r.key, r]));
+  const shares = compositionShares(clampCategoryRows(rows), charges);
   const sorted = shares.rows;
   const first = sorted[0];
-  if (!first || BigInt(shares.totalMinor) === 0n) {
+  const hasRefundedRows = rows.some((r) => BigInt(r.spendingMinor) < 0n || BigInt(r.refundCount ?? "0") > 0n);
+  if (!first || (BigInt(shares.totalMinor) === 0n && !hasRefundedRows && categoryParents.length === 0 && natures.length === 0)) {
     return <p className="insight-empty">Belum ada belanja Expense untuk dikelompokkan menurut kategori.</p>;
   }
   const fees = feePartition(charges);
@@ -574,6 +726,9 @@ export function InsightsCategoryDetails({ rows, charges = [] }: { rows: Dimensio
               <tbody>
                 {sorted.map((row) => {
                   const isZero = BigInt(row.spendingMinor) === 0n;
+                  const rawRow = rawByKey.get(row.key);
+                  const rawSpendBig = rawRow ? BigInt(rawRow.spendingMinor) : 0n;
+                  const refundCount = BigInt(rawRow?.refundCount ?? "0");
                   return (
                     <tr key={row.key}>
                       <th scope="row">
@@ -585,6 +740,14 @@ export function InsightsCategoryDetails({ rows, charges = [] }: { rows: Dimensio
                           </em>
                         )}
                         {row.subtitle && <small className="u-cell-sub insight-entry-sub">{row.subtitle}</small>}
+                        {rawRow && (rawSpendBig < 0n || refundCount > 0n) && (
+                          <small className="u-cell-sub insight-entry-sub">
+                            {refundCount > 0n ? `Refund ${rawRow.refundCount}x` : "Refund"}
+                            {rawSpendBig < 0n
+                              ? ` · Bersih ${formatMinor(rawRow.spendingMinor, row.currency, row.exponent)} (dibatasi ${formatMinor("0", row.currency, row.exponent)})`
+                              : ""}
+                          </small>
+                        )}
                       </th>
                       <td className={isZero ? "insight-zero-muted" : ""}>
                         <FinancialAmount as="span" value={formatMinor(row.spendingMinor, row.currency, row.exponent)} />
@@ -654,6 +817,89 @@ export function InsightsCategoryDetails({ rows, charges = [] }: { rows: Dimensio
           </div>
         )}
       </div>
+
+      {(categoryParents.length > 0 || natures.length > 0) && (
+        <div className="u-subgrid">
+          {categoryParents.length > 0 && (
+            <div className="u-table-section">
+              <h4 className="u-table-title">Pengeluaran per induk kategori</h4>
+              <div className="u-table-wrap">
+                <table className="u-table" aria-label="Pengeluaran per induk kategori">
+                  <thead>
+                    <tr>
+                      <th scope="col">Induk kategori</th>
+                      <th scope="col">Nominal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categoryParents.map((parent) => {
+                      const rawSpend = BigInt(parent.spendingMinor);
+                      const clamped = clampSpendingMinor(parent.spendingMinor);
+                      const refCnt = BigInt(parent.refundCount ?? "0");
+                      return (
+                        <tr key={parent.key}>
+                          <th scope="row">
+                            <strong>{parent.name}</strong>
+                            {parent.archived && <em className="u-pill">Diarsipkan</em>}
+                            <small className="u-cell-sub">
+                              {parent.expenseCount}x pengeluaran
+                              {(rawSpend < 0n || refCnt > 0n)
+                                ? ` · ${refCnt > 0n ? `Refund ${parent.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · Bersih ${formatMinor(parent.spendingMinor, parent.currency, parent.exponent)} (dibatasi ${formatMinor("0", parent.currency, parent.exponent)})` : ""}`
+                                : ""}
+                            </small>
+                          </th>
+                          <td className={BigInt(clamped) === 0n ? "insight-zero-muted" : ""}>
+                            <FinancialAmount as="span" value={formatMinor(clamped, parent.currency, parent.exponent)} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {natures.length > 0 && (
+            <div className="u-table-section">
+              <h4 className="u-table-title">Pengeluaran per sifat efektif</h4>
+              <div className="u-table-wrap">
+                <table className="u-table" aria-label="Pengeluaran per sifat efektif">
+                  <thead>
+                    <tr>
+                      <th scope="col">Sifat efektif</th>
+                      <th scope="col">Nominal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {natures.map((nature) => {
+                      const rawSpend = BigInt(nature.spendingMinor);
+                      const clamped = clampSpendingMinor(nature.spendingMinor);
+                      const refCnt = BigInt(nature.refundCount ?? "0");
+                      return (
+                        <tr key={nature.key}>
+                          <th scope="row">
+                            <strong>{nature.name}</strong>
+                            <small className="u-cell-sub">
+                              {nature.expenseCount}x pengeluaran
+                              {(rawSpend < 0n || refCnt > 0n)
+                                ? ` · ${refCnt > 0n ? `Refund ${nature.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · Bersih ${formatMinor(nature.spendingMinor, nature.currency, nature.exponent)} (dibatasi ${formatMinor("0", nature.currency, nature.exponent)})` : ""}`
+                                : ""}
+                            </small>
+                          </th>
+                          <td className={BigInt(clamped) === 0n ? "insight-zero-muted" : ""}>
+                            <FinancialAmount as="span" value={formatMinor(clamped, nature.currency, nature.exponent)} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <p className="insight-note">
         Persentase dihitung dari total seluruh pengeluaran efektif. Biaya Transfer sudah termasuk dalam total belanja, bukan tambahan lagi. Pokok Transfer antar akun sendiri tidak termasuk.
       </p>
@@ -695,7 +941,7 @@ export function InsightsCashflowSlide({ model }: { model: VisualTrendModel }) {
     .join(" ");
 
   const opIn = BigInt(summary?.incomeMinor ?? "0");
-  const opOut = BigInt(summary?.spendingMinor ?? "0");
+  const opOut = BigInt(clampSpendingMinor(summary?.spendingMinor ?? "0"));
   const invSell = BigInt(curData.flows?.saleProceedsMinor ?? "0");
   const invBuy = BigInt(curData.flows?.purchasePrincipalMinor ?? "0") + BigInt(curData.flows?.feesMinor ?? "0");
   const cashIn = opIn + invSell;

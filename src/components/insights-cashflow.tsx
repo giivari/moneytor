@@ -16,6 +16,7 @@ import { formatShortDueIso } from "@/lib/domain/credit";
 import { formatMinor } from "@/lib/finance/format";
 import { AppLink } from "./app-link";
 import { FinancialAmount } from "./financial-amount";
+import { clampSpendingMinor } from "./insights-visuals";
 import { SectionHeading } from "./section-heading";
 import { useInsightsViewport } from "./use-insights-viewport";
 
@@ -82,6 +83,11 @@ function renderExpenseTable(items: AnalyticsExpenseItem[], startIndex: number, m
                 </th>
                 <td className="insight-negative">
                   <FinancialAmount as="span" value={money(item.spendingMinor)} />
+                  {item.refundedMinor && BigInt(item.refundedMinor) > 0n && (
+                    <small className="u-cell-sub">
+                      Refund −{money(item.refundedMinor)} · Bersih {money(clampSpendingMinor(item.netMinor ?? item.spendingMinor))}
+                    </small>
+                  )}
                 </td>
               </tr>
             );
@@ -114,7 +120,8 @@ export function InsightsFinancialSuite({
   const money = (val: string | bigint) => formatMinor(val, currency, exponent);
 
   const opIncome = BigInt(summary.incomeMinor);
-  const opSpending = BigInt(summary.spendingMinor);
+  const rawOpSpending = BigInt(summary.spendingMinor);
+  const opSpending = BigInt(clampSpendingMinor(summary.spendingMinor));
   const transferFeesMinor = BigInt(summary.transferFeesMinor);
   const invBuy = BigInt(data.flows?.purchasePrincipalMinor ?? "0");
   const invSell = BigInt(data.flows?.saleProceedsMinor ?? "0");
@@ -212,7 +219,7 @@ export function InsightsFinancialSuite({
   const netWorthMinor =
     data.assets && "netWorthMinor" in data.assets && typeof data.assets.netWorthMinor === "string"
       ? BigInt(data.assets.netWorthMinor)
-      : totalAssetsMinor !== null ? totalAssetsMinor - creditDebtMinor : null;
+      : null;
   const runwayDays =
     liquidMinor !== null && liquidMinor > 0n && dailyBurnMinor > 0n ? liquidMinor / dailyBurnMinor : null;
 
@@ -246,11 +253,14 @@ export function InsightsFinancialSuite({
   const weekdayMap = new Map(data.weekdays.map((row) => [row.key, row]));
   const fullWeekdays = ["1", "2", "3", "4", "5", "6", "7"].map((iso) => {
     const found = weekdayMap.get(iso);
+    const rawSpend = found?.spendingMinor ?? "0";
     return {
       key: iso,
       name: weekdayNames[iso],
-      spendingMinor: found?.spendingMinor ?? "0",
+      rawSpendingMinor: rawSpend,
+      spendingMinor: clampSpendingMinor(rawSpend),
       expenseCount: found?.expenseCount ?? "0",
+      refundCount: found?.refundCount ?? "0",
     };
   });
   const maxWeekdaySpend = fullWeekdays.reduce(
@@ -337,6 +347,7 @@ export function InsightsFinancialSuite({
                   </strong>
                   <small>
                     Belanja {money(opSpending)}
+                    {rawOpSpending < 0n ? ` (bersih ${money(rawOpSpending)})` : ""}
                     {invBuy + invFees > 0n ? ` + Investasi ${money(invBuy + invFees)}` : ""}
                   </small>
                 </div>
@@ -356,7 +367,11 @@ export function InsightsFinancialSuite({
                   <strong>
                     <FinancialAmount as="span" value={money(summary.transferPrincipalMinor)} className="insight-money" />
                   </strong>
-                  <small>{summary.transferCount}x perpindahan antar akun</small>
+                  <small>
+                    {summary.transferCount}x perpindahan antar akun
+                    {BigInt(summary.debtBorrowedMinor ?? "0") > 0n ? ` · Pinjaman ${money(summary.debtBorrowedMinor ?? "0")}` : ""}
+                    {BigInt(summary.debtRepaidMinor ?? "0") > 0n ? ` · Pelunasan pokok ${money(summary.debtRepaidMinor ?? "0")}` : ""}
+                  </small>
                 </div>
               </div>
 

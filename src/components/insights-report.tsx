@@ -4,7 +4,7 @@ import { dayLabel, insightsCurrency, originLabel, percentageLabel, periodLabel, 
 import { formatMinor } from "@/lib/finance/format";
 import type { InsightsMonthSelection } from "./use-insights-month";
 import type { InsightsSlideSelection } from "./insights-carousel";
-import { InsightsCostBars } from "./insights-visuals";
+import { clampSpendingMinor, InsightsCostBars } from "./insights-visuals";
 import { InsightsPrimary } from "./insights-primary";
 import { InsightsSecondary } from "./insights-secondary";
 import { elapsedDaysInPeriod, InsightsFinancialSuite } from "./insights-cashflow";
@@ -208,9 +208,19 @@ export function InsightsReportView({
 
   const opIncome = BigInt(summary.incomeMinor);
   const opSpending = BigInt(summary.spendingMinor);
+  const clampedSummarySpending = clampSpendingMinor(summary.spendingMinor);
+  const clampedOpSpending = BigInt(clampedSummarySpending);
+  const refundCount = BigInt(summary.refundCount ?? "0");
+  const categoryParents = (report.byCategoryParent ?? []).filter((row) => row.currency === currency);
+  const natures = (report.byNature ?? []).filter((row) => row.currency === currency);
+  const savingNatureRow = natures.find((row) => row.key === "saving");
+  const savingNatureMinor = savingNatureRow ? clampSpendingMinor(savingNatureRow.spendingMinor) : "0";
+  const hasNetWorth = Boolean(
+    data.assets && "netWorthMinor" in data.assets && typeof data.assets.netWorthMinor === "string",
+  );
   const savingsRateBps = opIncome > 0n ? (((opIncome - opSpending) * 10000n) / opIncome).toString() : null;
   const daysElapsed = elapsedDaysInPeriod(report);
-  const dailyBurnMinor = (opSpending / daysElapsed).toString();
+  const dailyBurnMinor = (clampedOpSpending / daysElapsed).toString();
   const hasTrades = Boolean(data.flows && BigInt(data.flows.tradeCount) > 0n);
 
   return (
@@ -251,10 +261,11 @@ export function InsightsReportView({
             ] as const
           ).map(([label, valueKey, compareKey, tone]) => {
             const comparison = data.comparison?.[compareKey];
+            const displayVal = valueKey === "spendingMinor" ? clampedSummarySpending : summary[valueKey];
             return (
               <div className="insight-main-metric" key={valueKey}>
                 <span>{label}</span>
-                <strong>{money(summary[valueKey], `insight-${tone}`, "summary")}</strong>
+                <strong>{money(displayVal, `insight-${tone}`, "summary")}</strong>
                 <small>
                   {comparison ? (
                     <>
@@ -265,6 +276,13 @@ export function InsightsReportView({
                     "—"
                   )}
                   <span className="insight-comparison-label"> · vs periode lalu</span>
+                  {valueKey === "spendingMinor" && (opSpending < 0n || refundCount > 0n) && (
+                    <span>
+                      {" · "}
+                      {refundCount > 0n ? `Refund ${summary.refundCount}x` : "Refund"}
+                      {opSpending < 0n ? ` (bersih ${formatMinor(summary.spendingMinor, currency, summary.exponent)})` : ""}
+                    </span>
+                  )}
                 </small>
               </div>
             );
@@ -293,6 +311,20 @@ export function InsightsReportView({
             </small>
           </div>
         </div>
+        {data.assets && (
+          <dl className="insight-asset-snapshot-grid" aria-label="Ringkasan kekayaan bersih dan dana siap pakai">
+            {hasNetWorth && (
+              <div>
+                <dt>Kekayaan bersih</dt>
+                <dd>{money(data.assets.netWorthMinor)}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Dana siap pakai</dt>
+              <dd>{money(data.assets.availableMinor)}</dd>
+            </div>
+          </dl>
+        )}
 
         <div className="insight-overview-foot">
           {(report.period.partial || report.comparison.partialComparison) && (
@@ -404,7 +436,26 @@ export function InsightsReportView({
                         </tr>
                       </thead>
                       <tbody>
-                        {rowCell("Pokok pengeluaran", summary.expensePrincipalMinor, `${summary.expenseCount}x pengeluaran`)}
+                        {rowCell(
+                          "Pokok pengeluaran",
+                          clampSpendingMinor(summary.expensePrincipalMinor),
+                          `${summary.expenseCount}x pengeluaran${BigInt(summary.expensePrincipalMinor) < 0n ? ` · Bersih ${formatMinor(summary.expensePrincipalMinor, currency, summary.exponent)}` : ""}`,
+                        )}
+                        {(refundCount > 0n || opSpending < 0n) && (
+                          <tr>
+                            <th scope="row">
+                              <strong>Pengurang refund</strong>
+                              <small className="u-cell-sub">
+                                {refundCount > 0n ? `${summary.refundCount}x refund diterima · ` : ""}Mengurangi pengeluaran, bukan pemasukan
+                              </small>
+                            </th>
+                            <td className="insight-positive">
+                              {opSpending < 0n
+                                ? `Bersih ${formatMinor(summary.spendingMinor, currency, summary.exponent)} (dibatasi ${formatMinor("0", currency, summary.exponent)})`
+                                : `${summary.refundCount}x refund`}
+                            </td>
+                          </tr>
+                        )}
                         {rowCell("Biaya layanan & Transfer", summary.feesMinor, "Termasuk biaya admin transfer")}
                         {rowCell("Pajak", summary.taxesMinor)}
                         {rowCell("Biaya lainnya", summary.otherChargesMinor)}
@@ -412,8 +463,13 @@ export function InsightsReportView({
                       <tfoot>
                         <tr>
                           <th scope="row">Total belanja</th>
-                          <td className={BigInt(summary.spendingMinor) === 0n ? "insight-zero-muted" : "insight-negative"}>
-                            {money(summary.spendingMinor)}
+                          <td className={clampedOpSpending === 0n ? "insight-zero-muted" : "insight-negative"}>
+                            {money(clampedSummarySpending)}
+                            {opSpending < 0n && (
+                              <small className="u-cell-sub">
+                                Bersih {formatMinor(summary.spendingMinor, currency, summary.exponent)} · Dibatasi {formatMinor("0", currency, summary.exponent)}
+                              </small>
+                            )}
                           </td>
                         </tr>
                       </tfoot>
@@ -421,6 +477,150 @@ export function InsightsReportView({
                   </div>
                 </div>
               </div>
+
+              <div className="u-subgrid">
+                <div className="u-table-section">
+                  <h4 className="u-table-title">Pemasukan &amp; pengeluaran sungguhan</h4>
+                  <div className="u-table-wrap">
+                    <table className="u-table" aria-label="Pemasukan dan pengeluaran sungguhan">
+                      <thead>
+                        <tr>
+                          <th scope="col">Pos sungguhan</th>
+                          <th scope="col">Nominal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rowCell("Pemasukan sungguhan", summary.incomeMinor, `${summary.incomeCount}x pemasukan`)}
+                        {rowCell(
+                          "Pengeluaran sungguhan (bersih)",
+                          clampedSummarySpending,
+                          `${summary.expenseCount}x pengeluaran${refundCount > 0n ? ` · Dikurangi ${summary.refundCount}x refund` : ""}${opSpending < 0n ? ` · Bersih ${formatMinor(summary.spendingMinor, currency, summary.exponent)}` : ""}`,
+                        )}
+                        {rowCell("Selisih bersih (net)", summary.netMinor, "Pemasukan − pengeluaran bersih")}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="u-table-section">
+                  <h4 className="u-table-title">Uang berpindah &amp; penyesuaian (bukan pemasukan/pengeluaran)</h4>
+                  <div className="u-table-wrap">
+                    <table className="u-table" aria-label="Arus uang berpindah dan penyesuaian saldo">
+                      <thead>
+                        <tr>
+                          <th scope="col">Jenis perpindahan</th>
+                          <th scope="col">Nominal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rowCell("Transfer antar akun (pokok)", summary.transferPrincipalMinor, `${summary.transferCount}x transfer`)}
+                        {rowCell(
+                          "Tabungan (sifat efektif)",
+                          savingNatureMinor,
+                          savingNatureRow ? `${savingNatureRow.expenseCount}x alokasi kategori Tabungan` : "Alokasi kategori bersandi Tabungan",
+                        )}
+                        {rowCell(
+                          "Pembelian investasi (pokok)",
+                          data.flows?.purchasePrincipalMinor ?? "0",
+                          data.flows ? `${data.flows.tradeCount}x transaksi instrumen` : "Pembelian instrumen investasi",
+                        )}
+                        {rowCell("Penjualan investasi (pokok)", data.flows?.saleProceedsMinor ?? "0", "Pencairan pokok instrumen investasi")}
+                        {rowCell("Pinjaman cair (borrow)", summary.debtBorrowedMinor ?? "0", "Pencairan utang/pinjaman · Bukan pemasukan")}
+                        {rowCell("Pelunasan pokok utang (repay)", summary.debtRepaidMinor ?? "0", "Bayar pokok kewajiban · Bunga masuk biaya")}
+                        {(BigInt(summary.adjustmentInMinor ?? "0") > 0n || BigInt(summary.adjustmentOutMinor ?? "0") > 0n) && (
+                          <>
+                            {rowCell("Penyesuaian saldo masuk", summary.adjustmentInMinor ?? "0", "Rekonsiliasi tambah")}
+                            {rowCell("Penyesuaian saldo keluar", summary.adjustmentOutMinor ?? "0", "Rekonsiliasi kurang / utang awal")}
+                          </>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {(categoryParents.length > 0 || natures.length > 0) && (
+                <div className="u-subgrid">
+                  {categoryParents.length > 0 && (
+                    <div className="u-table-section">
+                      <h4 className="u-table-title">Pengeluaran per induk kategori</h4>
+                      <div className="u-table-wrap">
+                        <table className="u-table" aria-label="Ringkasan pengeluaran per induk kategori">
+                          <thead>
+                            <tr>
+                              <th scope="col">Induk kategori</th>
+                              <th scope="col">Nominal</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {categoryParents.map((parent) => {
+                              const rawSpend = BigInt(parent.spendingMinor);
+                              const clamped = clampSpendingMinor(parent.spendingMinor);
+                              const refCnt = BigInt(parent.refundCount ?? "0");
+                              return (
+                                <tr key={parent.key}>
+                                  <th scope="row">
+                                    <strong>{parent.name}</strong>
+                                    {parent.archived && <em className="u-pill">Diarsipkan</em>}
+                                    <small className="u-cell-sub">
+                                      {parent.expenseCount}x pengeluaran
+                                      {(rawSpend < 0n || refCnt > 0n)
+                                        ? ` · ${refCnt > 0n ? `Refund ${parent.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · Bersih ${formatMinor(parent.spendingMinor, parent.currency, parent.exponent)} (dibatasi ${formatMinor("0", parent.currency, parent.exponent)})` : ""}`
+                                        : ""}
+                                    </small>
+                                  </th>
+                                  <td className={BigInt(clamped) === 0n ? "insight-zero-muted" : ""}>
+                                    {money(clamped)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {natures.length > 0 && (
+                    <div className="u-table-section">
+                      <h4 className="u-table-title">Pengeluaran per sifat efektif</h4>
+                      <div className="u-table-wrap">
+                        <table className="u-table" aria-label="Ringkasan pengeluaran per sifat efektif">
+                          <thead>
+                            <tr>
+                              <th scope="col">Sifat efektif</th>
+                              <th scope="col">Nominal</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {natures.map((nature) => {
+                              const rawSpend = BigInt(nature.spendingMinor);
+                              const clamped = clampSpendingMinor(nature.spendingMinor);
+                              const refCnt = BigInt(nature.refundCount ?? "0");
+                              return (
+                                <tr key={nature.key}>
+                                  <th scope="row">
+                                    <strong>{nature.name}</strong>
+                                    <small className="u-cell-sub">
+                                      {nature.expenseCount}x pengeluaran
+                                      {(rawSpend < 0n || refCnt > 0n)
+                                        ? ` · ${refCnt > 0n ? `Refund ${nature.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · Bersih ${formatMinor(nature.spendingMinor, nature.currency, nature.exponent)} (dibatasi ${formatMinor("0", nature.currency, nature.exponent)})` : ""}`
+                                        : ""}
+                                    </small>
+                                  </th>
+                                  <td className={BigInt(clamped) === 0n ? "insight-zero-muted" : ""}>
+                                    {money(clamped)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <p className="insight-note insight-activity-meta">
                 <span>
@@ -531,6 +731,12 @@ export function InsightsReportView({
                       <dt>Total aset diketahui</dt>
                       <dd>{money(data.assets.totalMinor)}</dd>
                     </div>
+                    {hasNetWorth && (
+                      <div>
+                        <dt>Kekayaan bersih</dt>
+                        <dd>{money(data.assets.netWorthMinor)}</dd>
+                      </div>
+                    )}
                     <div>
                       <dt>Dana likuid</dt>
                       <dd>{money(data.assets.liquidMinor)}</dd>
@@ -540,7 +746,7 @@ export function InsightsReportView({
                       <dd>{money(data.assets.spendableMinor)}</dd>
                     </div>
                     <div>
-                      <dt>Setelah kewajiban</dt>
+                      <dt>Dana siap pakai (Setelah kewajiban)</dt>
                       <dd>{money(data.assets.availableMinor)}</dd>
                     </div>
                   </dl>
@@ -588,10 +794,11 @@ export function InsightsReportView({
                             </thead>
                             <tbody>
                               {rowCell("Total aset diketahui", data.assets.totalMinor)}
+                              {hasNetWorth && rowCell("Kekayaan bersih", data.assets.netWorthMinor)}
                               {rowCell("Dana likuid", data.assets.liquidMinor)}
                               {rowCell("Dapat digunakan", data.assets.spendableMinor)}
                               {rowCell(
-                                "Setelah kewajiban",
+                                "Dana siap pakai (Setelah kewajiban)",
                                 data.assets.availableMinor,
                                 report.context?.planningReady
                                   ? `Sampai ${dayLabel(report.context.throughDay)}`
