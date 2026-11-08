@@ -109,3 +109,15 @@ test('the editor accepts a preset and the card passes credit account, amount and
  assert.match(editor,/preset\?: TransactionPreset/);
  assert.match(editor,/preset\?\.destinationId/);
 });
+
+test('Fase 3: pembuatan akun wajib memilih kelas, ubah kelas lewat asset-class-change, dan detail menampilkan jadwal cicilan serta activitySummary apa adanya', () => {
+ const manager=fs.readFileSync(new URL('src/components/assets-manager.tsx',root),'utf8');
+ assert.match(manager,/useState<AssetClass \| "">\(initial\?\.assetClass \?\? ""\)/);
+ assert.match(manager,/Kelas akun wajib dipilih/);
+ assert.match(manager,/financeRequest\("asset-class-change"/);
+ assert.match(manager,/detail\.activitySummary\.expenseMinor/);
+ assert.match(manager,/detail\.activitySummary\.refundMinor/);
+ assert.match(manager,/detail\.activitySummary\.transferOutMinor/);
+ assert.match(manager,/asset\.creditInstallments/);
+ assert.doesNotMatch(manager,/balanceBig\s*-\s*openingBig/);
+});

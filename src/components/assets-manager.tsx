@@ -6,7 +6,7 @@ import { ListSortControl } from "./list-sort-control";
 
 import { useEffect, useRef, useState } from "react";
 import { Bank, CheckCircle, CreditCard, Drop, PencilSimple, Plus, Wallet, X } from "@phosphor-icons/react";
-import { Kpi, PageHeading } from "./ui";
+import { Kpi, monthLabel, PageHeading } from "./ui";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
 import {
   bpsToInput,
@@ -32,6 +32,7 @@ import {
   nextMonthlyDueDayIso,
   parseCreditMeta,
 } from "@/lib/domain/credit";
+import { installmentContracts } from "@/lib/domain/credit-overview";
 import { ProviderBrandMark } from "./provider-brand-mark";
 import { InlineCatalogSelect } from "./inline-catalog-select";
 import { financeRequest, requestJson } from "@/lib/finance/client";
@@ -67,6 +68,60 @@ function formatSignedMinor(amountMinor: bigint, currency: string, exponent: numb
   return amountMinor > 0n ? `+${absFormatted}` : `−${absFormatted}`;
 }
 
+const ASSET_CLASS_LABEL: Record<AssetClass, string> = {
+  asset: "Aset",
+  liability: "Kewajiban",
+  receivable: "Piutang",
+};
+
+function recentActivityKindLabel(
+  kind: string,
+  direction: "in" | "out",
+  counterpartyName: string | null,
+  categoryName: string | null,
+): { fallbackTitle: string; kindLabel: string } {
+  switch (kind) {
+    case "transfer":
+      return {
+        fallbackTitle:
+          direction === "in"
+            ? `Transfer dari ${counterpartyName ?? "akun lain"}`
+            : `Transfer ke ${counterpartyName ?? "akun lain"}`,
+        kindLabel: direction === "in" ? "Transfer masuk" : "Transfer keluar",
+      };
+    case "borrow":
+      return {
+        fallbackTitle: counterpartyName ? `Pinjaman (${counterpartyName})` : "Pinjaman",
+        kindLabel: "Pinjam",
+      };
+    case "repay":
+      return {
+        fallbackTitle: counterpartyName ? `Pelunasan (${counterpartyName})` : "Pelunasan",
+        kindLabel: "Lunas",
+      };
+    case "refund":
+      return {
+        fallbackTitle: categoryName ? `Refund · ${categoryName}` : "Refund pengeluaran",
+        kindLabel: categoryName ? `Refund · ${categoryName}` : "Refund",
+      };
+    case "adjustment":
+      return {
+        fallbackTitle: "Koreksi saldo",
+        kindLabel: "Koreksi",
+      };
+    case "income":
+      return {
+        fallbackTitle: categoryName || "Pemasukan",
+        kindLabel: categoryName ?? "Pemasukan",
+      };
+    default:
+      return {
+        fallbackTitle: categoryName || "Pengeluaran",
+        kindLabel: categoryName ?? "Pengeluaran",
+      };
+  }
+}
+
 function AssetForm({
   initial,
   onClose,
@@ -81,12 +136,16 @@ function AssetForm({
   const { pending, begin, finish } = useMutationPending();
   const [operation, setOperation] = useState<"save" | "archive">("save");
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const classReplay = useRef<{ payload: string; key: string } | null>(null);
 
   const initialMeta = parseCreditMeta(initial?.note);
   const initialTerms = parseAssetTerms(initial?.note);
   const initialBills = initial ? computeCreditBills(initial) : null;
-  const [assetClass, setAssetClass] = useState<AssetClass>(initial?.assetClass ?? "asset");
+  const [assetClass, setAssetClass] = useState<AssetClass | "">(initial?.assetClass ?? "");
   const isCredit = assetClass === "liability";
+  const hasScheduledInstallments = Boolean(
+    initial?.creditInstallments?.some((row) => row.status === "scheduled"),
+  );
   const [dueDay, setDueDay] = useState<string>(
     initial ? String(initialMeta.dueDay) : "1",
   );
@@ -180,6 +239,10 @@ function AssetForm({
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!assetClass) {
+      setError("Kelas akun wajib dipilih (Aset, Kewajiban, atau Piutang).");
+      return;
+    }
     if (!begin()) return;
     setError("");
     setOperation("save");
@@ -256,12 +319,23 @@ function AssetForm({
         assetGroupId: groupId || undefined,
         providerId: providerId || undefined,
         paymentNetworkId: networkId || undefined,
-        normallyLiquid: isCredit ? false : liquid,
-        normallySpendable: isCredit ? false : spendable,
+        normallyLiquid: isCredit || assetClass === "receivable" ? false : liquid,
+        normallySpendable: isCredit || assetClass === "receivable" ? false : spendable,
         safeSuffix: suffix || undefined,
         note: encodedNote,
         assetClass,
       };
+      if (initial && assetClass !== initial.assetClass) {
+        const classPayload = JSON.stringify({ id: initial.id, assetClass });
+        if (classReplay.current?.payload !== classPayload) {
+          classReplay.current = { payload: classPayload, key: crypto.randomUUID() };
+        }
+        await financeRequest("asset-class-change", {
+          id: initial.id,
+          assetClass,
+          idempotencyKey: classReplay.current.key,
+        });
+      }
       await financeRequest(initial ? "asset-update" : "asset-create", body);
       refresh();
       notify(
@@ -333,15 +407,18 @@ function AssetForm({
         <form onSubmit={save} aria-busy={pending}>
           <fieldset className="finance-fieldset" disabled={pending}>
             <div className="field">
-              <span>Kategori akun</span>
-              <div className="segmented" role="group" aria-label="Kategori akun">
+              <span>Kelas akun (wajib dipilih)</span>
+              <div className="segmented" role="group" aria-label="Kelas akun">
                 <button
                   type="button"
                   className={assetClass === "asset" ? "selected" : ""}
                   aria-pressed={assetClass === "asset"}
-                  onClick={() => setAssetClass("asset")}
+                  onClick={() => {
+                    setAssetClass("asset");
+                    if (error) setError("");
+                  }}
                 >
-                  Rekening / Aset
+                  Aset (Rekening / Kas)
                 </button>
                 <button
                   type="button"
@@ -351,9 +428,10 @@ function AssetForm({
                     setAssetClass("liability");
                     setLiquid(false);
                     setSpendable(false);
+                    if (error) setError("");
                   }}
                 >
-                  Fasilitas Kredit
+                  Kewajiban (Kredit)
                 </button>
                 <button
                   type="button"
@@ -363,11 +441,19 @@ function AssetForm({
                     setAssetClass("receivable");
                     setLiquid(false);
                     setSpendable(false);
+                    if (error) setError("");
                   }}
                 >
-                  Piutang
+                  Piutang (Talangan)
                 </button>
               </div>
+              <small>
+                {!assetClass
+                  ? "Pilih kelas akun terlebih dahulu: Aset, Kewajiban, atau Piutang."
+                  : hasScheduledInstallments && initial && assetClass !== initial.assetClass
+                    ? "Perhatian: kelas akun tidak dapat diubah selama masih ada jadwal cicilan terjadwal."
+                    : `Kelas dipilih: ${ASSET_CLASS_LABEL[assetClass]}`}
+              </small>
             </div>
 
             <label className="field">
@@ -836,14 +922,16 @@ function AssetDetailDialog({
   const cleanNote = stripAssetMetaTags(asset.note);
   const bills = computeCreditBills(asset);
   const hasBill = bills.totalUnpaidMinor > 0n;
+  const contracts = isCredit ? installmentContracts(asset) : [];
+  const installmentRows = asset.creditInstallments ?? [];
 
   const balanceBig = BigInt(asset.balanceMinor);
   const openingBig = BigInt(asset.openingMinor);
-  const netDeltaBig = balanceBig - openingBig;
   const yieldEst = estimateAssetMonthlyYield(balanceBig, terms);
 
   const money = (val: string | bigint) => formatMinor(val, asset.currency, asset.exponent);
   const headerSubtitle = [
+    ASSET_CLASS_LABEL[asset.assetClass],
     asset.providerName,
     asset.assetTypeName,
     asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null,
@@ -926,14 +1014,8 @@ function AssetDetailDialog({
                 <strong>{money(openingBig)}</strong>
               </div>
               <div>
-                <span>Akumulasi mutasi bersih</span>
-                <strong
-                  className={
-                    netDeltaBig > 0n ? "pnl-positive" : netDeltaBig < 0n ? "pnl-negative" : ""
-                  }
-                >
-                  {formatSignedMinor(netDeltaBig, asset.currency, asset.exponent)}
-                </strong>
+                <span>Kelas akun</span>
+                <strong>{ASSET_CLASS_LABEL[asset.assetClass]}</strong>
               </div>
             </div>
           </>
@@ -945,6 +1027,12 @@ function AssetDetailDialog({
         <div className="u-table-wrap">
           <table className="u-table" aria-label="Profil dan ketentuan akun">
             <tbody>
+              <tr>
+                <th scope="row">
+                  <strong>Kelas akun</strong>
+                </th>
+                <td>{ASSET_CLASS_LABEL[asset.assetClass]}</td>
+              </tr>
               <tr>
                 <th scope="row">
                   <strong>Klasifikasi</strong>
@@ -1005,6 +1093,22 @@ function AssetDetailDialog({
                     </th>
                     <td>{money(bills.nextBillMinor)}</td>
                   </tr>
+                  {bills.laterBillMinor > 0n && (
+                    <tr>
+                      <th scope="row">
+                        <strong>Cicilan periode setelahnya</strong>
+                      </th>
+                      <td>{money(bills.laterBillMinor)}</td>
+                    </tr>
+                  )}
+                  {bills.overpaidMinor > 0n && (
+                    <tr>
+                      <th scope="row">
+                        <strong>Lebih bayar</strong>
+                      </th>
+                      <td className="pnl-positive">{money(bills.overpaidMinor)}</td>
+                    </tr>
+                  )}
                 </>
               ) : (
                 <>
@@ -1096,6 +1200,112 @@ function AssetDetailDialog({
         </div>
       </div>
 
+      {isCredit && (
+        <div className="asset-detail-section">
+          <div className="asset-detail-section-head">
+            <h3 className="u-table-title">Jadwal cicilan</h3>
+            {contracts.length > 0 && (
+              <span className="asset-detail-count">{contracts.length} kontrak aktif</span>
+            )}
+          </div>
+          {installmentRows.length > 0 ? (
+            <div className="u-table-wrap">
+              <table className="u-table" aria-label="Jadwal cicilan kredit">
+                <thead>
+                  <tr>
+                    <th scope="col">Periode &amp; cicilan</th>
+                    <th scope="col">Pokok &amp; bunga</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {installmentRows.map((row) => {
+                    const rowTotal = BigInt(row.principalMinor) + BigInt(row.interestMinor);
+                    return (
+                      <tr key={`${row.activityId}-${row.seq}`}>
+                        <th scope="row">
+                          <strong>
+                            {monthLabel(row.period)} · Cicilan ke-{row.seq}
+                          </strong>
+                          <small className="u-cell-sub">
+                            {row.period} · {row.status === "scheduled" ? "Terjadwal" : "Dibatalkan"}
+                          </small>
+                        </th>
+                        <td>
+                          <FinancialAmount as="span" value={money(rowTotal)} />
+                          <small className="u-cell-sub">
+                            Pokok {money(row.principalMinor)} · Bunga {money(row.interestMinor)}
+                          </small>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="finance-hint asset-detail-empty">Belum ada jadwal cicilan pada akun kredit ini.</p>
+          )}
+        </div>
+      )}
+
+      {detail && (
+        <div className="asset-detail-section">
+          <div className="asset-detail-section-head">
+            <h3 className="u-table-title">Ringkasan aktivitas akun</h3>
+            <span className="asset-detail-count">{detail.activitySummary.activityCount} aktivitas</span>
+          </div>
+          <div className="u-table-wrap">
+            <table className="u-table" aria-label="Ringkasan aktivitas akun">
+              <tbody>
+                <tr>
+                  <th scope="row">
+                    <strong>Pengeluaran bersih</strong>
+                    <small className="u-cell-sub">Termasuk biaya pada akun ini, sudah dikurangi refund</small>
+                  </th>
+                  <td className={BigInt(detail.activitySummary.expenseMinor) > 0n ? "pnl-negative" : BigInt(detail.activitySummary.expenseMinor) < 0n ? "pnl-positive" : ""}>
+                    <FinancialAmount as="span" value={money(detail.activitySummary.expenseMinor)} />
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Refund diterima</strong>
+                    <small className="u-cell-sub">Sudah dikurangkan di pengeluaran bersih</small>
+                  </th>
+                  <td className={BigInt(detail.activitySummary.refundMinor) > 0n ? "pnl-positive" : ""}>
+                    <FinancialAmount as="span" value={money(detail.activitySummary.refundMinor)} />
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Transfer keluar</strong>
+                    <small className="u-cell-sub">Pokok transfer keluar saja</small>
+                  </th>
+                  <td>
+                    <FinancialAmount as="span" value={money(detail.activitySummary.transferOutMinor)} />
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Pemasukan</strong>
+                  </th>
+                  <td className={BigInt(detail.activitySummary.incomeMinor) > 0n ? "pnl-positive" : ""}>
+                    <FinancialAmount as="span" value={money(detail.activitySummary.incomeMinor)} />
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Transfer masuk</strong>
+                  </th>
+                  <td>
+                    <FinancialAmount as="span" value={money(detail.activitySummary.transferInMinor)} />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="asset-detail-section">
         <div className="asset-detail-section-head">
           <h3 className="u-table-title">Transaksi terakhir</h3>
@@ -1129,19 +1339,13 @@ function AssetDetailDialog({
                       month: "short",
                       year: "numeric",
                     });
-                    const title =
-                      act.note?.trim() ||
-                      (act.kind === "transfer"
-                        ? act.direction === "in"
-                          ? `Transfer dari ${act.counterpartyName ?? "akun lain"}`
-                          : `Transfer ke ${act.counterpartyName ?? "akun lain"}`
-                        : act.categoryName || (act.kind === "income" ? "Pemasukan" : "Pengeluaran"));
-                    const kindLabel =
-                      act.kind === "transfer"
-                        ? act.direction === "in"
-                          ? "Transfer masuk"
-                          : "Transfer keluar"
-                        : act.categoryName ?? (act.kind === "income" ? "Pemasukan" : "Pengeluaran");
+                    const { fallbackTitle, kindLabel } = recentActivityKindLabel(
+                      act.kind,
+                      act.direction,
+                      act.counterpartyName,
+                      act.categoryName,
+                    );
+                    const title = act.note?.trim() || fallbackTitle;
                     const signedVal =
                       act.direction === "in"
                         ? `+${money(act.amountMinor)}`
@@ -1699,8 +1903,14 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
                 </div>
               </div>
               <div className="credit-card-chips">
+                <span className="credit-chip">{ASSET_CLASS_LABEL[asset.assetClass]}</span>
                 <span className="credit-chip">Cutoff tgl {bills.cutoffDay}</span>
                 <span className="credit-chip">Jatuh tempo tgl {bills.dueDay}</span>
+                {(asset.creditInstallments ?? []).filter((row) => row.status === "scheduled").length > 0 && (
+                  <span className="credit-chip">
+                    {(asset.creditInstallments ?? []).filter((row) => row.status === "scheduled").length} cicilan terjadwal
+                  </span>
+                )}
               </div>
               {bills.availableLimitMinor !== null && (
                 <div className="credit-limit">
@@ -1768,7 +1978,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
         );
         const terms = parseAssetTerms(asset.note);
         const termSummary = [
-          isReceivable ? "Piutang / Talangan" : null,
+          isReceivable ? "Piutang / Talangan" : ASSET_CLASS_LABEL[asset.assetClass],
           !mobile && asset.assetGroupName ? asset.assetGroupName : null,
           terms.interestRateBps > 0 ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.` : null,
           terms.adminFeeMinor > 0n ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln` : null,
@@ -1818,7 +2028,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
           onClick={(event) => {
             if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
           }}
-        ><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}><strong>{asset.displayName}</strong></button><small>Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
+        ><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}><strong>{asset.displayName}</strong></button><small>{ASSET_CLASS_LABEL[asset.assetClass]} · Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
       })}</div><details className="context-help"><summary>Tentang aset diarsipkan</summary><p className="finance-hint supporting-prose">Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk menggunakannya kembali.</p></details></section>}</>}
     {error && <p className="finance-error" role="alert">{error}</p>}
     <details className="context-help"><summary>Cara membaca aset &amp; fasilitas kredit</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Klik nama atau baris aset untuk melihat rincian ketentuan akun, bunga simpanan, biaya admin, dan mutasi terakhir.</p></details>

@@ -65,6 +65,7 @@ export function CreditDetail({ asset, link = true }: { asset: FinanceAsset; link
   const currentPeriod = bills.currentDueIso.slice(0, 7);
   return <>
     <InspectorFacts items={[
+      { label: "Klasifikasi", value: "Kewajiban" },
       { label: `Tagihan jatuh tempo ${shortDate(bills.currentDueIso)}`, value: <Amount value={money(bills.currentBillMinor)} /> },
       { label: `Tagihan ${shortDate(bills.nextDueIso)}`, value: <Amount value={money(bills.nextBillMinor)} /> },
       { label: "Cicilan bulan berikutnya", value: <Amount value={money(bills.laterBillMinor)} /> },
@@ -78,7 +79,12 @@ export function CreditDetail({ asset, link = true }: { asset: FinanceAsset; link
     {contracts.map((contract) => <section key={contract.activityId} className="inspector-section">
       <h3>Cicilan {contract.count} bulan · {monthLabel(contract.firstPeriod)} – {monthLabel(contract.lastPeriod)}</h3>
       <ol className="inspector-schedule">{contract.rows.map((row) => <li key={row.seq}>
-        <span>{row.seq}. {monthLabel(row.period)}</span>
+        <span>
+          {row.seq}. {monthLabel(row.period)}
+          {BigInt(row.interestMinor) > 0n
+            ? ` (Pokok ${money(BigInt(row.principalMinor))} + Bunga ${money(BigInt(row.interestMinor))})`
+            : ""}
+        </span>
         {row.period < currentPeriod ? <Chip tone="neutral">Lewat</Chip> : <Chip tone="info">Akan ditagih</Chip>}
         <Amount value={money(BigInt(row.principalMinor) + BigInt(row.interestMinor))} />
       </li>)}</ol>
@@ -90,10 +96,11 @@ export function CreditDetail({ asset, link = true }: { asset: FinanceAsset; link
 
 export function AssetDetail({ asset, link = "/assets" }: { asset: FinanceAsset; link?: string | null }) {
   const money = (value: string) => formatMinor(value, asset.currency, asset.exponent);
+  const classLabel = asset.assetClass === "liability" ? "Kewajiban" : isReceivableAsset(asset) ? "Piutang" : "Aset";
   return <>
     <InspectorFacts items={[
       { label: "Jenis", value: [asset.assetTypeName, asset.providerName].filter(Boolean).join(" · ") },
-      { label: "Klasifikasi", value: isReceivableAsset(asset) ? "Piutang" : "Aset" },
+      { label: "Klasifikasi", value: classLabel },
       { label: "Likuid", value: asset.normallyLiquid ? "Ya" : "Tidak" },
       { label: "Dapat dipakai belanja", value: asset.normallySpendable ? "Ya" : "Tidak" },
       { label: "Status", value: asset.isActive ? "Aktif" : "Diarsipkan" },
