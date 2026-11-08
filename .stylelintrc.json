@@ -3,6 +3,7 @@
   "ignoreFiles": [
     "references/**",
     "references/design-reference/**",
+    "local-data/**",
     "node_modules/**",
     ".next/**"
   ],

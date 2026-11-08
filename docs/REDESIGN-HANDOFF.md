@@ -136,7 +136,7 @@ sebagian besar `HomeBriefingPage`. Sebagian: `KreditTalanganPage`, `MobileBottom
 
 Keputusan default (pemilik boleh mengubah): ambil struktur/IA/model data referensi, bukan kode atau skin; pertahankan palet
 netral moneytor (biru hanya fokus/data); tetap CSS biasa + token (bukan Tailwind); ledger append-only dan `bigint` tetap;
-logika bisnis di `src/lib/domain`.
+logika bisnis di `src/lib/domain`. design mengadaptasi design microsoft office (fluent UI 2)
 
 1. `tokens.css` tunggal (satu `:root`). Skala usulan: font 12/13/14/16/20/24; radius 4/8/12/pill; kontrol 28/32/40; ikon 16/20.
    Tegakkan dengan stylelint (larang hex dan px font mentah).

@@ -1,25 +1,24 @@
-# Penerapan data pengguna ke Neon (rancangan, belum dijalankan)
+# Prosedur Penerapan Produksi (Neon & Vercel)
 
-Dokumen ini tidak memuat host, URL, kata sandi, atau data apa pun. Neon tidak pernah disentuh dari sesi pengembangan; langkah di bawah dijalankan pemilik.
+Dokumen ini tidak memuat host, URL, atau kata sandi. Dijalankan oleh pemilik.
 
-## Mode produksi `scripts/user-migrate.mjs` (rancangan)
-- Pilihan eksplisit `--target=neon` (default `--target=local` = perilaku sekarang: hanya `127.0.0.1:55435`, DB `moneytor_prod_copy`).
-- Host Neon tidak ada di kode. Host yang diizinkan didaftarkan lewat variabel lingkungan `MONEYTOR_USER_MIGRATE_ALLOWED_HOSTS` (daftar host persis, dipisah koma,
-  tanpa wildcard). Skrip menolak bila variabel kosong, host di `DATABASE_URL` tidak ada di daftar, atau host adalah `127.0.0.1` pada mode neon. `sslmode=require` wajib.
-- Default tetap dry-run (transaksi lalu ROLLBACK). `--apply` wajib `--confirm-db=<nama database dari DATABASE_URL>` yang cocok persis; tanpa itu skrip berhenti sebelum membuka koneksi.
-- Pengaman yang sama dengan salinan lokal: satu transaksi; snapshot saldo per akun, kekayaan bersih, dan total pengeluaran/pemasukan per bulan (WIB) sebelum dan sesudah harus
-  identik (ditambah perubahan terencana dari utang awal); jika beda -> ROLLBACK dan exit 1. `parent_id` hanya NULL -> nilai; tanpa void+replace; idempoten.
-- Berkas masukan sama seperti lokal: `local-data/category-map.csv`, `local-data/opening-debts.csv`. Skrip tidak mencetak URL, nama akun, catatan, atau nominal; laporan per akun hanya ke `local-data/`.
-- Sebelum `--apply`, skrip mensyaratkan dry-run yang baru: dry-run menulis `local-data/.user-migrate-dryrun` (hash CSV + nama database + waktu, berlaku 30 menit); `--apply` menolak bila hash/DB tidak cocok.
-- Kriteria selesai implementasi (nanti, tugas terpisah): tes fixture di 55434 untuk setiap penolakan di atas (host tak terdaftar, tanpa confirm, hash berbeda).
+## 1. Otomasi Migrasi di Vercel
+Perintah `vercel-build` otomatis menjalankan migrasi skema database yang belum
+diterapkan bila variabel `DATABASE_URL` disetel pada environment build Vercel.
 
-## Urutan produksi
-1. Hentikan penulisan (jangan mencatat transaksi) selama jendela perubahan; buat cadangan `pg_dump` produksi saat itu juga ke `local-data/` (tidak di-commit).
-2. Buat **branch Neon baru dari produksi saat itu juga**. Branch lama kedaluwarsa dan tidak dipakai ulang.
-3. Terapkan migrasi 015-020 ke branch: `node scripts/migrate.mjs --apply --confirm-db=<nama db>` dengan `DATABASE_URL` branch. Migrasi 015 menulis NOTICE klasifikasi; periksa hasilnya.
-4. Jalankan `scripts/user-migrate.mjs --target=neon` sebagai dry-run pada branch, tinjau ringkasan (hitungan dan "identik"), lalu `--apply --confirm-db=...`; ulangi dry-run (harus 0 perubahan).
-5. Uji aplikasi terhadap branch: jalankan build dan aplikasi dengan `DATABASE_URL` branch (bukan tes `*-db`, yang hanya untuk DB uji lokal). Periksa Beranda, Mutasi, Aset, Kredit, Analitik, dan impor/ekspor; bandingkan
-   kekayaan bersih, saldo, dan total bulan dengan angka dry-run. Jika ada selisih, hentikan; branch dibuang tanpa dampak ke produksi.
-6. Terapkan ke `main`: ulangi langkah 3-4 pada `main` dengan berkas CSV yang sama (bukan menjadikan branch sebagai produksi, karena data produksi bisa berubah sejak branch dibuat). Migrasi 015-020 aditif,
-   sehingga kode lama tetap jalan; deploy kode baru Vercel setelah migrasi `main` selesai dan dry-run ulang menunjukkan 0 perubahan.
-7. Setelah verifikasi di `main`, hapus branch uji dan lepas daftar host dari lingkungan.
+## 2. Urutan Penerapan
+1. **Branch Staging**: Buat branch Neon baru dari produksi (mis. `staging-redesign`).
+2. **Konfigurasi Preview**: Pasang `DATABASE_URL` Preview Vercel ke branch staging (bukan produksi).
+3. **Push Cabang Fitur**: Push branch memicu build preview dan migrasi 015–020 otomatis ke staging.
+4. **SQL Pemetaan Staging**: Eksekusi `local-data/mapping.sql` secara manual ke staging.
+5. **Uji Preview**: Verifikasi Beranda, Mutasi, Aset, Kredit, Analitik, dan Katalog pada branch staging.
+6. **Cadangan Produksi**: Buat branch Neon cadangan dari produksi tepat sebelum merge ke `main`.
+7. **Merge ke Main**: Penggabungan ke `main` memicu build dan migrasi produksi otomatis di Vercel.
+8. **SQL Pemetaan Produksi**: Jalankan manual `local-data/mapping.sql` sesudah build produksi sukses.
+9. **Pembersihan**: Hapus branch staging pengujian setelah produksi terverifikasi.
+
+## 3. Aturan Pemetaan Kategori (`local-data/mapping.sql`)
+Kueri pemetaan tersimpan di `local-data/mapping.sql` (lokal, diabaikan git):
+1. **Pratinjau Wajib 8 Baris**: Bagian pratinjau wajib menghasilkan tepat 8 baris sebelum update.
+2. **Urutan Eksekusi**: Penerapan hanya boleh dijalankan setelah migrasi 015–020 selesai.
+3. **Integritas Relasi**: Nilai `parent_id` terkunci setelah terisi agar hierarki katalog konsisten.
