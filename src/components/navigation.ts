@@ -5,15 +5,15 @@ export type NavModule = { href: string; label: string; area: ModuleArea };
 
 export const modules: readonly NavModule[] = [
   { href: "/", label: "Beranda", area: "home" },
-  { href: "/transactions", label: "Buku Mutasi", area: "transactions" },
-  { href: "/assets", label: "Rekening & Aset", area: "assets" },
-  { href: "/credit", label: "Kredit & Talangan", area: "credit" },
+  { href: "/transactions", label: "Mutasi", area: "transactions" },
+  { href: "/assets", label: "Aset", area: "assets" },
+  { href: "/credit", label: "Kredit", area: "credit" },
   { href: "/assets/investments", label: "Investasi", area: "investments" },
-  { href: "/planning", label: "Perencanaan", area: "planning" },
+  { href: "/planning", label: "Rencana", area: "planning" },
   { href: "/insights", label: "Analitik", area: "insights" },
 ];
 
-export const settingsModule: NavModule = { href: "/settings", label: "Pengaturan", area: "settings" };
+export const settingsModule: NavModule = { href: "/settings", label: "Setelan", area: "settings" };
 
 /** Dock slots beside "Catat"; the rest live under "Lainnya". */
 export const dockPrimary: readonly ModuleArea[] = ["home", "transactions", "assets"];

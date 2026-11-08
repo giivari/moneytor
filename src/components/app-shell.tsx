@@ -29,11 +29,19 @@ function NavigationIcon({ area, active }: { area: ModuleArea; active: boolean })
     : <Icon size={ICON_MD} weight={active ? "fill" : "regular"} aria-hidden="true" />;
 }
 
-function NavItem({ item, current, className, onSelect, role }: { item: NavModule; current: ModuleArea | null; className: string; onSelect?: () => void; role?: "menuitem" }) {
+function NavItem({ item, current, className, onSelect, role, badgeCount }: { item: NavModule; current: ModuleArea | null; className: string; onSelect?: () => void; role?: "menuitem"; badgeCount?: number }) {
   const active = current === item.area;
-  return <Link href={item.href} data-area={item.area} className={className} aria-current={active ? "page" : undefined} onClick={onSelect} role={role}>
-    <NavigationIcon area={item.area} active={active} /><span>{item.label}</span>
-  </Link>;
+  return (
+    <Link href={item.href} data-area={item.area} className={className} aria-current={active ? "page" : undefined} onClick={onSelect} role={role} title={item.label}>
+      <span className="rail-icon-wrap">
+        <NavigationIcon area={item.area} active={active} />
+        {badgeCount !== undefined && badgeCount > 0 ? (
+          <span className="rail-badge">{badgeCount}</span>
+        ) : null}
+      </span>
+      <span>{item.label}</span>
+    </Link>
+  );
 }
 
 function MoreMenu({ current }: { current: ModuleArea | null }) {

@@ -121,8 +121,8 @@
   --shadow-3: 0 16px 48px rgb(15 23 42 / 16%);
 
   /* Layout */
-  --rail-width: 224px;
-  --rail-width-collapsed: 72px;
+  --rail-width: 56px;
+  --rail-width-collapsed: 56px;
   --header-height: 56px;
   --inspector-width: 400px;
   --content-max-width: 1680px;
