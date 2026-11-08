@@ -26,6 +26,7 @@
   --meter-track: #f0f0f0;
   --account-avatar-bg: #f3f6fa;
   --account-divider: #f3f2f1;
+  --table-header-bg: #fafafa;
   --ink-editorial: #111827;
   --tab-active: #242424;
   --tab-inactive: #616161;
@@ -76,6 +77,7 @@
 
   /* Typography */
   --font-sans: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --text-micro: 11px;
   --text-xs: 12px;
   --text-sm: 13px;
   --text-md: 14px;
@@ -190,6 +192,7 @@ html[data-theme="dark"] {
   --meter-track: #2a2a2a;
   --account-avatar-bg: #1e2836;
   --account-divider: #2a2a2a;
+  --table-header-bg: #1c1c1c;
   --ink-editorial: #f5f5f5;
   --tab-active: #f5f5f5;
   --tab-inactive: #a3adb8;
@@ -262,6 +265,7 @@ html[data-theme="dark"] {
     --meter-track: #2a2a2a;
     --account-avatar-bg: #1e2836;
     --account-divider: #2a2a2a;
+    --table-header-bg: #1c1c1c;
     --ink-editorial: #f5f5f5;
     --tab-active: #f5f5f5;
     --tab-inactive: #a3adb8;

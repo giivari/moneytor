@@ -215,23 +215,60 @@
 }
 .inspector-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-3);
-  border-bottom: 1px solid var(--line);
-  background: var(--surface-sunken);
+  height: 52px;
+  min-height: 52px;
+  padding-inline: var(--space-5);
+  padding-block: 0;
+  border-bottom: 1px solid var(--line-command-bar);
+  background: var(--surface);
 }
-.inspector-heading { min-width: 0; }
-.inspector-heading h2 { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.inspector-heading {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.inspector-heading h2 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-editorial);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .inspector-heading h2:focus { outline: none; }
-.inspector-heading p { margin: var(--space-1) 0 0; font-size: var(--text-sm); }
-.inspector-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4); }
+.inspector-heading p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.inspector-header .icon-button {
+  display: grid;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--tab-inactive);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+.inspector-header .icon-button:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.inspector-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-5); }
 .inspector-body > * + * { margin-top: var(--space-4); }
 .inspector-facts { display: grid; margin: 0; }
 .inspector-facts > div {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: var(--space-4);
   padding-block: var(--space-2);
   border-bottom: 1px solid var(--line-soft);
@@ -265,7 +302,7 @@
     position: sticky;
     top: var(--header-height);
     height: calc(100dvh - var(--header-height));
-    border-left: 1px solid var(--line);
+    border-left: 1px solid var(--line-command-bar);
   }
 }
 
@@ -306,6 +343,7 @@
     z-index: var(--z-inspector);
     width: min(var(--inspector-width), 100%);
     box-shadow: var(--shadow-3);
+    border-left: 1px solid var(--line-command-bar);
   }
 }
 
@@ -485,8 +523,22 @@
 .page-heading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
 
 /* Inspector sub-sections (e.g. installment schedule) */
-.inspector-section { display: grid; gap: var(--space-2); }
-.inspector-section h3 { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.inspector-section {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-card);
+  border-radius: var(--radius-md);
+}
+.inspector-section h3 {
+  margin: 0;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .inspector-schedule { display: grid; margin: 0; padding: 0; list-style: none; }
 .inspector-schedule li {
   display: grid;
@@ -497,4 +549,7 @@
   border-bottom: 1px solid var(--line-soft);
   font-size: var(--text-sm);
 }
-.inspector-note { margin: 0; font-size: var(--text-sm); }
+.inspector-schedule li:last-child {
+  border-bottom: 0;
+}
+.inspector-note { margin: 0; font-size: var(--text-xs); color: var(--muted); }

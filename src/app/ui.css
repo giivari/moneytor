@@ -333,4 +333,4 @@
 /* Tables that run edge to edge inside a card keep the card's inner gutter */
 .ui-card .financial-data-table tr > :is(th, td):first-child { padding-left: var(--space-4); }
 .ui-card .financial-data-table tr > :is(th, td):last-child { padding-right: var(--space-4); }
-.ui-card .financial-data-table thead th { background: var(--surface-sunken); }
+.ui-card .financial-data-table thead th { background: var(--table-header-bg); }
