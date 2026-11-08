@@ -49,6 +49,41 @@
 .settings-catalog-new { margin-top: 15px; padding: 14px 0 0; border-top: 1px solid var(--track); }
 .settings-catalog-empty { color: var(--muted); }
 
+/* Tree hierarchy for transaction categories */
+.settings-catalog-scope-nav { display: flex; align-items: center; gap: 8px; margin: 16px 0 20px; flex-wrap: wrap; }
+.settings-catalog-scope-btn { min-height: 34px; padding: 6px 14px; border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-soft); font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer; transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease; }
+.settings-catalog-scope-btn:hover { background: var(--surface-hover); color: var(--ink); }
+.settings-catalog-scope-btn[data-active="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: var(--weight-semibold); }
+
+.settings-catalog-tree { display: grid; gap: 14px; margin-top: 12px; }
+.settings-catalog-scope-section { display: grid; gap: 10px; margin-bottom: 22px; }
+.settings-catalog-scope-heading { font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); margin: 0 0 6px; display: flex; align-items: center; gap: 8px; }
+
+.settings-catalog-group { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; box-shadow: var(--shadow-1); }
+.settings-catalog-parent-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px; background: var(--surface-sunken); border-bottom: 1px solid var(--line-soft); }
+.settings-catalog-parent-identity { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.settings-catalog-parent-identity strong { font-size: var(--text-md); color: var(--ink); overflow-wrap: anywhere; }
+.settings-catalog-meta-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.settings-catalog-children { display: grid; background: var(--surface); }
+.settings-catalog-child-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 16px 11px 36px; border-top: 1px solid var(--line-soft); position: relative; }
+.settings-catalog-child-row:first-child { border-top: 0; }
+.settings-catalog-child-row::before { content: ""; position: absolute; left: 18px; top: 0; bottom: 50%; width: 10px; border-left: 2px solid var(--line-strong); border-bottom: 2px solid var(--line-strong); border-bottom-left-radius: var(--radius-sm); }
+.settings-catalog-child-row:hover, .settings-catalog-parent-head:hover { background: var(--surface-hover); }
+
+.catalog-key-pill { font-size: var(--text-xs); padding: 2px 6px; border-radius: var(--radius-sm); background: var(--neutral-soft); color: var(--muted); border: 1px solid var(--line-soft); }
+.catalog-nature-pill { font-size: var(--text-xs); font-weight: var(--weight-medium); padding: 2px 8px; border-radius: var(--radius-pill); background: var(--data-blue-soft); color: var(--primary); border: 1px solid var(--data-blue-soft); }
+.catalog-nature-pill[data-overridden="true"] { background: var(--warning-light); color: var(--warning); border-color: var(--warning-light); }
+.catalog-locked-pill { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); padding: 2px 7px; border-radius: var(--radius-pill); background: var(--neutral-soft); color: var(--subtle); border: 1px solid var(--line); }
+.catalog-nature-summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.settings-catalog-nature-form { padding: 14px 16px; background: var(--bg); border-top: 1px dashed var(--line-strong); display: grid; gap: 10px; }
+.settings-catalog-nature-header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.settings-catalog-nature-header strong { font-size: var(--text-sm); color: var(--ink); }
+
+.settings-catalog-banner { padding: 10px 14px; border-radius: var(--radius-md); background: var(--surface-sunken); border: 1px solid var(--line); margin-bottom: 12px; font-size: var(--text-sm); color: var(--ink-soft); }
+.settings-catalog-banner strong { color: var(--ink); }
+
 .settings-security-detail { margin-top: 0; }
 .settings-security-detail .security-intro { margin-bottom: 16px; }
 .settings-security-detail .security-intro p { color: var(--muted); }

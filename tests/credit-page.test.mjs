@@ -138,3 +138,19 @@ test('Fase 4: ringkasan piutang & utang menampilkan alur pelunasan (repay & teri
  assert.match(txView,/Catat refund/);
  assert.match(txView,/refundOfActivityId:\s*item\.id/);
 });
+
+test('Fase 6: katalog menampilkan pohon induk & anak, tambah anak & alias, nonaktifkan bawaan, ganti sifat category-nature, dan entri bawaan terkunci', () => {
+ const manager=fs.readFileSync(new URL('src/components/catalog-manager.tsx',root),'utf8');
+ assert.match(manager,/renderCategoryTree/);
+ assert.match(manager,/settings-catalog-tree/);
+ assert.match(manager,/settings-catalog-children/);
+ assert.match(manager,/startNewChild/);
+ assert.match(manager,/startNewAlias/);
+ assert.match(manager,/category-nature/);
+ assert.match(manager,/catalog-archive/);
+ assert.match(manager,/Bawaan \(Terkunci\)/);
+ assert.match(manager,/CATEGORY_NATURE_LABELS\[.*effectiveNature/);
+ assert.doesNotMatch(manager,/natureOverride \?\? nature \?\? parent/);
+ const catalogsRepo=fs.readFileSync(new URL('src/lib/repositories/catalogs.ts',root),'utf8');
+ assert.match(catalogsRepo,/transactionCategories/);
+});

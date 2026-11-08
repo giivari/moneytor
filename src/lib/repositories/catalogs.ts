@@ -97,10 +97,10 @@ export async function archiveCustomCatalogItem(catalog: Catalog, id: string): Pr
   assertUuid(id);
   const result = await database().query(
     `UPDATE ${catalogTables[catalog]} SET is_active=false
-     WHERE id=$1 AND NOT is_builtin AND is_active RETURNING id`,
-    [id],
+     WHERE id=$1 AND (NOT is_builtin OR $2 = 'transactionCategories') AND is_active RETURNING id`,
+    [id, catalog],
   );
-  if (!result.rowCount) throw new Error("Item kustom aktif tidak ditemukan");
+  if (!result.rowCount) throw new Error("Item aktif tidak ditemukan");
 }
 
 /** A custom category may sit under a catalog parent (two levels; same kind). A child with no own nature inherits the parent's. */
@@ -134,8 +134,8 @@ export async function setCategoryNature(categoryId: string, nature: CategoryNatu
 
 export async function restoreCustomCatalogItem(catalog: Catalog, id: string): Promise<void> {
   await requireOwnerSession(); assertUuid(id);
-  const result = await database().query(`UPDATE ${catalogTables[catalog]} SET is_active=true WHERE id=$1 AND NOT is_builtin RETURNING id`, [id]);
-  if (!result.rowCount) throw new LifecycleError("Pilihan kustom tidak ditemukan.");
+  const result = await database().query(`UPDATE ${catalogTables[catalog]} SET is_active=true WHERE id=$1 AND (NOT is_builtin OR $2 = 'transactionCategories') RETURNING id`, [id, catalog]);
+  if (!result.rowCount) throw new LifecycleError("Pilihan tidak ditemukan.");
 }
 export async function deleteCustomCatalogItem(catalog: Catalog, id: string): Promise<void> {
   await requireOwnerSession(); assertUuid(id);
