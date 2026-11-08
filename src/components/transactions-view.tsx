@@ -23,6 +23,7 @@ import { TransactionEditor } from "./transaction-editor";
 import { AppLink } from "./app-link";
 import { useInspector } from "./inspector";
 import { Card, Kpi, PageHeading } from "./ui";
+import { StatusBar } from "./status-bar";
 import { ICON_SM } from "./icon-size";
 
 const labels: Record<FinanceActivity["kind"], string> = {
@@ -161,9 +162,18 @@ export function TransactionsView({
   const spending = monthly.length
     ? monthly.map((item) => formatMinor(BigInt(item.expenseMinor) < 0n ? "0" : item.expenseMinor, item.currency, item.exponent)).join(" · ")
     : "—";
+  const totalInMinor = shown
+    .filter((t) => t.kind === "income" && t.status === "posted")
+    .reduce((sum, t) => sum + BigInt(t.baseAmountMinor), 0n);
+  const totalOutMinor = shown
+    .filter((t) => t.kind === "expense" && t.status === "posted")
+    .reduce((sum, t) => sum + BigInt(totalMinor(t)), 0n);
+  const currency = shown[0]?.currency ?? "IDR";
+  const exponent = shown[0]?.exponent ?? 0;
   return <div className="page transactions-page">
     <header className="page-header">
       <PageHeading title="Mutasi"
+        description={`Total ${activities.length} aktivitas tercatat`}
         actions={<><AppLink href="/transactions/imports" className="finance-edit-button transactions-import-trigger"><FileArrowUp size={ICON_SM} /> Impor CSV/Excel</AppLink>
           <AppLink href="/transactions/automation" className="text-link automation-entry">Otomatisasi <ArrowRight size={ICON_SM} /></AppLink></>} />
     </header>
@@ -204,6 +214,11 @@ export function TransactionsView({
         <ListToolbar label="Halaman transaksi"><button type="button" className="row-action" disabled={activityPage.loading || activityPage.pageNumber === 1} onClick={activityPage.previous}>Sebelumnya</button><span className="record-muted">Halaman {activityPage.pageNumber}</span><button type="button" className="row-action" disabled={activityPage.loading || !activityPage.hasNext} onClick={activityPage.next}>Berikutnya</button></ListToolbar>
       </div>
     </Card>
+    <StatusBar
+      rowCount={shown.length}
+      totalIn={formatMinor(totalInMinor.toString(), currency, exponent)}
+      totalOut={formatMinor(totalOutMinor.toString(), currency, exponent)}
+    />
     {editing && <TransactionEditor key={editing.id} initial={editing} onClose={() => setEditing(null)} />}
     {refundPreset && <TransactionEditor key={`refund:${refundPreset.refundOfActivityId}`} preset={refundPreset} onClose={() => setRefundPreset(null)} />}
   </div>;

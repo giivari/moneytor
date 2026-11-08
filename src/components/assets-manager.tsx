@@ -7,6 +7,7 @@ import { ListSortControl } from "./list-sort-control";
 import { useEffect, useRef, useState } from "react";
 import { Bank, CheckCircle, CreditCard, Drop, PencilSimple, Plus, Wallet, X } from "@phosphor-icons/react";
 import { Kpi, monthLabel, PageHeading } from "./ui";
+import { StatusBar } from "./status-bar";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
 import {
   bpsToInput,
@@ -1959,6 +1960,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
 
   return <div className="page finance-assets-page">
     <header className="page-header"><PageHeading title="Aset"
+      description={totals[0] ? `Total Tercatat: ${formatMinor(totals[0].amountMinor, totals[0].currency, totals[0].exponent)}` : undefined}
       actions={<><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></>} /></header>
     {totals.map((item) => {
       const money = (value: string | undefined) => formatMinor(value ?? "0", item.currency, item.exponent);
@@ -2151,5 +2153,9 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
       />
     )}
     {correcting && <AssetOpeningCorrection key={correcting.id} asset={correcting} onClose={() => setCorrecting(null)} />}
+    <StatusBar
+      rowCount={regularActive.length}
+      extraLabel={totals[0] ? `Dana Likuid: ${formatMinor(totals[0].liquidMinor ?? "0", totals[0].currency, totals[0].exponent)}` : undefined}
+    />
   </div>;
 }
