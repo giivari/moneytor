@@ -9,6 +9,7 @@ export type TransactionPreset = Readonly<{
   amount?: string;
   note?: string;
   refundOfActivityId?: string;
+  scenarioTab?: "pengeluaran" | "transfer" | "splitbill" | "pemasukan" | "pelunasan";
 }>;
 
 export type EditorDraftInput = Readonly<{

@@ -33,7 +33,7 @@
         "1em"
       ],
       "border-radius": [
-        "/^(var\\(--radius-(sm|md|lg|pill)\\)|0|50%|inherit)( (var\\(--radius-(sm|md|lg|pill)\\)|0))*$/"
+        "/^(var\\(--radius-(sm|md|lg|xl|pill)\\)|0|50%|inherit)( (var\\(--radius-(sm|md|lg|xl|pill)\\)|0))*$/"
       ],
       "box-shadow": [
         "/^var\\(--shadow-[1-3]\\)$/",
