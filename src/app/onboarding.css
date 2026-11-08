@@ -223,8 +223,8 @@ html[data-privacy="hidden"] .financial-amount {
 }
 
 .onboarding-skip-btn:hover {
-  background: var(--neutral-soft);
-  color: var(--primary);
+  background: var(--surface-hover);
+  color: var(--ink);
 }
 
 .onboarding-prev-btn {
@@ -233,17 +233,17 @@ html[data-privacy="hidden"] .financial-amount {
   gap: 5px;
   min-height: 36px;
   padding: 0 12px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   border: 1px solid var(--line-strong);
   background: var(--surface);
-  color: var(--primary);
+  color: var(--ink);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   cursor: pointer;
 }
 
 .onboarding-prev-btn:hover {
-  background: var(--neutral-soft);
+  background: var(--surface-hover);
 }
 
 .onboarding-next-btn {
@@ -252,18 +252,18 @@ html[data-privacy="hidden"] .financial-amount {
   gap: 6px;
   min-height: 36px;
   padding: 0 14px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   border: 0;
-  background: linear-gradient(105deg, var(--data-cyan) 0%, var(--data-violet) 100%);
+  background: var(--primary);
   color: var(--on-primary);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   cursor: pointer;
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-1);
 }
 
 .onboarding-next-btn:hover {
-  filter: brightness(1.06);
+  background: var(--primary-hover);
 }
 
 .onboarding-callout-subfooter {

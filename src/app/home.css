@@ -31,7 +31,9 @@
   gap: 0 var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--line-soft);
+  transition: background-color 140ms ease;
 }
+.home-recent-row:hover { background: var(--surface-hover); }
 .home-recent-row:first-child { border-top: 0; }
 .home-recent-date { grid-area: date; justify-self: end; color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
 .home-recent-row .ui-kind { grid-area: kind; }
@@ -66,7 +68,7 @@
     gap: var(--space-3);
     padding: var(--space-2) var(--space-4);
     border-bottom: 1px solid var(--line-soft);
-    background: var(--neutral-soft);
+    background: var(--surface-sunken);
     color: var(--muted);
     font-size: var(--text-xs);
     font-weight: var(--weight-semibold);

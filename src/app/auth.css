@@ -8,7 +8,7 @@
 .auth-card form, .security-panel form { display: grid; gap: 16px; margin: 24px 0; }
 .auth-card label, .security-panel label { display: grid; gap: 8px; }
 .auth-card input, .security-panel input { width: 100%; padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); font-family: inherit; }
-.auth-primary { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 13px 18px; border: 1px solid var(--primary); border-radius: var(--radius-lg); background: var(--primary); color: var(--on-primary); font-family: inherit; cursor: pointer; }
+.auth-primary { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 13px 18px; border: 1px solid var(--primary); border-radius: var(--radius-md); background: var(--primary); color: var(--on-primary); font-family: inherit; cursor: pointer; }
 .auth-secondary { display: flex; min-height: 44px; align-items: center; justify-content: center; margin-top: 24px; text-align: center; color: var(--muted); text-decoration: underline; }
 .auth-error.auth-error { color: var(--negative); }
 .settings-page { max-width: 1020px; }
@@ -31,8 +31,8 @@
 .security-group-heading h3 { margin: 0 0 4px; color: var(--ink); letter-spacing: -.02em; }
 .security-group-heading p { margin: 0; }
 .security-count { flex: none; padding: 6px 10px; border-radius: var(--radius-pill); background: var(--surface-sunken); color: var(--ink-soft); }
-.security-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--primary); font-family: inherit; line-height: 1.3; text-align: center; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
-.security-button:hover { background: var(--neutral-soft); border-color: var(--line-strong); }
+.security-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); font-family: inherit; line-height: 1.3; text-align: center; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+.security-button:hover { background: var(--surface-hover); border-color: var(--line-strong); }
 .security-button-danger { border-color: var(--data-coral-soft); background: var(--bg); color: var(--negative); }
 .security-button-danger:hover { border-color: var(--line-strong); background: var(--negative-light); }
 .security-button-warning { border-color: var(--data-amber-soft); background: var(--bg); color: var(--warning); }
@@ -46,7 +46,7 @@
 .credential-list li + li { margin-top: 9px; }
 .credential-icon { display: grid; place-items: center; width: 42px; height: 42px; flex: none; border-radius: var(--radius-lg); background: var(--surface-sunken); color: var(--ink-soft); }
 .credential-details { min-width: 0; }
-.credential-details strong, .security-session strong { display: block; overflow-wrap: anywhere; color: var(--primary); }
+.credential-details strong, .security-session strong { display: block; overflow-wrap: anywhere; color: var(--ink); }
 .credential-list small, .security-session small { display: block; margin-top: 4px; color: var(--subtle); line-height: 1.5; }
 .security-session { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid var(--track); border-radius: var(--radius-lg); background: var(--bg); }
 .security-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
