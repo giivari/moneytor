@@ -10,7 +10,8 @@ import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import { ArrowRight, FileArrowUp, Receipt, Rows } from "@phosphor-icons/react";
 import { financeRequest } from "@/lib/finance/client";
-import { formatMinor } from "@/lib/finance/format";
+import { formatMinor, minorToInput } from "@/lib/finance/format";
+import type { TransactionPreset } from "@/lib/domain/transaction-preset";
 import type { FinanceActivity } from "@/lib/finance/types";
 import { ExportMenuButton } from "./export-menu-button";
 import { FinancialDataTable } from "./financial-data-table";
@@ -64,7 +65,15 @@ function totalMinor(item: FinanceActivity) {
  * Inspector body for one activity. Correction opens the editor (a replacement); cancellation posts a void
  * (reversal movements). Both keep the original record, as the ledger is append-only.
  */
-function ActivityInspector({ item, onEdit }: { item: FinanceActivity; onEdit: (item: FinanceActivity) => void }) {
+function ActivityInspector({
+  item,
+  onEdit,
+  onRefund,
+}: {
+  item: FinanceActivity;
+  onEdit: (item: FinanceActivity) => void;
+  onRefund: (item: FinanceActivity) => void;
+}) {
   const { refresh, notify } = useFinanceFeedback();
   const { close } = useInspector();
   const { pending, begin, finish } = useMutationPending();
@@ -82,6 +91,7 @@ function ActivityInspector({ item, onEdit }: { item: FinanceActivity; onEdit: (i
     finally { finish(); }
   }
   const money = (value: string) => formatMinor(value, item.currency, item.exponent);
+  const canRefund = item.kind === "expense" && item.status === "posted" && BigInt(item.netMinor ?? item.baseAmountMinor) > 0n;
   return <div aria-busy={pending}>
     <dl className="inspector-facts">
       <div><dt>Status</dt><dd>{item.status === "posted" ? "Aktif" : item.status === "voided" ? "Dibatalkan" : "Diganti oleh koreksi"}</dd></div>
@@ -108,6 +118,7 @@ function ActivityInspector({ item, onEdit }: { item: FinanceActivity; onEdit: (i
     {item.note && <p className="inspector-note">{item.note}</p>}
     {isFlowKind(item.kind) && <p className="inspector-note ui-muted">Pokok berpindah antar akun tanpa mengubah total. Hanya biayanya mengurangi total.</p>}
     {item.status === "posted" && !confirmVoid && <div className="finance-actions"><button type="button" className="finance-secondary" disabled={pending} onClick={() => { close(); onEdit(item); }}>Koreksi</button>
+      {canRefund && <button type="button" className="finance-secondary" disabled={pending} onClick={() => { close(); onRefund(item); }}>Catat refund</button>}
       <button type="button" className="finance-danger" disabled={pending} onClick={() => setConfirmVoid(true)}>Batalkan transaksi</button></div>}
     {confirmVoid && <div className="finance-confirm"><p>Batalkan transaksi ini? Semua pergerakannya akan dibalik. Catatan asli tetap ada dalam riwayat.</p>
       <button type="button" className="finance-danger" onClick={remove} disabled={pending} aria-busy={pending}>{pending ? <LoadingIndicator>Membatalkan…</LoadingIndicator> : "Ya, batalkan"}</button>
@@ -128,14 +139,24 @@ export function TransactionsView({
   const [filter, setFilter] = useState<"all" | FinanceActivity["kind"]>("all");
   const [history, setHistory] = useState(false);
   const [editing, setEditing] = useState<FinanceActivity | null>(null);
+  const [refundPreset, setRefundPreset] = useState<TransactionPreset | null>(null);
   const sort = useListSort("transactions");
   const activityPage = useActivityPage(activities, filter, history, sort.direction);
   const shown = activityPage.items;
+  function openRefund(item: FinanceActivity) {
+    setRefundPreset({
+      kind: "refund",
+      refundOfActivityId: item.id,
+      accountId: item.sourceAssetId ?? undefined,
+      amount: minorToInput(item.netMinor ?? item.baseAmountMinor, item.exponent),
+      note: item.note ? `Refund ${item.note}` : "Refund pengeluaran",
+    });
+  }
   function openDetails(item: FinanceActivity, trigger?: HTMLElement | null) {
     if (refreshing) return;
     const when = new Date(item.occurredAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" });
     open({ id: `activity:${item.id}`, title: item.note || labels[item.kind], subtitle: `${labels[item.kind]} · ${when} · ${statusLabel(item)}`,
-      body: <ActivityInspector key={item.id} item={item} onEdit={setEditing} /> }, trigger ?? (document.activeElement as HTMLElement | null));
+      body: <ActivityInspector key={item.id} item={item} onEdit={setEditing} onRefund={openRefund} /> }, trigger ?? (document.activeElement as HTMLElement | null));
   }
   const spending = monthly.length
     ? monthly.map((item) => formatMinor(BigInt(item.expenseMinor) < 0n ? "0" : item.expenseMinor, item.currency, item.exponent)).join(" · ")
@@ -184,5 +205,6 @@ export function TransactionsView({
       </div>
     </Card>
     {editing && <TransactionEditor key={editing.id} initial={editing} onClose={() => setEditing(null)} />}
+    {refundPreset && <TransactionEditor key={`refund:${refundPreset.refundOfActivityId}`} preset={refundPreset} onClose={() => setRefundPreset(null)} />}
   </div>;
 }

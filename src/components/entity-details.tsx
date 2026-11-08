@@ -5,6 +5,7 @@ import { formatMinor } from "@/lib/finance/format";
 import { computeCreditBills, isReceivableAsset } from "@/lib/domain/credit";
 import { installmentContracts, type CreditStatus } from "@/lib/domain/credit-overview";
 import { InspectorFacts } from "./inspector-facts";
+import { RefundExpenseButton, RepayDebtButton, SettleReceivableButton } from "./pay-bill-button";
 import { Amount, Chip, monthLabel, shortDate, toneOf } from "./ui";
 import { ICON_SM } from "./icon-size";
 
@@ -35,6 +36,8 @@ export function ActivityDetail({ item }: { item: FinanceActivity }) {
   const { total, sign, kind, accounts } = activityParts(item);
   const isFlow = item.kind === "transfer" || item.kind === "borrow" || item.kind === "repay";
   const occurred = new Date(item.occurredAt).toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" });
+  const refundableMinor = item.netMinor ?? item.baseAmountMinor;
+  const canRefund = item.kind === "expense" && (item.status ?? "posted") === "posted" && BigInt(refundableMinor) > 0n;
   return <>
     <InspectorFacts items={[
       { label: "Jenis", value: kind },
@@ -45,8 +48,13 @@ export function ActivityDetail({ item }: { item: FinanceActivity }) {
       { label: "Jumlah dasar", value: <Amount value={money(item.baseAmountMinor)} /> },
       ...item.charges.map((charge) => ({ label: charge.typeName, value: <Amount value={money(charge.amountMinor)} /> })),
       { label: isFlow ? "Dipindahkan" : "Total mutasi", value: <Amount value={`${sign}${money(total)}`} tone={item.kind === "expense" ? "negative" : item.kind === "income" ? "positive" : ""} /> },
+      ...(item.refundedMinor && BigInt(item.refundedMinor) > 0n ? [
+        { label: "Di-refund", value: <Amount value={money(item.refundedMinor)} tone="positive" /> },
+        { label: "Pengeluaran bersih", value: <Amount value={money(refundableMinor)} /> },
+      ] : []),
     ]} />
     {item.note && <p className="inspector-note">{item.note}</p>}
+    {canRefund && <div className="finance-actions"><RefundExpenseButton activityId={item.id} sourceAssetId={item.sourceAssetId} exponent={item.exponent} refundableMinor={refundableMinor} note={item.note} /></div>}
     <Link href="/transactions" className="text-link">Buka di Mutasi <ArrowRight size={ICON_SM} aria-hidden="true" /></Link>
   </>;
 }
@@ -66,6 +74,7 @@ export function CreditDetail({ asset, link = true }: { asset: FinanceAsset; link
   return <>
     <InspectorFacts items={[
       { label: "Klasifikasi", value: "Kewajiban" },
+      { label: "Saldo tercatat", value: <Amount value={formatMinor(asset.balanceMinor, asset.currency, asset.exponent)} tone={toneOf(BigInt(asset.balanceMinor))} /> },
       { label: `Tagihan jatuh tempo ${shortDate(bills.currentDueIso)}`, value: <Amount value={money(bills.currentBillMinor)} /> },
       { label: `Tagihan ${shortDate(bills.nextDueIso)}`, value: <Amount value={money(bills.nextBillMinor)} /> },
       { label: "Cicilan bulan berikutnya", value: <Amount value={money(bills.laterBillMinor)} /> },
@@ -90,6 +99,7 @@ export function CreditDetail({ asset, link = true }: { asset: FinanceAsset; link
       </li>)}</ol>
     </section>)}
     {contracts.length > 0 && <p className="ui-muted inspector-note">Status bayar tiap bulan dihitung dari saldo akun, bukan dari jadwal.</p>}
+    {asset.isActive && bills.totalUnpaidMinor > 0n && <div className="finance-actions"><RepayDebtButton assetId={asset.id} name={asset.displayName} exponent={asset.exponent} amountMinor={bills.totalUnpaidMinor.toString()} /></div>}
     {link && <Link href="/credit" className="text-link">Buka Kredit &amp; Talangan <ArrowRight size={ICON_SM} aria-hidden="true" /></Link>}
   </>;
 }
@@ -107,6 +117,7 @@ export function AssetDetail({ asset, link = "/assets" }: { asset: FinanceAsset; 
       { label: "Saldo awal", value: <Amount value={money(asset.openingMinor)} /> },
       { label: "Saldo saat ini", value: <Amount value={money(asset.balanceMinor)} tone={toneOf(BigInt(asset.balanceMinor))} /> },
     ]} />
+    {asset.isActive && isReceivableAsset(asset) && BigInt(asset.balanceMinor) > 0n && <div className="finance-actions"><SettleReceivableButton assetId={asset.id} name={asset.displayName} exponent={asset.exponent} amountMinor={asset.balanceMinor} /></div>}
     {link && <Link href={link} className="text-link">Buka Aset <ArrowRight size={ICON_SM} aria-hidden="true" /></Link>}
   </>;
 }

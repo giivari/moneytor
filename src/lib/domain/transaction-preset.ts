@@ -8,6 +8,7 @@ export type TransactionPreset = Readonly<{
   destinationId?: string;
   amount?: string;
   note?: string;
+  refundOfActivityId?: string;
 }>;
 
 export type EditorDraftInput = Readonly<{

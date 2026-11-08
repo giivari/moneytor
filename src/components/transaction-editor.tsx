@@ -19,6 +19,7 @@ import {
   formatShortDueIso,
   isAfterCutoffDay,
   isCreditAsset,
+  isReceivableAsset,
   nextMonthlyDueDayIso,
   parseCreditMeta,
 } from "@/lib/domain/credit";
@@ -69,7 +70,7 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [occurredAt, setOccurredAt] = useState(localDate(initial?.occurredAt));
   const [note, setNote] = useState(initial?.note ?? preset?.note ?? "");
-  const [refundOfActivityId, setRefundOfActivityId] = useState(initial?.refundOfActivityId ?? "");
+  const [refundOfActivityId, setRefundOfActivityId] = useState(initial?.refundOfActivityId ?? preset?.refundOfActivityId ?? "");
   const [adjustmentReason, setAdjustmentReason] = useState<AdjustmentReason>(initial?.adjustmentReason ?? "reconciliation");
   const [adjustmentDirection, setAdjustmentDirection] = useState<"increase" | "decrease">(
     initial?.kind === "adjustment" && initial.sourceAssetId ? "decrease" : "increase",
@@ -127,7 +128,9 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
       ? rawDestinationOptions.filter((item) => item.assetClass !== "liability")
       : rawDestinationOptions;
   const effectiveDestinationOptions = destinationOptions.length ? destinationOptions : rawDestinationOptions;
-  const destination = (destinationId ? effectiveDestinationOptions.find((item) => item.id === destinationId) : undefined) ?? effectiveDestinationOptions[0];
+  const destination = (destinationId ? effectiveDestinationOptions.find((item) => item.id === destinationId) : undefined)
+    ?? (kind === "transfer" && account && isReceivableAsset(account) ? pickTransferSource(active, account.id) : undefined)
+    ?? effectiveDestinationOptions[0];
   const categories =
     options?.catalogs.transactionCategories.filter(
       (item) => item.appliesTo === kind && (!isDedicatedCategory(item) || item.id === initial?.categoryId),
@@ -145,14 +148,16 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
         const list = (activitiesPage?.items ?? []).filter(
           (item) =>
             item.currency === currency &&
-            (item.id === initial?.refundOfActivityId || BigInt(item.netMinor ?? item.baseAmountMinor) > 0n),
+            (item.id === initial?.refundOfActivityId ||
+              item.id === preset?.refundOfActivityId ||
+              BigInt(item.netMinor ?? item.baseAmountMinor) > 0n),
         );
         setRefundExpenses(list);
         setRefundOfActivityId((prev) => (prev && list.some((item) => item.id === prev) ? prev : list[0]?.id ?? ""));
         setRefundExpensesLoading(false);
       });
     return () => { activeRequest = false; };
-  }, [kind, currency, initial?.refundOfActivityId]);
+  }, [kind, currency, initial?.refundOfActivityId, preset?.refundOfActivityId]);
 
   const selectedRefundOrigin = refundExpenses.find((item) => item.id === refundOfActivityId);
 

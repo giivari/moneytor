@@ -121,3 +121,20 @@ test('Fase 3: pembuatan akun wajib memilih kelas, ubah kelas lewat asset-class-c
  assert.match(manager,/asset\.creditInstallments/);
  assert.doesNotMatch(manager,/balanceBig\s*-\s*openingBig/);
 });
+
+test('Fase 4: ringkasan piutang & utang menampilkan alur pelunasan (repay & terima pelunasan) dan detail pengeluaran membuka alur refund', () => {
+ const output=html(snapshotOf([
+  asset({displayName:'BNI',balanceMinor:'5000000'}),
+  card({displayName:'Kartu Utama',balanceMinor:'-800000'}),
+  asset({displayName:'Talangan Budi',assetClass:'receivable',balanceMinor:'150000'}),
+ ]));
+ assert.match(output,/aria-label="Lunasi utang Kartu Utama"/);
+ assert.match(output,/aria-label="Terima pelunasan Talangan Budi"/);
+ const buttons=fs.readFileSync(new URL('src/components/pay-bill-button.tsx',root),'utf8');
+ assert.match(buttons,/kind: "repay", destinationId: assetId/);
+ assert.match(buttons,/kind: "transfer", accountId: assetId/);
+ assert.match(buttons,/kind: "refund", refundOfActivityId: activityId/);
+ const txView=fs.readFileSync(new URL('src/components/transactions-view.tsx',root),'utf8');
+ assert.match(txView,/Catat refund/);
+ assert.match(txView,/refundOfActivityId:\s*item\.id/);
+});

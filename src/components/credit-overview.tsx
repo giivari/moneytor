@@ -10,7 +10,7 @@ import { AssetDetail, CreditDetail, creditStatusLabel } from "./entity-details";
 import { Amount, Card, Chip, Kpi, PageHeading, monthLabel, shortDate, toneOf } from "./ui";
 import { InspectorRow, InspectorRowButton } from "./inspector";
 import { PageTabs } from "./page-tabs";
-import { PayBillButton } from "./pay-bill-button";
+import { PayBillButton, RepayDebtButton, SettleReceivableButton } from "./pay-bill-button";
 import { ICON_SM } from "./icon-size";
 
 type Snapshot = Awaited<ReturnType<typeof financeSnapshot>>;
@@ -38,8 +38,12 @@ function FacilityCard({ facility }: { facility: CreditFacility }) {
       <div><dt>Tagihan {shortDate(bills.currentDueIso)}</dt><dd><Amount value={money(bills.currentBillMinor)} level="entity" tone={bills.currentBillMinor > 0n ? "negative" : ""} /></dd></div>
       <div><dt>Tagihan {shortDate(bills.nextDueIso)}</dt><dd><Amount value={money(bills.nextBillMinor)} level="entity" /></dd></div>
     </dl>
-    {payment && <div className="credit-facility-actions"><PayBillButton assetId={asset.id} name={asset.displayName} exponent={asset.exponent}
-      amountMinor={payment.amountMinor.toString()} dueIso={payment.dueIso} /></div>}
+    {(payment || (asset.isActive && bills.totalUnpaidMinor > 0n)) && <div className="credit-facility-actions">
+      {payment && <PayBillButton assetId={asset.id} name={asset.displayName} exponent={asset.exponent}
+        amountMinor={payment.amountMinor.toString()} dueIso={payment.dueIso} />}
+      {asset.isActive && bills.totalUnpaidMinor > 0n && <RepayDebtButton assetId={asset.id} name={asset.displayName} exponent={asset.exponent}
+        amountMinor={bills.totalUnpaidMinor.toString()} />}
+    </div>}
     <footer className="credit-facility-footer">
       <span>{bills.overpaidMinor > 0n ? "Lebih bayar" : "Sisa seluruh utang"}</span>
       <Amount value={money(bills.overpaidMinor > 0n ? bills.overpaidMinor : bills.totalUnpaidMinor)} tone={bills.overpaidMinor > 0n ? "positive" : bills.totalUnpaidMinor > 0n ? "negative" : ""} />
@@ -85,16 +89,20 @@ function Installments({ facilities }: { facilities: CreditFacility[] }) {
 }
 
 function Receivables({ assets, currencies }: { assets: FinanceAsset[]; currencies: string[] }) {
-  const lists = currencies.map((currency) => ({ currency, items: receivableAccounts(assets, currency) })).filter((list) => list.items.length);
+  const lists = currencies.map((currency) => ({ currency, items: receivableAccounts(assets, currency), summary: receivablesSummary(assets, currency) })).filter((list) => list.items.length);
   if (!lists.length) return <section className="ui-card ui-empty"><h2>Belum ada piutang</h2>
     <p>Split bill dari Catat membuat akun piutang untuk bagian teman. Pinjaman ke orang lain dicatat sebagai akun Aset berklasifikasi Piutang.</p></section>;
-  return <div className="credit-stack">{lists.map(({ currency, items }) => <Card key={currency} title={`Piutang & talangan · ${currency}`} meta={`${items.filter((item) => item.status === "terbuka").length} terbuka`}>
-    <ul className="ui-rows">{items.map(({ asset, status }) => <InspectorRow key={asset.id} id={`asset:${asset.id}`} title={asset.displayName} subtitle="Rincian piutang" detail={<AssetDetail asset={asset} />} className="ui-row">
-      <div className="ui-row-copy"><InspectorRowButton><strong>{asset.displayName}</strong></InspectorRowButton><small>{[provider(asset), asset.isActive ? null : "Diarsipkan"].filter(Boolean).join(" · ")}</small></div>
-      <Chip tone={status === "lunas" ? "positive" : "warning"}>{status === "lunas" ? "Lunas" : "Menunggu"}</Chip>
-      <Amount value={formatMinor(asset.balanceMinor, asset.currency, asset.exponent)} tone={toneOf(BigInt(asset.balanceMinor))} />
-    </InspectorRow>)}</ul>
-  </Card>)}</div>;
+  return <div className="credit-stack">{lists.map(({ currency, items, summary }) => {
+    const exponent = items[0]?.asset.exponent ?? 0;
+    return <Card key={currency} title={`Piutang & talangan · ${currency}`} meta={`${summary.openCount} terbuka · ${formatMinor(summary.totalMinor, currency, exponent)}`}>
+      <ul className="ui-rows">{items.map(({ asset, status }) => <InspectorRow key={asset.id} id={`asset:${asset.id}`} title={asset.displayName} subtitle="Rincian piutang" detail={<AssetDetail asset={asset} />} className="ui-row">
+        <div className="ui-row-copy"><InspectorRowButton><strong>{asset.displayName}</strong></InspectorRowButton><small>{[provider(asset), asset.isActive ? null : "Diarsipkan"].filter(Boolean).join(" · ")}</small></div>
+        <Chip tone={status === "lunas" ? "positive" : "warning"}>{status === "lunas" ? "Lunas" : "Menunggu"}</Chip>
+        <Amount value={formatMinor(asset.balanceMinor, asset.currency, asset.exponent)} tone={toneOf(BigInt(asset.balanceMinor))} />
+        {asset.isActive && BigInt(asset.balanceMinor) > 0n && <SettleReceivableButton assetId={asset.id} name={asset.displayName} exponent={asset.exponent} amountMinor={asset.balanceMinor} />}
+      </InspectorRow>)}</ul>
+    </Card>;
+  })}</div>;
 }
 
 export function CreditOverview({ snapshot }: { snapshot: Snapshot }) {
