@@ -4,6 +4,7 @@ import { requireOwnerSession } from "@/lib/auth/session";
 import { securityOverview } from "@/lib/auth/service";
 import { catalogSections } from "@/lib/settings/catalog-sections";
 import { SettingsLinkStatus } from "@/components/settings-link-status";
+import { ThemeSelector } from "@/components/theme-toggle";
 
 export const dynamic = "force-dynamic";
 const catalogIcons = [ListBullets, Receipt, Wallet, SquaresFour, Buildings, CreditCard, ChartLineUp];
@@ -35,6 +36,11 @@ export default async function SettingsPage() {
           <SettingsRow href="/settings/security/passkeys" title="Passkeys" detail={`${security.credentials.length} aktif`} tone="violet" icon={<Key size={20} />} />
           <SettingsRow href="/settings/security/recovery" title="Kode pemulihan" detail={`${security.recoveryRemaining} tersisa`} tone="amber" icon={<Lifebuoy size={20} />} />
           <SettingsRow href="/settings/security/sessions" title="Sesi" detail="Kelola akses perangkat" tone="cyan" icon={<Devices size={20} />} />
+        </div>
+      </section>
+      <section className="settings-nav-section" aria-labelledby="settings-appearance-title"><h2 id="settings-appearance-title">Tampilan</h2>
+        <div className="settings-nav-group">
+          <ThemeSelector />
         </div>
       </section>
     </div>

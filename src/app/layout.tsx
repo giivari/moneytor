@@ -40,5 +40,21 @@ export const metadata: Metadata = {
   },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="id" className={inter.variable} data-scroll-behavior="smooth" suppressHydrationWarning><body suppressHydrationWarning><a className="skip-link" href="#main-content">Lewati ke konten</a><FinanceFeedbackProvider><AppShell>{children}</AppShell></FinanceFeedbackProvider></body></html>;
+  return (
+    <html lang="id" className={inter.variable} data-scroll-behavior="smooth" data-theme="light" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=localStorage.getItem("moneytor-theme");var t=s==="dark"||(s==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";document.documentElement.setAttribute("data-theme",t);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();`,
+          }}
+        />
+      </head>
+      <body suppressHydrationWarning>
+        <a className="skip-link" href="#main-content">Lewati ke konten</a>
+        <FinanceFeedbackProvider>
+          <AppShell>{children}</AppShell>
+        </FinanceFeedbackProvider>
+      </body>
+    </html>
+  );
 }

@@ -8,6 +8,7 @@ import { CalendarCheck, ChartBar, CreditCard, DotsThree, GearSix, House, Magnify
 import { BrandIdentity } from "./brand-identity";
 import { FeatureOnboarding } from "./feature-onboarding";
 import { PrivacyAmountToggle } from "./privacy-toggle";
+import { ThemeQuickToggle } from "./theme-toggle";
 import { QuickAdd } from "@/components/quick-add";
 import { LoadingIndicator } from "./loading-indicator";
 import { useFinanceFeedback } from "./finance-feedback";
@@ -84,7 +85,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           className="header-search-input"
         />
       </div>
-      <div className="header-actions"><PrivacyAmountToggle /><FeatureOnboarding /><QuickAdd /></div>
+      <div className="header-actions"><PrivacyAmountToggle /><FeatureOnboarding /><ThemeQuickToggle /><QuickAdd /></div>
     </header>
 
     <nav className="app-rail" aria-label="Navigasi utama">

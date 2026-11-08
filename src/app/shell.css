@@ -124,6 +124,25 @@
 .icon-button:hover,
 .onboarding-help-trigger:hover { background: var(--surface-hover); color: var(--ink); }
 .privacy-toggle-trigger[aria-pressed="true"] { background: var(--surface-sunken); border-color: var(--line-strong); color: var(--ink); }
+.header-theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 0;
+  flex: none;
+  border: 1px solid var(--line-search);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--tab-inactive);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+.header-theme-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
 
 /* Rail */
 .app-rail {
