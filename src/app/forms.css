@@ -279,6 +279,33 @@ dialog.transaction-modal[data-mode="slideover"] {
 .tx-four-col {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
+.tx-field-row .field,
+.tx-field-row .inline-catalog-select {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-width: 0;
+}
+.tx-field-row .field > label,
+.tx-field-row .field > span,
+.tx-field-row label.field > span,
+.tx-field-row .inline-catalog-select label.field > span {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--muted);
+  min-height: 18px;
+  line-height: var(--leading-tight);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tx-field-row input:not([type="checkbox"]):not([type="radio"]),
+.tx-field-row select {
+  height: 36px;
+  min-height: 36px;
+}
 
 .tx-input-strong {
   font-weight: var(--weight-bold);

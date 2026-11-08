@@ -147,3 +147,21 @@
 
 /* Investasi: KPI row per currency above holdings */
 .investment-kpis { display: grid; gap: var(--space-3); margin-bottom: var(--space-5); }
+
+.investment-table-name strong {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+.investment-table-name small {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+.btn-compact {
+  height: 26px;
+  min-height: 26px;
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+}

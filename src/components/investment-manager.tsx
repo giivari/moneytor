@@ -11,7 +11,6 @@ import { SectionHeading } from "./section-heading";
 import { FinancialDataTable } from "./financial-data-table";
 import { ListToolbar } from "./list-toolbar";
 import { CompactFinancialRow } from "./compact-financial-row";
-import { ResponsiveDisclosure } from "./responsive-disclosure";
 import { useMobileViewport } from "./use-mobile-viewport";
 import { ArrowClockwise, ChartLineUp, Check, Coins, PencilSimple, Plus, Receipt, SpinnerGap, Trash, TrendUp, X } from "@phosphor-icons/react";
 import { Kpi, PageHeading } from "./ui";
@@ -558,273 +557,226 @@ export function InvestmentManager(workspace: Workspace) {
               </p>
             </div>
           ) : (
-            sortNamed(
-              snapshot.holdings,
-              (holding) =>
-                `${snapshot.portfolios.find((p) => p.id === holding.portfolioId)?.displayName ?? ""} ${
-                  snapshot.instruments.find((i) => i.id === holding.instrumentId)?.displayName ?? ""
-                }`,
-              (holding) => `${holding.portfolioId}/${holding.instrumentId}`
-            ).map((holding) => {
-              const { portfolio, instrument } = identity(holding);
-              const priceAction = (
-                <button
-                  type="button"
-                  className="row-action"
-                  disabled={!instrument.isActive || refreshing}
-                  onClick={() => setForm({ mode: "price", instrumentId: instrument.id })}
-                >
-                  {holding.price ? "Ubah harga" : "Tambahkan harga"}
-                </button>
-              );
-              const autoPriceAction =
-                snapshot.providerConfigured &&
-                instrument.isActive &&
-                Boolean(instrument.priceSymbol || instrument.symbol) ? (
-                  <button
-                    type="button"
-                    className="row-action"
-                    disabled={pending || refreshing}
-                    aria-busy={pending && pendingTarget === instrument.id}
-                    onClick={() => void refreshPrice(instrument.id)}
-                  >
-                    {pending && pendingTarget === instrument.id ? (
-                      <LoadingIndicator>Memuat…</LoadingIndicator>
-                    ) : (
-                      <>
-                        <ArrowClockwise size={14} /> Harga otomatis
-                      </>
-                    )}
-                  </button>
-                ) : null;
-              return (
-                <article
-                  className="surface investment-holding"
-                  key={`${portfolio.id}/${instrument.id}`}
-                >
-                  <div className="investment-holding-heading">
-                    <div>
-                      <strong>{instrument.displayName}</strong>
-                      <span>
-                        {portfolio.displayName} · {instrument.typeName}
-                        {!portfolio.isActive || !instrument.isActive ? " · Diarsipkan" : ""}
-                      </span>
-                    </div>
-                    <span className="investment-units">{formatQuantity(holding.quantity)} unit</span>
-                  </div>
-                  <dl className="investment-key-metrics" data-priced={holding.marketMinor !== null}>
-                    <div
-                      data-wide={
-                        holding.marketMinor === null ||
-                        formatMinor(holding.marketMinor, instrument.currency, instrument.exponent).length > 16
-                      }
-                    >
-                      <dt>Nilai pasar</dt>
-                      <dd className="financial-value financial-value--entity">
-                        {holding.marketMinor === null
-                          ? "Belum ada harga pasar"
-                          : formatMinor(holding.marketMinor, instrument.currency, instrument.exponent)}
-                      </dd>
-                    </div>
-                    {holding.unrealizedMinor !== null && (
-                      <div
-                        data-wide={
-                          formatMinor(holding.unrealizedMinor, instrument.currency, instrument.exponent).length > 16
-                        }
+            <div className="financial-table-container">
+              <table className="financial-data-table investment-table">
+                <thead>
+                  <tr>
+                    <th>Instrumen &amp; Portofolio</th>
+                    <th data-numeric="true">Unit</th>
+                    <th data-numeric="true">Harga Pasar</th>
+                    <th data-numeric="true">Biaya Pokok</th>
+                    <th data-numeric="true">Nilai Pasar</th>
+                    <th data-numeric="true">Unrealized P/L</th>
+                    <th style={{ textAlign: "right" }}>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortNamed(
+                    snapshot.holdings,
+                    (holding) =>
+                      `${snapshot.portfolios.find((p) => p.id === holding.portfolioId)?.displayName ?? ""} ${
+                        snapshot.instruments.find((i) => i.id === holding.instrumentId)?.displayName ?? ""
+                      }`,
+                    (holding) => `${holding.portfolioId}/${holding.instrumentId}`
+                  ).map((holding) => {
+                    const { portfolio, instrument } = identity(holding);
+                    const priceAction = (
+                      <button
+                        type="button"
+                        className="row-action btn-compact"
+                        disabled={!instrument.isActive || refreshing}
+                        onClick={() => setForm({ mode: "price", instrumentId: instrument.id })}
                       >
-                        <dt>{mobile ? "Belum terealisasi" : "Laba/rugi belum terealisasi"}</dt>
-                        <dd className="financial-value financial-value--entity">
-                          <Pnl
-                            value={holding.unrealizedMinor}
-                            currency={instrument.currency}
-                            exponent={instrument.exponent}
-                          />
-                          {holding.unrealizedPercent !== null && (
-                            <small>{holding.unrealizedPercent}%</small>
+                        {holding.price ? "Ubah harga" : "Tambah harga"}
+                      </button>
+                    );
+                    const autoPriceAction =
+                      snapshot.providerConfigured &&
+                      instrument.isActive &&
+                      Boolean(instrument.priceSymbol || instrument.symbol) ? (
+                        <button
+                          type="button"
+                          className="row-action btn-compact"
+                          disabled={pending || refreshing}
+                          aria-busy={pending && pendingTarget === instrument.id}
+                          onClick={() => void refreshPrice(instrument.id)}
+                        >
+                          {pending && pendingTarget === instrument.id ? (
+                            <LoadingIndicator>Memuat…</LoadingIndicator>
+                          ) : (
+                            <>
+                              <ArrowClockwise size={14} /> Harga otomatis
+                            </>
                           )}
-                        </dd>
-                      </div>
-                    )}
-                    {(!mobile || holding.marketMinor === null) && (
-                      <div
-                        data-wide={
-                          formatMinor(holding.costBasisMinor, instrument.currency, instrument.exponent).length > 16
-                        }
-                      >
-                        <dt>Biaya perolehan tersisa</dt>
-                        <dd className="financial-value financial-value--entity">
-                          {formatMinor(holding.costBasisMinor, instrument.currency, instrument.exponent)}
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
-                  {!mobile && holding.price ? (
-                    <p className="investment-price-status">
-                      Harga pasar / unit{" "}
-                      <strong className="financial-value financial-value--supporting">
-                        {formatInvestmentPrice(holding.price.price, instrument.currency, instrument.exponent)}
-                      </strong>
-                      {holding.stale && <span className="investment-warning">Harga terakhir &gt;24 jam</span>}
-                    </p>
-                  ) : null}
-                  {mobile && holding.price && holding.stale && (
-                    <p className="investment-warning investment-price-status">Harga terakhir lebih dari 24 jam.</p>
-                  )}
-                  {(!portfolio.isActive || !instrument.isActive) && (
-                    <div className="investment-row-actions">
-                      {!portfolio.isActive &&
-                        restoreButton("portfolio", portfolio.id, "Pulihkan portofolio")}
-                      {!instrument.isActive &&
-                        restoreButton("instrument", instrument.id, "Pulihkan instrumen")}
-                    </div>
-                  )}
-                  <div className="investment-position-controls">
-                    <div className="investment-row-actions investment-trade-actions">
-                      <button
-                        type="button"
-                        className="finance-secondary"
-                        disabled={
-                          !portfolio.isActive ||
-                          !instrument.isActive ||
-                          !workspace.assets.some((a) => a.currency === instrument.currency) ||
-                          refreshing
-                        }
-                        onClick={() =>
-                          setForm({ mode: "trade", portfolioId: portfolio.id, instrumentId: instrument.id })
-                        }
-                      >
-                        Beli
-                      </button>
-                      <button
-                        type="button"
-                        className="finance-secondary"
-                        disabled={
-                          !portfolio.isActive ||
-                          !instrument.isActive ||
-                          !workspace.assets.some((a) => a.currency === instrument.currency) ||
-                          decimal(holding.quantity, true) <= 0n ||
-                          refreshing
-                        }
-                        onClick={() =>
-                          setForm({
-                            mode: "trade",
-                            kind: "sell",
-                            portfolioId: portfolio.id,
-                            instrumentId: instrument.id,
-                          })
-                        }
-                      >
-                        Jual
-                      </button>
-                      {!mobile && (
-                        <>
-                          {priceAction}
-                          {autoPriceAction}
-                        </>
-                      )}
-                    </div>
-                    {mobile && !holding.price && (
-                      <div className="investment-price-action">
-                        {priceAction}
-                        {autoPriceAction}
-                      </div>
-                    )}
-                    <ResponsiveDisclosure label="Rincian posisi" className="investment-position-details">
-                      <dl className="investment-detail-metrics">
-                        {mobile && holding.marketMinor !== null && (
-                          <div>
-                            <dt>Biaya perolehan tersisa</dt>
-                            <dd className="financial-value">
-                              {formatMinor(holding.costBasisMinor, instrument.currency, instrument.exponent)}
-                            </dd>
+                        </button>
+                      ) : null;
+                    return (
+                      <tr key={`${portfolio.id}/${instrument.id}`}>
+                        <td>
+                          <div className="investment-table-name">
+                            <strong>{instrument.displayName}</strong>
+                            <small>
+                              {portfolio.displayName} · {instrument.typeName}
+                              {!portfolio.isActive || !instrument.isActive ? " · Diarsipkan" : ""}
+                            </small>
                           </div>
-                        )}
-                        {mobile && holding.price && (
-                          <div>
-                            <dt>Harga pasar / unit</dt>
-                            <dd>
-                              {formatInvestmentPrice(
-                                holding.price.price,
-                                instrument.currency,
-                                instrument.exponent
+                          <details className="history-detail">
+                            <summary>Rincian posisi</summary>
+                            <dl className="investment-detail-metrics">
+                              <div>
+                                <dt>Rata-rata / unit</dt>
+                                <dd>
+                                  <span title={holding.averageCost}>
+                                    {formatInvestmentPrice(
+                                      holding.averageCost,
+                                      instrument.currency,
+                                      instrument.exponent
+                                    )}
+                                  </span>
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>Laba/rugi terealisasi</dt>
+                                <dd>
+                                  <Pnl
+                                    value={holding.realizedMinor}
+                                    currency={instrument.currency}
+                                    exponent={instrument.exponent}
+                                  />
+                                </dd>
+                              </div>
+                            </dl>
+                            {holding.price && (
+                              <p className="finance-hint">
+                                {holding.price.sourceType === "manual" ? "Harga manual" : holding.price.sourceId} ·{" "}
+                                {new Date(holding.price.asOf).toLocaleString("id-ID")}
+                                {holding.stale ? " · Lebih dari 24 jam; periksa kembali" : ""}
+                              </p>
+                            )}
+                            {holding.opening && (
+                              <p className="finance-hint">
+                                Posisi awal {formatQuantity(holding.opening.quantity)} unit · biaya{" "}
+                                {formatMinor(holding.opening.costBasisMinor, instrument.currency, instrument.exponent)} ·{" "}
+                                {new Date(holding.opening.occurredAt).toLocaleDateString("id-ID")}
+                              </p>
+                            )}
+                            {holding.opening && (
+                              <OpeningHistory
+                                opening={holding.opening}
+                                currency={instrument.currency}
+                                exponent={instrument.exponent}
+                              />
+                            )}
+                            {holding.opening && (
+                              <button
+                                type="button"
+                                className="row-action"
+                                disabled={!portfolio.isActive || !instrument.isActive || refreshing}
+                                onClick={() =>
+                                  setForm({
+                                    mode: "opening-correct",
+                                    portfolioId: portfolio.id,
+                                    instrumentId: instrument.id,
+                                    opening: holding.opening!,
+                                  })
+                                }
+                              >
+                                Koreksi posisi awal
+                              </button>
+                            )}
+                          </details>
+                        </td>
+                        <td data-numeric="true">
+                          <span className="investment-units">{formatQuantity(holding.quantity)} unit</span>
+                        </td>
+                        <td data-numeric="true">
+                          {holding.price ? (
+                            <div>
+                              <strong className="financial-value financial-value--supporting">
+                                {formatInvestmentPrice(holding.price.price, instrument.currency, instrument.exponent)}
+                              </strong>
+                              {holding.stale && <small className="investment-warning">&gt;24 jam</small>}
+                            </div>
+                          ) : (
+                            <small className="ui-muted">—</small>
+                          )}
+                        </td>
+                        <td data-numeric="true">
+                          <span className="financial-value financial-value--entity">
+                            {formatMinor(holding.costBasisMinor, instrument.currency, instrument.exponent)}
+                          </span>
+                        </td>
+                        <td data-numeric="true">
+                          <strong className="financial-value financial-value--entity">
+                            {holding.marketMinor === null
+                              ? "Belum ada harga"
+                              : formatMinor(holding.marketMinor, instrument.currency, instrument.exponent)}
+                          </strong>
+                        </td>
+                        <td data-numeric="true">
+                          {holding.unrealizedMinor !== null ? (
+                            <div>
+                              <Pnl
+                                value={holding.unrealizedMinor}
+                                currency={instrument.currency}
+                                exponent={instrument.exponent}
+                              />
+                              {holding.unrealizedPercent !== null && (
+                                <small>{holding.unrealizedPercent}%</small>
                               )}
-                            </dd>
-                          </div>
-                        )}
-                        <div>
-                          <dt>Rata-rata / unit</dt>
-                          <dd>
-                            <span title={holding.averageCost}>
-                              {formatInvestmentPrice(
-                                holding.averageCost,
-                                instrument.currency,
-                                instrument.exponent
-                              )}
-                            </span>
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Laba/rugi terealisasi</dt>
-                          <dd>
-                            <Pnl
-                              value={holding.realizedMinor}
-                              currency={instrument.currency}
-                              exponent={instrument.exponent}
-                            />
-                          </dd>
-                        </div>
-                      </dl>
-                      {holding.price && (
-                        <p className="finance-hint">
-                          {holding.price.sourceType === "manual" ? "Harga manual" : holding.price.sourceId} ·{" "}
-                          {new Date(holding.price.asOf).toLocaleString("id-ID")}
-                          {holding.stale ? " · Lebih dari 24 jam; periksa kembali" : ""}
-                        </p>
-                      )}
-                      {holding.opening && (
-                        <p className="finance-hint">
-                          Posisi awal {formatQuantity(holding.opening.quantity)} unit · biaya{" "}
-                          {formatMinor(holding.opening.costBasisMinor, instrument.currency, instrument.exponent)} ·{" "}
-                          {new Date(holding.opening.occurredAt).toLocaleDateString("id-ID")}
-                        </p>
-                      )}
-                      {holding.opening && (
-                        <OpeningHistory
-                          opening={holding.opening}
-                          currency={instrument.currency}
-                          exponent={instrument.exponent}
-                        />
-                      )}
-                      <div className="investment-row-actions">
-                        {mobile && holding.price && (
-                          <>
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <div className="investment-row-actions investment-trade-actions" style={{ justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              className="finance-secondary btn-compact"
+                              disabled={
+                                !portfolio.isActive ||
+                                !instrument.isActive ||
+                                !workspace.assets.some((a) => a.currency === instrument.currency) ||
+                                refreshing
+                              }
+                              onClick={() =>
+                                setForm({ mode: "trade", portfolioId: portfolio.id, instrumentId: instrument.id })
+                              }
+                            >
+                              Beli
+                            </button>
+                            <button
+                              type="button"
+                              className="finance-secondary btn-compact"
+                              disabled={
+                                !portfolio.isActive ||
+                                !instrument.isActive ||
+                                !workspace.assets.some((a) => a.currency === instrument.currency) ||
+                                decimal(holding.quantity, true) <= 0n ||
+                                refreshing
+                              }
+                              onClick={() =>
+                                setForm({
+                                  mode: "trade",
+                                  kind: "sell",
+                                  portfolioId: portfolio.id,
+                                  instrumentId: instrument.id,
+                                })
+                              }
+                            >
+                              Jual
+                            </button>
                             {priceAction}
                             {autoPriceAction}
-                          </>
-                        )}
-                        {holding.opening && (
-                          <button
-                            type="button"
-                            className="row-action"
-                            disabled={!portfolio.isActive || !instrument.isActive || refreshing}
-                            onClick={() =>
-                              setForm({
-                                mode: "opening-correct",
-                                portfolioId: portfolio.id,
-                                instrumentId: instrument.id,
-                                opening: holding.opening!,
-                              })
-                            }
-                          >
-                            Koreksi posisi awal
-                          </button>
-                        )}
-                      </div>
-                    </ResponsiveDisclosure>
-                  </div>
-                </article>
-              );
-            })
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       )}
@@ -1065,75 +1017,86 @@ export function InvestmentManager(workspace: Workspace) {
                 </button>
               }
             />
-            {!snapshot.portfolios.some((p) => showArchived || p.isActive) && (
+            {!snapshot.portfolios.some((p) => showArchived || p.isActive) ? (
               <p className="finance-hint">Belum ada portofolio pada tampilan ini.</p>
+            ) : (
+              <div className="financial-table-container">
+                <table className="financial-data-table">
+                  <thead>
+                    <tr>
+                      <th>Portofolio</th>
+                      <th>Penyedia &amp; Mata Uang</th>
+                      <th style={{ textAlign: "right" }}>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshot.portfolios
+                      .filter((p) => showArchived || p.isActive)
+                      .map((p) => (
+                        <tr key={p.id}>
+                          <td>
+                            <strong>{p.displayName}</strong>
+                            {!p.isActive && <small className="ui-chip">Diarsipkan</small>}
+                            {p.note && <small>{p.note}</small>}
+                            <details className="history-detail">
+                              <summary>Ringkasan posisi</summary>
+                              <TotalsData
+                                total={snapshot.portfolioTotals.find((total) => total.portfolioId === p.id)}
+                              />
+                            </details>
+                          </td>
+                          <td>
+                            <small>{p.providerName ?? "Tanpa penyedia"} · {p.currency}</small>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <div className="investment-row-actions" style={{ justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                className="row-action btn-compact"
+                                disabled={refreshing}
+                                onClick={() =>
+                                  setForm({
+                                    mode: "rename",
+                                    rename: { kind: "portfolio", id: p.id, displayName: p.displayName },
+                                  })
+                                }
+                              >
+                                <PencilSimple size={14} /> Ubah
+                              </button>
+                              {!p.isActive && (
+                                <>
+                                  {restoreButton("portfolio", p.id)}
+                                  {deleteButton("portfolio", p)}
+                                </>
+                              )}
+                              {p.isActive && (
+                                <button
+                                  type="button"
+                                  className="row-action btn-compact"
+                                  data-tone="warning"
+                                  disabled={refreshing}
+                                  onClick={() =>
+                                    setConfirmation({
+                                      operation: "archive",
+                                      kind: "portfolio",
+                                      id: p.id,
+                                      title: `Arsipkan ${p.displayName}?`,
+                                      description:
+                                        "Transaksi baru akan ditolak. Posisi terbuka dan seluruh riwayat tetap terlihat. Anda dapat memulihkannya nanti.",
+                                    })
+                                  }
+                                >
+                                  Arsipkan
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-            {snapshot.portfolios
-              .filter((p) => showArchived || p.isActive)
-              .map((p) => (
-                <div
-                  className="investment-meta-row compact-management-item compact-management-item--stacked"
-                  key={p.id}
-                >
-                  <div className="compact-management-identity">
-                    <strong>{p.displayName}</strong>
-                    <small>
-                      {p.providerName ?? "Tanpa penyedia"} · {p.currency}
-                      {!p.isActive ? " · Diarsipkan" : ""}
-                    </small>
-                    {p.note && <small>{p.note}</small>}
-                    <div className="management-disclosures">
-                      <details className="investment-price-history">
-                        <summary>Ringkasan posisi</summary>
-                        <TotalsData
-                          total={snapshot.portfolioTotals.find((total) => total.portfolioId === p.id)}
-                        />
-                      </details>
-                    </div>
-                  </div>
-                  <div className="investment-row-actions compact-management-actions">
-                    <button
-                      type="button"
-                      className="row-action"
-                      disabled={refreshing}
-                      onClick={() =>
-                        setForm({
-                          mode: "rename",
-                          rename: { kind: "portfolio", id: p.id, displayName: p.displayName },
-                        })
-                      }
-                    >
-                      <PencilSimple size={14} /> Ubah
-                    </button>
-                    {!p.isActive && (
-                      <>
-                        {restoreButton("portfolio", p.id)}
-                        {deleteButton("portfolio", p)}
-                      </>
-                    )}
-                    {p.isActive && (
-                      <button
-                        type="button"
-                        className="row-action"
-                        data-tone="warning"
-                        disabled={refreshing}
-                        onClick={() =>
-                          setConfirmation({
-                            operation: "archive",
-                            kind: "portfolio",
-                            id: p.id,
-                            title: `Arsipkan ${p.displayName}?`,
-                            description:
-                              "Transaksi baru akan ditolak. Posisi terbuka dan seluruh riwayat tetap terlihat. Anda dapat memulihkannya nanti.",
-                          })
-                        }
-                      >
-                        Arsipkan
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
           </section>
 
           <section className="compact-management-section">
@@ -1150,154 +1113,167 @@ export function InvestmentManager(workspace: Workspace) {
                 </button>
               }
             />
-            {!snapshot.instruments.some((i) => showArchived || i.isActive) && (
+            {!snapshot.instruments.some((i) => showArchived || i.isActive) ? (
               <p className="finance-hint">Belum ada instrumen pada tampilan ini.</p>
-            )}
-            {snapshot.instruments
-              .filter((i) => showArchived || i.isActive)
-              .map((i) => (
-                <div
-                  className="investment-meta-row compact-management-item compact-management-item--stacked"
-                  key={i.id}
-                >
-                  <div className="compact-management-identity">
-                    <strong>{i.displayName}</strong>
-                    <small>
-                      {[
-                        i.symbol,
-                        i.market,
-                        i.priceSymbol ? `ref: ${i.priceSymbol}` : "",
-                        i.typeName,
-                        i.currency,
-                        !i.isActive ? "Diarsipkan" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </small>
-                    <div className="management-disclosures">
-                      <details className="investment-price-history">
-                        <summary>Ringkasan posisi</summary>
-                        <TotalsData
-                          total={snapshot.instrumentTotals.find((total) => total.instrumentId === i.id)}
-                        />
-                      </details>
-                      <details className="investment-price-history">
-                        <summary>Riwayat harga</summary>
-                        <ListSortControl {...priceSort} />
-                        {sortTemporal(
-                          snapshot.prices.filter((p) => p.instrumentId === i.id),
-                          priceSort.direction,
-                          (item) => item.asOf,
-                          (item) => item.id
-                        ).map((p) => {
-                          const effective =
-                            snapshot.prices.find(
-                              (point) => point.instrumentId === i.id && point.asOf === p.asOf
-                            )?.id === p.id;
-                          return (
-                            <div className="investment-price-entry" key={p.id}>
-                              <p>
-                                {formatInvestmentPrice(p.price, i.currency, i.exponent)} ·{" "}
-                                {new Date(p.asOf).toLocaleString("id-ID")} ·{" "}
-                                {p.sourceType === "manual" ? "manual" : p.sourceId}{" "}
-                                {effective ? "· Efektif pada waktu ini" : "· Digantikan"}
-                              </p>
-                              {effective && p.sourceType === "manual" && i.isActive && (
-                                <button
-                                  type="button"
-                                  className="row-action"
-                                  disabled={pending || refreshing}
-                                  onClick={() =>
-                                    setForm({ mode: "price-correct", instrumentId: i.id, price: p })
-                                  }
-                                >
-                                  <PencilSimple size={14} /> Koreksi harga
-                                </button>
+            ) : (
+              <div className="financial-table-container">
+                <table className="financial-data-table">
+                  <thead>
+                    <tr>
+                      <th>Instrumen</th>
+                      <th>Pasar &amp; Jenis</th>
+                      <th style={{ textAlign: "right" }}>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshot.instruments
+                      .filter((i) => showArchived || i.isActive)
+                      .map((i) => (
+                        <tr key={i.id}>
+                          <td>
+                            <strong>{i.displayName}</strong>
+                            {!i.isActive && <small className="ui-chip">Diarsipkan</small>}
+                            <details className="history-detail">
+                              <summary>Ringkasan posisi</summary>
+                              <TotalsData
+                                total={snapshot.instrumentTotals.find((total) => total.instrumentId === i.id)}
+                              />
+                            </details>
+                            <details className="history-detail">
+                              <summary>Riwayat harga</summary>
+                              <ListSortControl {...priceSort} />
+                              {sortTemporal(
+                                snapshot.prices.filter((p) => p.instrumentId === i.id),
+                                priceSort.direction,
+                                (item) => item.asOf,
+                                (item) => item.id
+                              ).map((p) => {
+                                const effective =
+                                  snapshot.prices.find(
+                                    (point) => point.instrumentId === i.id && point.asOf === p.asOf
+                                  )?.id === p.id;
+                                return (
+                                  <div className="investment-price-entry" key={p.id}>
+                                    <p>
+                                      {formatInvestmentPrice(p.price, i.currency, i.exponent)} ·{" "}
+                                      {new Date(p.asOf).toLocaleString("id-ID")} ·{" "}
+                                      {p.sourceType === "manual" ? "manual" : p.sourceId}{" "}
+                                      {effective ? "· Efektif pada waktu ini" : "· Digantikan"}
+                                    </p>
+                                    {effective && p.sourceType === "manual" && i.isActive && (
+                                      <button
+                                        type="button"
+                                        className="row-action btn-compact"
+                                        disabled={pending || refreshing}
+                                        onClick={() =>
+                                          setForm({ mode: "price-correct", instrumentId: i.id, price: p })
+                                        }
+                                      >
+                                        <PencilSimple size={14} /> Koreksi harga
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {!snapshot.prices.some((p) => p.instrumentId === i.id) && <p>Belum ada harga.</p>}
+                            </details>
+                          </td>
+                          <td>
+                            <small>
+                              {[
+                                i.symbol,
+                                i.market,
+                                i.priceSymbol ? `ref: ${i.priceSymbol}` : "",
+                                i.typeName,
+                                i.currency,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </small>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <div className="investment-row-actions" style={{ justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                className="row-action btn-compact"
+                                disabled={refreshing}
+                                onClick={() =>
+                                  setForm({
+                                    mode: "rename",
+                                    rename: {
+                                      kind: "instrument",
+                                      id: i.id,
+                                      displayName: i.displayName,
+                                      symbol: i.symbol ?? "",
+                                      market: i.market ?? "",
+                                      priceSymbol: i.priceSymbol ?? "",
+                                    },
+                                  })
+                                }
+                              >
+                                <PencilSimple size={14} /> Ubah
+                              </button>
+                              {!i.isActive && (
+                                <>
+                                  {restoreButton("instrument", i.id)}
+                                  {deleteButton("instrument", i)}
+                                </>
+                              )}
+                              {i.isActive && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="finance-secondary row-action btn-compact"
+                                    disabled={refreshing}
+                                    onClick={() => setForm({ mode: "price", instrumentId: i.id })}
+                                  >
+                                    Harga manual
+                                  </button>
+                                  {snapshot.providerConfigured && (
+                                    <button
+                                      type="button"
+                                      className="finance-secondary row-action btn-compact"
+                                      disabled={pending || refreshing}
+                                      aria-busy={pending && pendingTarget === i.id}
+                                      onClick={() => void refreshPrice(i.id)}
+                                    >
+                                      {pending && pendingTarget === i.id ? (
+                                        <LoadingIndicator>Memuat…</LoadingIndicator>
+                                      ) : (
+                                        <>
+                                          <ArrowClockwise size={15} /> Harga otomatis
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="row-action btn-compact"
+                                    data-tone="warning"
+                                    disabled={refreshing}
+                                    onClick={() =>
+                                      setConfirmation({
+                                        operation: "archive",
+                                        kind: "instrument",
+                                        id: i.id,
+                                        title: `Arsipkan ${i.displayName}?`,
+                                        description:
+                                          "Transaksi baru akan ditolak. Posisi yang masih dimiliki tetap dihitung dan ditampilkan. Anda dapat memulihkannya nanti.",
+                                      })
+                                    }
+                                  >
+                                    Arsipkan
+                                  </button>
+                                </>
                               )}
                             </div>
-                          );
-                        })}
-                        {!snapshot.prices.some((p) => p.instrumentId === i.id) && <p>Belum ada harga.</p>}
-                      </details>
-                    </div>
-                  </div>
-                  <div className="investment-row-actions compact-management-actions">
-                    <button
-                      type="button"
-                      className="row-action"
-                      disabled={refreshing}
-                      onClick={() =>
-                        setForm({
-                          mode: "rename",
-                          rename: {
-                            kind: "instrument",
-                            id: i.id,
-                            displayName: i.displayName,
-                            symbol: i.symbol ?? "",
-                            market: i.market ?? "",
-                            priceSymbol: i.priceSymbol ?? "",
-                          },
-                        })
-                      }
-                    >
-                      <PencilSimple size={14} /> Ubah
-                    </button>
-                    {!i.isActive && (
-                      <>
-                        {restoreButton("instrument", i.id)}
-                        {deleteButton("instrument", i)}
-                      </>
-                    )}
-                    {i.isActive && (
-                      <>
-                        <button
-                          type="button"
-                          className="finance-secondary row-action"
-                          disabled={refreshing}
-                          onClick={() => setForm({ mode: "price", instrumentId: i.id })}
-                        >
-                          Harga manual
-                        </button>
-                        {snapshot.providerConfigured && (
-                          <button
-                            type="button"
-                            className="finance-secondary row-action"
-                            disabled={pending || refreshing}
-                            aria-busy={pending && pendingTarget === i.id}
-                            onClick={() => void refreshPrice(i.id)}
-                          >
-                            {pending && pendingTarget === i.id ? (
-                              <LoadingIndicator>Memuat…</LoadingIndicator>
-                            ) : (
-                              <>
-                                <ArrowClockwise size={15} /> Harga otomatis
-                              </>
-                            )}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="row-action"
-                          data-tone="warning"
-                          disabled={refreshing}
-                          onClick={() =>
-                            setConfirmation({
-                              operation: "archive",
-                              kind: "instrument",
-                              id: i.id,
-                              title: `Arsipkan ${i.displayName}?`,
-                              description:
-                                "Transaksi baru akan ditolak. Posisi yang masih dimiliki tetap dihitung dan ditampilkan. Anda dapat memulihkannya nanti.",
-                            })
-                          }
-                        >
-                          Arsipkan
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
 
           <details className="investment-types">

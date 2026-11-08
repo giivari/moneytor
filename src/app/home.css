@@ -93,13 +93,52 @@
 .home-automation-more { margin: var(--space-2) 0 0; font-size: var(--text-sm); }
 .home-side .home-automation-alert { margin-bottom: 0; }
 /* The side column is narrow: confirmation controls go under the description. */
-.home-side .compact-financial-row--confirmation { grid-template-columns: minmax(0, 1fr); }
+.home-side .compact-financial-row--confirmation { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.home-side .compact-financial-row__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-bottom: 4px;
+}
+.home-side .compact-financial-row__identity {
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+.home-side .compact-financial-row__context {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.home-side .compact-financial-row__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.home-side .compact-financial-row__confirmation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.home-side .compact-financial-row__amount[data-editable="true"] { flex: 1 1 12ch; inline-size: auto; }
+.home-side .compact-financial-row__confirmation .field input {
+  height: 32px;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+}
+.home-side .compact-financial-row__confirmation button {
+  height: 32px;
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: var(--text-xs);
+}
 .home-page .home-chart .insight-fit-chart .insight-axis { font-size: var(--text-xs); }
 .home-side .compact-financial-row__summary,
 .home-side .compact-financial-row__confirmation,
 .home-side .compact-financial-row__details { grid-column: 1; grid-row: auto; }
-.home-side .compact-financial-row__confirmation { justify-self: stretch; width: 100%; flex-wrap: wrap; }
-.home-side .compact-financial-row__amount[data-editable="true"] { flex: 1 1 12ch; inline-size: auto; }
 .home-page .home-chart .insight-fit-chart[data-pending="true"] { visibility: hidden; }
 .home-month-figures { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-6); margin: 0; }
 .home-month-figures > div { display: grid; gap: 2px; }

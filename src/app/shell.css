@@ -78,6 +78,13 @@
   line-height: 1;
   box-shadow: var(--shadow-1);
 }
+.brand-logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  flex-shrink: 0;
+}
 .brand-wordmark {
   font-size: var(--text-md);
   font-weight: var(--weight-bold);

@@ -819,16 +819,14 @@ export function TransactionEditor({
                       />
                     </div>
 
-                    <div className="field">
-                      <InlineCatalogSelect
-                        label="Kategori Pengeluaran"
-                        catalog="transactionCategories"
-                        appliesTo="expense"
-                        value={categoryId}
-                        onChange={setCategoryId}
-                        items={categories}
-                      />
-                    </div>
+                    <InlineCatalogSelect
+                      label="Kategori Pengeluaran"
+                      catalog="transactionCategories"
+                      appliesTo="expense"
+                      value={categoryId}
+                      onChange={setCategoryId}
+                      items={categories}
+                    />
 
                     <div className="field">
                       <label htmlFor="exp-date">Tanggal &amp; Waktu</label>
@@ -1226,16 +1224,14 @@ export function TransactionEditor({
                       </select>
                     </div>
 
-                    <div className="field">
-                      <InlineCatalogSelect
-                        label="Kategori Porsi Pribadi"
-                        catalog="transactionCategories"
-                        appliesTo="expense"
-                        value={categoryId}
-                        onChange={setCategoryId}
-                        items={categories}
-                      />
-                    </div>
+                    <InlineCatalogSelect
+                      label="Kategori Pribadi"
+                      catalog="transactionCategories"
+                      appliesTo="expense"
+                      value={categoryId}
+                      onChange={setCategoryId}
+                      items={categories}
+                    />
 
                     <div className="field">
                       <label htmlFor="sb-total">Total Bayar di Struk ({currency})</label>
@@ -1543,16 +1539,14 @@ export function TransactionEditor({
                   )}
 
                   <div className="tx-field-row tx-two-col">
-                    <div className="field">
-                      <InlineCatalogSelect
-                        label="Kategori Pemasukan"
-                        catalog="transactionCategories"
-                        appliesTo="income"
-                        value={categoryId}
-                        onChange={setCategoryId}
-                        items={categories}
-                      />
-                    </div>
+                    <InlineCatalogSelect
+                      label="Kategori Pemasukan"
+                      catalog="transactionCategories"
+                      appliesTo="income"
+                      value={categoryId}
+                      onChange={setCategoryId}
+                      items={categories}
+                    />
                     <div className="field">
                       <label htmlFor="inc-date">Tanggal &amp; Waktu</label>
                       <input
