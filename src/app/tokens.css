@@ -18,7 +18,9 @@
   --line-soft: #edf2f7;
   --line-strong: #d0d7de;
   --bg: #f3f5f8;
-  --shell-bg: #eef2f6;
+  --shell-bg: #f3f2f1;
+  --line-shell: #e5e5e5;
+  --line-search: #e0e0e0;
   --surface: #ffffff;
   --surface-sunken: #f8fafc;
   --surface-hover: #f0f6fc;
@@ -83,6 +85,7 @@
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --radius-workspace: 12px;
   --radius-pill: 999px;
 
   /* Controls and icons */
@@ -172,6 +175,8 @@ html[data-theme="dark"] {
   --line-strong: #454c54;
   --bg: #141414;
   --shell-bg: #1f1f1f;
+  --line-shell: #2a2a2a;
+  --line-search: #333333;
   --surface: #242424;
   --surface-sunken: #1b1b1b;
   --surface-hover: #292f36;
@@ -234,6 +239,8 @@ html[data-theme="dark"] {
     --line-strong: #454c54;
     --bg: #141414;
     --shell-bg: #1f1f1f;
+    --line-shell: #2a2a2a;
+    --line-search: #333333;
     --surface: #242424;
     --surface-sunken: #1b1b1b;
     --surface-hover: #292f36;
