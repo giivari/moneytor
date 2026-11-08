@@ -11,7 +11,7 @@ body {
   margin:0;
   background:var(--bg);
   color:var(--ink);
-  font-family:var(--font-inter),Arial,sans-serif;
+  font-family:var(--font-sans);
   -webkit-font-smoothing:antialiased
 }
 
@@ -78,13 +78,15 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   color:var(--on-primary);
   background:var(--primary);
   border:1px solid var(--primary);
-  border-radius:var(--radius-pill);
+  border-radius:var(--radius-md);
   min-height:var(--control-lg);
-  padding:0 15px
+  padding:0 15px;
+  transition:background-color var(--duration-fast) ease,border-color var(--duration-fast) ease
 }
 
 .button-primary:hover {
-  background:var(--primary-hover)
+  background:var(--primary-hover);
+  border-color:var(--primary-hover)
 }
 
 .page {
@@ -112,7 +114,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   border:1px solid var(--line);
   background:var(--surface);
   padding:9px 14px;
-  border-radius:var(--radius-pill);
+  border-radius:var(--radius-sm);
   color:var(--subtle)
 }
 
@@ -452,7 +454,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
   background:var(--surface);
   border:1px solid var(--line-strong);
   color:var(--ink-soft);
-  border-radius:var(--radius-pill);
+  border-radius:var(--radius-md);
   padding:8px 13px;
   white-space:nowrap
 }
@@ -473,7 +475,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 }
 
 .transaction-button:hover {
-  background:var(--neutral-soft)
+  background:var(--surface-hover)
 }
 
 .clickable-list .transaction-row {

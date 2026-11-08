@@ -14,10 +14,10 @@
 .financial-table-container, .u-table-wrap { width:100%; min-width:0; max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; }
 .financial-data-table, .u-table { width:100%; border-collapse:collapse; font-size:var(--text-sm); line-height:1.4; table-layout:auto; }
 .u-table caption { text-align:left; font-size:var(--text-xs); color:var(--subtle); padding-bottom:6px; caption-side:top; }
-.financial-data-table thead th, .u-table thead th { text-align:left; font-size:var(--text-xs); color:var(--muted); font-weight:var(--weight-semibold); letter-spacing:.01em; background:transparent; padding:8px 12px; border-bottom:1px solid var(--line-strong); white-space:nowrap; vertical-align:bottom; }
+.financial-data-table thead th, .u-table thead th { text-align:left; font-size:var(--text-xs); color:var(--muted); font-weight:var(--weight-semibold); letter-spacing:.01em; background:var(--surface-sunken); padding:8px 12px; border-bottom:1px solid var(--line-strong); white-space:nowrap; vertical-align:bottom; }
 .u-table thead th:not(:first-child):not([data-align="left"]) { text-align:right; }
-.financial-data-table td { padding:10px 12px; border-bottom:1px solid var(--track); vertical-align:middle; overflow-wrap:anywhere; }
-.u-table tbody td, .u-table tbody th { padding:10px 12px; border-bottom:1px solid var(--track); vertical-align:baseline; font-variant-numeric:tabular-nums; }
+.financial-data-table td { padding:10px 12px; border-bottom:1px solid var(--line-soft); vertical-align:middle; overflow-wrap:anywhere; }
+.u-table tbody td, .u-table tbody th { padding:10px 12px; border-bottom:1px solid var(--line-soft); vertical-align:baseline; font-variant-numeric:tabular-nums; }
 .u-table tbody th { font-weight:var(--weight-medium); color:var(--ink); text-align:left; white-space:normal; }
 .u-table tbody td:not([data-align="left"]) { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:var(--weight-semibold); }
 .u-table [data-align="left"] { text-align:left; white-space:normal; font-weight:var(--weight-regular); color:var(--muted); }
@@ -28,7 +28,7 @@
 .financial-data-table tr > :is(th, td):first-child, .u-table tr > :is(th, td):first-child { padding-left:0; text-align:left; }
 .financial-data-table tr > :is(th, td):last-child, .u-table tr > :is(th, td):last-child { padding-right:0; }
 .u-table :is(th, td) .financial-value { font-size:inherit; font-weight:inherit; }
-.financial-data-table tbody tr:hover > :is(td, th), .financial-data-table tbody tr:focus-within > :is(td, th), .u-table tbody tr:hover > :is(td, th) { background:var(--bg); }
+.financial-data-table tbody tr:hover > :is(td, th), .financial-data-table tbody tr:focus-within > :is(td, th), .u-table tbody tr:hover > :is(td, th) { background:var(--surface-hover); }
 .financial-data-table tr[data-actionable="true"] { cursor:pointer; }
 .record-title-button { display:block; max-width:100%; padding:0; border:0; background:transparent; color:var(--ink); font:inherit; font-weight:var(--weight-semibold); text-align:left; overflow-wrap:anywhere; cursor:inherit; }
 .automation-occurrence[data-actionable="true"] { cursor:pointer; }
@@ -36,7 +36,7 @@
 .financial-data-table td > strong, .u-table th > strong, .u-table td > strong { font-weight:var(--weight-semibold); color:var(--ink); }
 .financial-data-table td > strong { display:block; }
 .financial-data-table td > small, .financial-data-table td > span > small, .u-cell-sub { display:block; font-size:var(--text-xs); font-weight:var(--weight-regular); color:var(--subtle); margin-top:2px; line-height:1.35; }
-.u-pill { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:var(--radius-pill); font-style:normal; font-size:var(--text-xs); font-weight:var(--weight-semibold); background:var(--surface-sunken); color:var(--muted); vertical-align:middle; white-space:nowrap; }
+.u-pill { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:var(--radius-sm); font-style:normal; font-size:var(--text-xs); font-weight:var(--weight-semibold); background:var(--surface-sunken); color:var(--muted); vertical-align:middle; white-space:nowrap; }
 .u-pill[data-tone="warning"], .u-pill[data-status="Berjalan"] { background:var(--warning-light); color:var(--warning); }
 .u-pill[data-tone="credit"] { background:var(--data-coral-soft); color:var(--data-coral); }
 .u-pill[data-tone="positive"] { background:var(--data-teal-soft); color:var(--data-teal); }

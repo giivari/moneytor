@@ -146,11 +146,11 @@ details[open] > summary + * { margin-top: 8px; }
 .investment-opening-state { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
 .investment-opening-state > div { min-width: 0; }
 .investment-opening-state dt { margin-bottom: 4px; color: var(--muted); }
-.investment-opening-state dd { margin: 0; color: var(--primary); overflow-wrap: anywhere; }
+.investment-opening-state dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
 .investment-correction-entry { padding: 10px 0; border-top: 1px solid var(--line); }
 .investment-correction-entry:first-child { padding-top: 2px; border-top: 0; }
 .investment-correction-entry small { display: block; margin-bottom: 5px; color: var(--muted); }
-.investment-correction-entry p { margin: 3px 0; color: var(--primary); line-height: 1.5; overflow-wrap: anywhere; }
+.investment-correction-entry p { margin: 3px 0; color: var(--ink); line-height: 1.5; overflow-wrap: anywhere; }
 .investment-correction-entry .investment-correction-note { color: var(--muted); }
 .investment-holding > .investment-row-actions { margin-top: 14px; }
 .inline-disclosure-loading { display: inline-flex; align-items: center; gap: 6px; margin: 3px 0 6px; color: var(--muted); line-height: 1.4; }
