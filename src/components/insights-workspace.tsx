@@ -97,8 +97,9 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
   ) ?? state.report?.summary[0];
 
   return (
-    <div className="insight-workspace">
-      <div className="insight-mode-bar">
+    <>
+      <div className="page-body insight-workspace">
+        <div className="insight-mode-bar">
         <div className="fluent-segmented-control" role="radiogroup" aria-label="Mode Analitik">
           <button
             type="button"
@@ -275,6 +276,7 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
           />
         )}
       </div>
+      </div>
 
       <ExcelStatusBar
         rowCount={
@@ -301,6 +303,6 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
         isNetNegative={summaryItem?.netMinor ? BigInt(summaryItem.netMinor) < 0n : false}
         extraLabel={`Basis: ${analyticsMode === "consumption" ? "Mode Konsumsi Murni" : "Mode Arus Kas Riil"}`}
       />
-    </div>
+    </>
   );
 }

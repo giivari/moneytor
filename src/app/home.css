@@ -1,24 +1,29 @@
 /* Beranda: KPI row, then Ringkasan (trend, recent, due bills, accounts) or Rincian kalkulasi.
    Shared primitives live in ui.css; container queries use the page container. */
-.home-currencies { display: grid; gap: var(--space-4); margin-bottom: var(--space-5); }
+.home-currencies { display: grid; gap: 12px; margin-bottom: 14px; }
 
 /* Ringkasan grid */
-.home-grid, .home-main, .home-side { display: grid; gap: var(--space-4); align-content: start; min-width: 0; }
+.home-grid, .home-main, .home-side { display: grid; gap: 16px; align-content: start; min-width: 0; }
 
 /* Trend and composition reuse the Analitik visuals */
-.home-chart { padding: var(--space-3) var(--space-4) var(--space-4); }
-.home-page .home-chart .insight-fit-chart { height: 148px; max-height: none; margin-block: var(--space-2); }
+.home-chart { padding: 12px 16px 14px; }
+.home-page .home-chart .insight-fit-chart { height: 140px; max-height: none; margin-block: 6px; }
 .home-page .home-chart .insight-legend, .home-page .home-chart .insight-note { font-size: var(--text-xs); }
 .home-page .home-chart .section-heading { display: none; }
-.home-composition > div { padding: var(--space-3) var(--space-4) var(--space-4); }
+.home-composition > div { padding: 12px 16px 14px; }
 .home-page .home-composition .section-heading { display: none; }
 .home-page .home-composition .insight-composition svg { width: 108px; }
 .home-page .home-composition .insight-visual-ranking li { padding-block: var(--space-1); font-size: var(--text-sm); }
-.home-chart-selection > small { color: var(--muted); }
-.home-chart-selection dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: var(--space-1) 0 0; }
-.home-chart-selection dl > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
-.home-chart-selection dt { font-size: var(--text-xs); }
-.home-page .home-chart-selection dd { margin: 0; }
+.home-chart-selection {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-card);
+}
+.home-chart-selection > small { color: var(--muted); font-size: var(--text-xs); display: block; margin-bottom: 4px; }
+.home-chart-selection dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; margin: 0; }
+.home-chart-selection dl > div { display: flex; flex-direction: column; gap: 2px; }
+.home-chart-selection dt { font-size: var(--text-2xs); color: var(--muted); }
+.home-page .home-chart-selection dd { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
 
 /* Recent activity: stacked on narrow pages, table-like columns on wide ones */
 .home-recent-head { display: none; }
@@ -29,8 +34,8 @@
   grid-template-areas: "kind copy amount" "kind copy date";
   align-items: center;
   gap: 0 var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--line-soft);
+  padding: 8px 14px;
+  border-top: 1px solid var(--line-card);
   transition: background-color 140ms ease;
 }
 .home-recent-row:hover { background: var(--surface-hover); }
@@ -38,17 +43,17 @@
 .home-recent-date { grid-area: date; justify-self: end; color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
 .home-recent-row .ui-kind { grid-area: kind; }
 .home-recent-copy { grid-area: copy; display: grid; gap: 2px; min-width: 0; }
-.home-recent-row > .ui-amount { grid-area: amount; justify-self: end; text-align: right; }
+.home-recent-row > .ui-amount { grid-area: amount; justify-self: end; text-align: right; font-size: var(--text-sm); font-weight: var(--weight-bold); }
 .home-recent-copy strong {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   overflow-wrap: anywhere;
 }
-.home-recent-copy small { overflow: hidden; color: var(--muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.home-recent-copy small { overflow: hidden; color: var(--muted); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 
 .home-details { display: grid; gap: var(--space-4); }
 .home-reading { margin: 0; font-size: var(--text-sm); max-width: 72ch; }

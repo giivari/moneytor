@@ -35,9 +35,11 @@ export function PageTabs({ label, tabs, heading, shared }: {
         aria-selected={selected === tab.id} aria-controls={`${base}-panel-${tab.id}`} tabIndex={selected === tab.id ? 0 : -1}
         onClick={() => setSelected(tab.id)}>{tab.label}</button>)}
     </div></header>
-    {shared}
-    {tabs.map((tab) => <div key={tab.id} id={`${base}-panel-${tab.id}`} role="tabpanel" aria-labelledby={`${base}-tab-${tab.id}`}
-      className="page-tab-panel" hidden={selected !== tab.id}>{tab.panel}</div>)}
+    <div className="page-body">
+      {shared}
+      {tabs.map((tab) => <div key={tab.id} id={`${base}-panel-${tab.id}`} role="tabpanel" aria-labelledby={`${base}-tab-${tab.id}`}
+        className="page-tab-panel" hidden={selected !== tab.id}>{tab.panel}</div>)}
+    </div>
   </TabsContext.Provider>;
 }
 
