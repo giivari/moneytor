@@ -83,7 +83,6 @@ export default function FluentWorkbookApp({ initialPage = 'home', initialRawData
     return initialPage;
   });
   const [hideRp, setHideRp] = useState<boolean>(false);
-  const [viewportMode, setViewportMode] = useState<'desktop' | 'mobile'>('desktop');
   const [isNativeMobile, setIsNativeMobile] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -409,7 +408,7 @@ export default function FluentWorkbookApp({ initialPage = 'home', initialRawData
   });
 
   const selectedInspectorId = inspectorPayload ? inspectorPayload.data.id : undefined;
-  const isEffectiveMobile = isNativeMobile || viewportMode === 'mobile';
+  const isEffectiveMobile = isNativeMobile;
 
   const renderActivePage = () => (
     <>
@@ -522,14 +521,12 @@ export default function FluentWorkbookApp({ initialPage = 'home', initialRawData
   );
 
   return (
-    <div className="app-shell h-screen w-screen flex flex-col bg-[#f3f5f8] text-[#1f2328] overflow-hidden">
+    <div className="fluent-workbook-root h-screen w-screen flex flex-col bg-[#f3f5f8] text-[#1f2328] overflow-hidden">
       {/* LAYER 1: TOP APPLICATION HEADER (48px) */}
       <TopHeader
         activePage={activePage}
         hideRp={hideRp}
         onToggleHideRp={() => setHideRp(!hideRp)}
-        viewportMode={viewportMode}
-        onChangeViewportMode={setViewportMode}
         onOpenNewTxModal={(preset) => handleOpenNewTxModal(preset)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -541,7 +538,7 @@ export default function FluentWorkbookApp({ initialPage = 'home', initialRawData
         onNavigate={handleSelectPage}
       />
 
-      {/* WORKSPACE CONTAINER: NATIVE MOBILE vs DESKTOP PROTOTYPE VIEWPORT vs DESKTOP FULL */}
+      {/* WORKSPACE CONTAINER: NATIVE MOBILE vs DESKTOP */}
       {isNativeMobile ? (
         <div className="flex-1 flex flex-col min-h-0 w-full overflow-hidden bg-[#f3f5f8]">
           <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
@@ -572,47 +569,6 @@ export default function FluentWorkbookApp({ initialPage = 'home', initialRawData
             pendingAutomationsCount={pendingAutomationsCount}
             unpaidFriendsCount={unpaidFriendsCount}
           />
-        </div>
-      ) : viewportMode === 'mobile' ? (
-        <div className="flex-1 bg-[#E5E5E5] flex items-center justify-center p-2 sm:p-4 overflow-hidden">
-          {/* 390px Mobile Prototype Viewport (Only when explicitly toggled on desktop) */}
-          <div className="w-[390px] max-w-full h-full bg-[#F5F5F5] rounded-[16px] border-[3px] border-[#323130] shadow-2xl flex flex-col relative overflow-hidden">
-            <div className="h-[26px] px-4 bg-[#FFFFFF] border-b border-[#EDEBE9] flex items-center justify-between text-[11px] font-semibold text-[#424242] shrink-0">
-              <span>09:41 · moneytor Mobile</span>
-              <span className="text-[#0F6CBD]">390px Fluent 2</span>
-            </div>
-
-            <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              {renderActivePage()}
-            </main>
-
-            <RightInspectorDrawer
-              payload={inspectorPayload}
-              onClose={() => setInspectorPayload(null)}
-              hideRp={hideRp}
-              allTransactions={transactions}
-              accounts={accounts}
-              onCorrectTransaction={handleCorrectTransaction}
-              onVoidTransaction={handleVoidTransaction}
-              onReconcileAccount={handleReconcileAccount}
-              onPayCreditBill={handlePayCreditBill}
-              onSettleSplitParticipant={handleSettleSplitParticipant}
-              onTopUpAccount={(targetName) =>
-                handleOpenNewTxModal('Transfer / Top-Up', targetName)
-              }
-              onPayObligation={handlePayObligation}
-              isMobile={true}
-            />
-
-            <MobileBottomDock
-              activePage={activePage}
-              onSelectPage={handleSelectPage}
-              onOpenNewTxModal={(preset) => handleOpenNewTxModal(preset)}
-              onOpenSettings={() => setIsSettingsOpen(true)}
-              pendingAutomationsCount={pendingAutomationsCount}
-              unpaidFriendsCount={unpaidFriendsCount}
-            />
-          </div>
         </div>
       ) : (
         /* DESKTOP 4-LAYER WORKSPACE */

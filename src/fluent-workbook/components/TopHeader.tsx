@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
+import iconPng from '@/app/icon.png';
 import {
   Search,
   Eye,
@@ -10,8 +11,6 @@ import {
   CreditCard,
   X,
   ChevronDown,
-  Monitor,
-  Smartphone,
   HelpCircle,
   CheckCircle2,
 } from 'lucide-react';
@@ -29,8 +28,6 @@ interface TopHeaderProps {
   activePage: NavPageId;
   hideRp: boolean;
   onToggleHideRp: () => void;
-  viewportMode: 'desktop' | 'mobile';
-  onChangeViewportMode: (mode: 'desktop' | 'mobile') => void;
   onOpenNewTxModal: (
     presetType?: 'Pengeluaran' | 'Pemasukan' | 'Transfer / Top-Up' | 'Split Bill' | 'Pelunasan'
   ) => void;
@@ -47,8 +44,6 @@ interface TopHeaderProps {
 export const TopHeader: React.FC<TopHeaderProps> = ({
   hideRp,
   onToggleHideRp,
-  viewportMode,
-  onChangeViewportMode,
   onOpenNewTxModal,
   searchQuery,
   onSearchChange,
@@ -134,7 +129,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           className="flex items-center gap-2.5 cursor-pointer shrink-0"
         >
           <Image
-            src="/icon.png"
+            src={iconPng}
             alt="moneytor"
             width={28}
             height={28}
@@ -311,38 +306,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           )}
         </div>
 
-        {/* 3. Right Actions: Desktop/Mobile Toggle, Privacy Toggle, Panduan, [+ Transaksi baru] */}
+        {/* 3. Right Actions: Privacy Toggle, Panduan, [+ Transaksi baru] */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Desktop / Mobile Switcher */}
-          <div className="flex items-center p-0.5 rounded-[6px] bg-[#dde3ea]/80 border border-[#cbd5e1]">
-            <button
-              type="button"
-              onClick={() => onChangeViewportMode('desktop')}
-              title="Mode Layar: Desktop (1440px)"
-              className={`h-[26px] px-2 rounded-[4px] text-[11.5px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                viewportMode === 'desktop'
-                  ? 'bg-[#ffffff] text-[#0f6cbd] font-semibold shadow-2xs'
-                  : 'text-[#59636e] hover:text-[#1f2328]'
-              }`}
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Desktop</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeViewportMode('mobile')}
-              title="Mode Layar: Mobile (390px)"
-              className={`h-[26px] px-2 rounded-[4px] text-[11.5px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
-                viewportMode === 'mobile'
-                  ? 'bg-[#ffffff] text-[#0f6cbd] font-semibold shadow-2xs'
-                  : 'text-[#59636e] hover:text-[#1f2328]'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Mobile</span>
-            </button>
-          </div>
-
           {/* Privacy Amount Toggle */}
           <button
             onClick={onToggleHideRp}

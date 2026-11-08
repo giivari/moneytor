@@ -412,7 +412,10 @@ export const HomeBriefingPage: React.FC<HomeBriefingPageProps> = ({
 
                     return (
                       <>
-                        <div className={`grid grid-cols-${trendData.length} gap-2.5 h-[148px] items-end pt-2 pb-2.5 border-b border-[#F0F0F0]`}>
+                        <div
+                          className="grid gap-2.5 h-[148px] items-end pt-2 pb-2.5 border-b border-[#F0F0F0]"
+                          style={{ gridTemplateColumns: `repeat(${trendData.length}, minmax(0, 1fr))` }}
+                        >
                           {trendData.map((item, idx) => {
                             const incHeight = Math.round((item.income / maxScale) * 112);
                             const consHeight = Math.round((item.consumption / maxScale) * 112);
