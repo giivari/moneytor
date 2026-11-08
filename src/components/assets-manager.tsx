@@ -1835,8 +1835,15 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
   </dialog>;
 }
 
+function getAccountInitials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return ((parts[0][0] || "") + (parts[1][0] || "")).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
 export function AssetsManager({ assets, totals, investmentTotals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number; liquidMinor?: string; eligibleMinor?: string; liabilitiesMinor?: string }[]; investmentTotals: InvestmentTotal[] }) {
   const mobile = useMobileViewport();
+  const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [viewingAsset, setViewingAsset] = useState<FinanceAsset | null>(null);
   const [editing, setEditing] = useState<FinanceAsset | "new" | null>(null);
   const [payingCredit, setPayingCredit] = useState<FinanceAsset | null>(null);
@@ -1968,8 +1975,84 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
     <InvestmentSummary totals={investmentTotals} /></div>
     {creditFirst && creditSection}
     {!regularActive.length ? <section className="surface finance-empty"><h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2><p>{archived.length ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru." : "Buat akun atau aset pertama, lalu catat saldo awalnya."}</p>
-      <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : <section className="surface"><SectionHeading title="Akun & nilai tercatat" eyebrow="ASET AKTIF" action={<div className="section-heading-actions"><span className="count-pill">{regularActive.length} aset</span><ExportMenuButton dataset="assets" label="Ekspor Aset" /></div>} />
-      <div className="asset-list">{regularActive.map((asset) => {
+      <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : <section className="surface"><SectionHeading title="Akun & nilai tercatat" eyebrow="ASET AKTIF" action={
+        <div className="section-heading-actions">
+          <div className="view-mode-toggle" role="group" aria-label="Mode tampilan aset">
+            <button
+              type="button"
+              className={`view-mode-btn ${viewMode === "card" ? "view-mode-btn--active" : ""}`}
+              onClick={() => setViewMode("card")}
+            >
+              Kartu
+            </button>
+            <button
+              type="button"
+              className={`view-mode-btn ${viewMode === "table" ? "view-mode-btn--active" : ""}`}
+              onClick={() => setViewMode("table")}
+            >
+              Tabel
+            </button>
+          </div>
+          <span className="count-pill">{regularActive.length} aset</span>
+          <ExportMenuButton dataset="assets" label="Ekspor Aset" />
+        </div>
+      } />
+      {viewMode === "card" ? (
+        <div className="asset-cards-grid">
+          {regularActive.map((asset) => {
+            const isReceivable = isReceivableAsset(asset);
+            const terms = parseAssetTerms(asset.note);
+            const termSummary = [
+              isReceivable ? "Piutang / Talangan" : ASSET_CLASS_LABEL[asset.assetClass],
+              !mobile && asset.assetGroupName ? asset.assetGroupName : null,
+              terms.interestRateBps > 0 ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.` : null,
+              terms.adminFeeMinor > 0n ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <article
+                className="account-card"
+                key={asset.id}
+                onClick={(event) => {
+                  if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
+                }}
+              >
+                <div className="account-card-header">
+                  <div className="account-card-brand">
+                    <div className="account-card-initial" aria-hidden="true">
+                      {getAccountInitials(asset.displayName)}
+                    </div>
+                    <div className="account-card-names">
+                      <button
+                        type="button"
+                        className="asset-title-trigger"
+                        onClick={() => setViewingAsset(asset)}
+                      >
+                        <strong>{asset.displayName}</strong>
+                      </button>
+                      <small>{asset.providerName ?? asset.assetTypeName}</small>
+                    </div>
+                  </div>
+                  {asset.safeSuffix && (
+                    <span className="account-card-number">•••• {asset.safeSuffix}</span>
+                  )}
+                </div>
+                <div className="account-card-body">
+                  <span className="account-card-label">Saldo Aktif</span>
+                  <strong className="financial-value financial-value--entity account-card-amount">
+                    {formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}
+                  </strong>
+                </div>
+                <div className="account-card-footer">
+                  <span>{termSummary || ASSET_CLASS_LABEL[asset.assetClass]}</span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="asset-list">{regularActive.map((asset) => {
         const isReceivable = isReceivableAsset(asset);
         const mark = resolveProviderMark(
           asset.providerName,
@@ -2014,7 +2097,8 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
           <button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah</button>
           <button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button>
         </div></div></article>;
-      })}</div></section>}
+      })}</div>
+      )}</section>}
 
     {!creditFirst && creditSection}
 

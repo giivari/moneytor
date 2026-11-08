@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { AppLink as Link } from "./app-link";
 import { ArrowRight, CalendarDots, CreditCard, Gauge, HandCoins } from "@phosphor-icons/react/dist/ssr";
 import type { financeSnapshot } from "@/lib/finance/summary";
@@ -35,8 +38,8 @@ function FacilityCard({ facility }: { facility: CreditFacility }) {
       <small>Limit <Amount value={money(bills.limitMinor)} /></small>
     </div>}
     <dl className="credit-facility-bills">
-      <div><dt>Tagihan {shortDate(bills.currentDueIso)}</dt><dd><Amount value={money(bills.currentBillMinor)} level="entity" tone={bills.currentBillMinor > 0n ? "negative" : ""} /></dd></div>
-      <div><dt>Tagihan {shortDate(bills.nextDueIso)}</dt><dd><Amount value={money(bills.nextBillMinor)} level="entity" /></dd></div>
+      <div><dt>Tagihan Periode Berjalan ({shortDate(bills.currentDueIso)})</dt><dd><Amount value={money(bills.currentBillMinor)} level="entity" tone={bills.currentBillMinor > 0n ? "negative" : ""} /></dd></div>
+      <div><dt>Periode Berikutnya ({shortDate(bills.nextDueIso)})</dt><dd><Amount value={money(bills.nextBillMinor)} level="entity" /></dd></div>
     </dl>
     {(payment || (asset.isActive && bills.totalUnpaidMinor > 0n)) && <div className="credit-facility-actions">
       {payment && <PayBillButton assetId={asset.id} name={asset.displayName} exponent={asset.exponent}
@@ -52,12 +55,50 @@ function FacilityCard({ facility }: { facility: CreditFacility }) {
 }
 
 function Facilities({ facilities }: { facilities: CreditFacility[] }) {
+  const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const active = facilities.filter((item) => item.asset.isActive), archived = facilities.filter((item) => !item.asset.isActive);
   if (!facilities.length) return <section className="ui-card ui-empty"><h2>Belum ada akun kredit</h2>
     <p>Tambahkan kartu kredit atau PayLater di Aset dengan klasifikasi Kewajiban. Tagihan dan cicilannya muncul di sini.</p>
     <Link href="/assets" className="button-primary">Buka Aset</Link></section>;
   return <div className="credit-stack">
-    <div className="credit-grid">{active.map((facility) => <FacilityCard key={facility.asset.id} facility={facility} />)}</div>
+    <div className="credit-toolbar">
+      <div className="view-mode-toggle" role="group" aria-label="Mode tampilan kredit">
+        <button
+          type="button"
+          className={`view-mode-btn ${viewMode === "card" ? "view-mode-btn--active" : ""}`}
+          onClick={() => setViewMode("card")}
+        >
+          Kartu
+        </button>
+        <button
+          type="button"
+          className={`view-mode-btn ${viewMode === "table" ? "view-mode-btn--active" : ""}`}
+          onClick={() => setViewMode("table")}
+        >
+          Tabel
+        </button>
+      </div>
+    </div>
+    {viewMode === "card" ? (
+      <div className="credit-grid">{active.map((facility) => <FacilityCard key={facility.asset.id} facility={facility} />)}</div>
+    ) : (
+      <Card title="Fasilitas kredit aktif" meta={`${active.length} fasilitas`}>
+        <div className="credit-contract-head" aria-hidden="true">
+          <span>Fasilitas</span><span>Jatuh tempo</span><span>Sisa limit</span><span>Tagihan berjalan</span><span>Total utang</span>
+        </div>
+        <ul className="ui-rows">
+          {active.map(({ asset, bills }) => (
+            <InspectorRow key={asset.id} id={`credit:${asset.id}`} title={asset.displayName} subtitle="Rincian fasilitas kredit" detail={<CreditDetail asset={asset} link={false} />} className="credit-contract-row">
+              <div className="ui-row-copy"><InspectorRowButton><strong>{asset.displayName}</strong></InspectorRowButton><small>{provider(asset)}</small></div>
+              <span className="credit-contract-tenor">Tgl {bills.dueDay}</span>
+              <span>{bills.availableLimitMinor !== null ? formatMinor(bills.availableLimitMinor, asset.currency, asset.exponent) : "—"}</span>
+              <Amount value={formatMinor(bills.currentBillMinor, asset.currency, asset.exponent)} tone={bills.currentBillMinor > 0n ? "negative" : ""} />
+              <Amount value={formatMinor(bills.totalUnpaidMinor, asset.currency, asset.exponent)} level="entity" tone={bills.totalUnpaidMinor > 0n ? "negative" : ""} />
+            </InspectorRow>
+          ))}
+        </ul>
+      </Card>
+    )}
     {archived.length > 0 && <Card title="Diarsipkan" meta="Sisa utangnya tetap dihitung sebagai kewajiban">
       <ul className="ui-rows">{archived.map(({ asset, bills }) => <InspectorRow key={asset.id} id={`credit:${asset.id}`} title={asset.displayName} subtitle="Rincian fasilitas kredit" detail={<CreditDetail asset={asset} link={false} />} className="ui-row">
         <div className="ui-row-copy"><InspectorRowButton><strong>{asset.displayName}</strong></InspectorRowButton><small>{provider(asset)}</small></div>
