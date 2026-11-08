@@ -39,10 +39,12 @@
 .ui-kpi {
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: var(--space-2);
   min-width: 0;
+  height: 100%;
   padding: var(--space-4);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-card);
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-1);
@@ -63,7 +65,15 @@
 .ui-kpi[data-tone="negative"] .ui-kpi-icon { background: var(--negative-light); color: var(--negative); }
 .ui-kpi[data-tone="warning"] .ui-kpi-icon { background: var(--warning-light); color: var(--warning); }
 .ui-kpi[data-tone="positive"] .ui-kpi-icon { background: var(--positive-light); color: var(--positive); }
-.ui-kpi .financial-value.financial-value--summary { font-size: var(--text-2xl); letter-spacing: -.02em; }
+.ui-kpi .financial-value.financial-value--summary,
+.ui-kpi .ui-amount,
+.account-card-balance,
+.account-card .financial-value {
+  color: var(--ink-editorial);
+  font-size: var(--text-2xl);
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
 .ui-kpi-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); color: var(--muted); font-size: var(--text-xs); line-height: var(--leading-normal); }
 .ui-kpi-names { min-width: 0; overflow-wrap: anywhere; }
 .ui-kpi-action { margin-top: auto; }
