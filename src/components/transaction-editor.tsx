@@ -23,11 +23,8 @@ import {
   parseCreditMeta,
 } from "@/lib/domain/credit";
 import { planSplitBill } from "@/lib/domain/split-bill";
-import { pickTransferSource, type TransactionPreset as BaseTransactionPreset } from "@/lib/domain/transaction-preset";
-import type { AnalyticsExpenseItem, AnalyticsReport } from "@/lib/analytics/types";
+import { buildEditorDraft, pickTransferSource, type TransactionPreset } from "@/lib/domain/transaction-preset";
 import type { ActivityDraft, AdjustmentReason, AnyActivityKind, FinanceActivity, FinanceAsset } from "@/lib/finance/types";
-
-type TransactionPreset = Omit<BaseTransactionPreset, "kind"> & { kind?: AnyActivityKind };
 
 function localDate(iso?: string) {
   const date = iso ? new Date(iso) : new Date();
@@ -80,7 +77,7 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const [repayInterest, setRepayInterest] = useState(
     initial?.kind === "repay" && initial.charges[0] ? minorToInput(initial.charges[0].amountMinor, initial.exponent) : "",
   );
-  const [refundExpenses, setRefundExpenses] = useState<AnalyticsExpenseItem[]>([]);
+  const [refundExpenses, setRefundExpenses] = useState<FinanceActivity[]>([]);
   const [refundExpensesLoading, setRefundExpensesLoading] = useState(false);
 
   // Correcting an installment purchase or top-up starts from its stored tenor and monthly interest.
@@ -141,43 +138,19 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
     if (kind !== "refund") return;
     let activeRequest = true;
     setRefundExpensesLoading(true);
-    Promise.all([
-      requestJson<AnalyticsReport>(`/api/analytics?period=monthly_trend&months=12&currency=${encodeURIComponent(currency)}`, { cache: "no-store" }).catch(() => null),
-      requestJson<{ items: FinanceActivity[] }>("/api/finance/activities?kind=expense", { cache: "no-store" }).catch(() => null),
-    ]).then(([report, activitiesPage]) => {
-      if (!activeRequest) return;
-      const byId = new Map<string, AnalyticsExpenseItem>();
-      for (const item of report?.expenseItems ?? []) {
-        if (item.currency === currency) byId.set(item.id, item);
-      }
-      for (const act of activitiesPage?.items ?? []) {
-        if (act.currency !== currency || byId.has(act.id)) continue;
-        byId.set(act.id, {
-          id: act.id,
-          occurredAt: act.occurredAt,
-          currency: act.currency,
-          exponent: act.exponent,
-          baseAmountMinor: act.baseAmountMinor,
-          chargesMinor: "0",
-          spendingMinor: act.baseAmountMinor,
-          refundedMinor: "0",
-          netMinor: act.baseAmountMinor,
-          categoryId: act.categoryId,
-          categoryName: act.categoryName,
-          sourceAssetId: act.sourceAssetId ?? "",
-          sourceName: act.sourceName ?? "",
-          note: act.note,
-          origin: "manual",
-          charges: [],
-        });
-      }
-      const list = Array.from(byId.values()).filter(
-        (item) => item.id === initial?.refundOfActivityId || BigInt(item.netMinor ?? item.spendingMinor) > 0n,
-      );
-      setRefundExpenses(list);
-      setRefundOfActivityId((prev) => (prev && list.some((item) => item.id === prev) ? prev : list[0]?.id ?? ""));
-      setRefundExpensesLoading(false);
-    });
+    requestJson<{ items: FinanceActivity[] }>("/api/finance/activities?kind=expense", { cache: "no-store" })
+      .catch(() => null)
+      .then((activitiesPage) => {
+        if (!activeRequest) return;
+        const list = (activitiesPage?.items ?? []).filter(
+          (item) =>
+            item.currency === currency &&
+            (item.id === initial?.refundOfActivityId || BigInt(item.netMinor ?? item.baseAmountMinor) > 0n),
+        );
+        setRefundExpenses(list);
+        setRefundOfActivityId((prev) => (prev && list.some((item) => item.id === prev) ? prev : list[0]?.id ?? ""));
+        setRefundExpensesLoading(false);
+      });
     return () => { activeRequest = false; };
   }, [kind, currency, initial?.refundOfActivityId]);
 
@@ -424,57 +397,33 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
 
       const repayInterestMinor =
         kind === "repay" && repayInterest.trim() ? inputToMinor(repayInterest.trim(), exponent) : "0";
-      const repayCharges =
-        kind === "repay" && BigInt(repayInterestMinor) > 0n && loanInterestChargeTypeId
-          ? [{ typeId: loanInterestChargeTypeId, amountMinor: repayInterestMinor }]
+      const expenseCharges =
+        kind === "expense"
+          ? [
+              ...(chargesEnabled ? (purchase ? editableInstallmentCharges(charges, interestChargeTypeId) : charges) : []).map((charge) => ({
+                typeId: charge.typeId,
+                amountMinor: inputToMinor(charge.amount, exponent),
+              })),
+              ...(purchase?.charges ?? []),
+            ]
           : undefined;
 
-      const usesDestinationAsPrimary =
-        kind === "income" ||
-        kind === "refund" ||
-        (kind === "adjustment" && adjustmentReason === "reconciliation" && adjustmentDirection === "increase");
-
-      const draft: ActivityDraft = {
+      const draft: ActivityDraft = buildEditorDraft({
         kind,
         amountMinor: postedAmountMinor,
         occurredAt: new Date(occurredAt).toISOString(),
         note: effectiveNote,
-        ...(usesDestinationAsPrimary ? { destinationAssetId: account.id } : { sourceAssetId: account.id }),
-        ...(kind === "transfer"
-          ? {
-              destinationAssetId: destination!.id,
-              transferFeeMinor: finalTransferFeeMinor,
-            }
-          : {}),
-        ...(kind === "borrow" || kind === "repay"
-          ? {
-              destinationAssetId: destination!.id,
-            }
-          : {}),
-        ...(kind === "refund"
-          ? {
-              refundOfActivityId,
-            }
-          : {}),
-        ...(kind === "adjustment"
-          ? {
-              adjustmentReason,
-            }
-          : {}),
-        ...(kind === "expense" || kind === "income" ? { categoryId: categoryId || undefined } : {}),
-        ...(kind === "expense"
-          ? {
-              charges: [
-                ...(chargesEnabled ? (purchase ? editableInstallmentCharges(charges, interestChargeTypeId) : charges) : []).map((charge) => ({
-                  typeId: charge.typeId,
-                  amountMinor: inputToMinor(charge.amount, exponent),
-                })),
-                ...(purchase?.charges ?? []),
-              ],
-            }
-          : {}),
-        ...(kind === "repay" && repayCharges ? { charges: repayCharges } : {}),
-      };
+        primaryAssetId: account.id,
+        destinationAssetId: destination?.id,
+        categoryId: categoryId || undefined,
+        transferFeeMinor: finalTransferFeeMinor,
+        expenseCharges,
+        repayInterestMinor,
+        loanInterestChargeTypeId,
+        refundOfActivityId,
+        adjustmentReason,
+        adjustmentDirection,
+      });
       const payload = JSON.stringify({ id: initial?.id, draft, tenorMonths: isCreditPurchase || hasDebtSchedule ? tenorMonths : 1, targetCycle });
       if (replay.current?.payload !== payload) replay.current = { payload, key: crypto.randomUUID() };
       // The server assigns a credit outflow to the next billing cycle in the same database transaction as
@@ -616,15 +565,14 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
             <option value="">{refundExpensesLoading ? "Memuat daftar pengeluaran…" : "Pilih pengeluaran asal"}</option>
             {refundExpenses.map((item) => (
               <option key={item.id} value={item.id}>
-                {(item.note || item.categoryName || "Pengeluaran")} · {item.sourceName} · Sisa {formatMinor(item.netMinor ?? item.spendingMinor, item.currency, item.exponent)}
+                {(item.note || item.categoryName || "Pengeluaran")} · {item.sourceName} · Sisa {formatMinor(item.netMinor ?? item.baseAmountMinor, item.currency, item.exponent)}
               </option>
             ))}
           </select>
           {selectedRefundOrigin && (
             <small className="finance-hint">
-              Pengeluaran asal: <strong>{formatMinor(selectedRefundOrigin.spendingMinor, selectedRefundOrigin.currency, selectedRefundOrigin.exponent)}</strong>
-              {" · "}Sudah di-refund: <strong>{formatMinor(selectedRefundOrigin.refundedMinor ?? "0", selectedRefundOrigin.currency, selectedRefundOrigin.exponent)}</strong>
-              {" · "}Sisa dapat di-refund: <strong>{formatMinor(selectedRefundOrigin.netMinor ?? selectedRefundOrigin.spendingMinor, selectedRefundOrigin.currency, selectedRefundOrigin.exponent)}</strong>
+              Sudah di-refund: <strong>{formatMinor(selectedRefundOrigin.refundedMinor ?? "0", selectedRefundOrigin.currency, selectedRefundOrigin.exponent)}</strong>
+              {" · "}Sisa dapat di-refund: <strong>{formatMinor(selectedRefundOrigin.netMinor ?? selectedRefundOrigin.baseAmountMinor, selectedRefundOrigin.currency, selectedRefundOrigin.exponent)}</strong>
             </small>
           )}
         </label>

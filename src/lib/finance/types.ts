@@ -51,6 +51,9 @@ export type FinanceActivity = {
   replacesActivityId: string | null;
   refundOfActivityId?: string | null;
   adjustmentReason?: AdjustmentReason | null;
+  /** Posted expense only: total refunded across its edit chain and net spending from spending_effects. */
+  refundedMinor?: string;
+  netMinor?: string;
   recurringRuleName?: string;
   eventInstanceId?: string;
   eventSourceIncomeId?: string;

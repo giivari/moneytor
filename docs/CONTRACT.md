@@ -47,7 +47,7 @@ Fungsi server (bukan route HTTP); wajib sesi pemilik; satu transaksi `REPEATABLE
 
 `FinanceAsset`: `id`, `displayName`, `currency`, `exponent`, `assetTypeId`, `assetTypeName`, `assetGroupId|null`, `assetGroupName|null`, `providerId|null`, `providerName|null`, `paymentNetworkId|null`, `normallyLiquid`, `normallySpendable` (boolean), `safeSuffix|null`, `note|null`, `isActive`, `openingMinor` (string), `balanceMinor` (string), `assetClass` (`"asset"|"liability"|"receivable"`), `creditInstallments?` (`{ activityId, seq, period "YYYY-MM", principalMinor, interestMinor, status "scheduled"|"cancelled", cancelledByActivityId? }[]`).
 
-`FinanceActivity`: `id`, `cursorTime?`, `kind` (`income|expense|transfer`), `baseAmountMinor`, `currency`, `exponent`, `sourceAssetId|null`, `sourceName|null`, `destinationAssetId|null`, `destinationName|null`, `categoryId|null`, `categoryName|null`, `occurredAt`, `note|null`, `status` (`posted|voided|superseded`), `replacesActivityId|null`, `charges[]` (`{ id, typeId, typeName, systemKey?, amountMinor }`), `creditInstallments?` (`{ count, principalMinor, interestMinor }`), serta field opsional otomasi (`recurringRuleName`, `eventInstanceId`, `automationInstanceId`, `eventSource*`, dll.; lihat `types.ts`).
+`FinanceActivity`: `id`, `cursorTime?`, `kind` (`income|expense|transfer|borrow|repay|refund|adjustment`), `baseAmountMinor`, `currency`, `exponent`, `sourceAssetId|null`, `sourceName|null`, `destinationAssetId|null`, `destinationName|null`, `categoryId|null`, `categoryName|null`, `occurredAt`, `note|null`, `status` (`posted|voided|superseded`), `replacesActivityId|null`, `refundOfActivityId?|null`, `adjustmentReason?|null`, `refundedMinor?`, `netMinor?` (pada `expense` berstatus `posted`: total refund rantai dari `refunded_in_chain` dan pengeluaran bersih dari `spending_effects`), `charges[]` (`{ id, typeId, typeName, systemKey?, amountMinor }`), `creditInstallments?` (`{ count, principalMinor, interestMinor }`), serta field opsional otomasi (`recurringRuleName`, `eventInstanceId`, `automationInstanceId`, `eventSource*`, dll.; lihat `types.ts`).
 
 `InvestmentTotal`: `currency`, `exponent`, `marketMinor`, `costBasisMinor`, `pricedCostBasisMinor`, `unrealizedMinor`, `realizedMinor` (string), `unpricedCount` (number).
 
@@ -57,7 +57,7 @@ Semua route: respons `Cache-Control: no-store`; tanpa sesi pemilik -> `401 {"err
 
 ### GET `/api/finance/activities`
 
-Query: `history=true|false` (sertakan void/superseded), `direction=desc|asc` (default `desc`), `kind=income|expense|transfer` (opsional), `after=<JSON {"at": timestamp, "id": uuid}>` (kursor, maks 200 karakter).
+Query: `history=true|false` (sertakan void/superseded), `direction=desc|asc` (default `desc`), `kind=income|expense|transfer|borrow|repay|refund|adjustment` (opsional), `after=<JSON {"at": timestamp, "id": uuid}>` (kursor, maks 200 karakter).
 Respons: `{ items: FinanceActivity[] (maks 50), next: { at: string, id: string } | null }`. Parameter salah -> `400 {"error":"Urutan transaksi tidak valid"}`; gagal baca -> `500`.
 
 ### GET `/api/finance/[operation]`
@@ -142,7 +142,7 @@ Contoh `repay`:
 ```
 Respons: `{ "id": "<uuid>" }`. Contoh `refund`: `{ "draft": { "kind": "refund", "amountMinor": "40000", "destinationAssetId": "<uuid>", "refundOfActivityId": "<uuid expense>", "occurredAt": "..." }, "idempotencyKey": "<uuid>" }`.
 
-`FinanceActivity` mendapat `refundOfActivityId?: string|null` dan `adjustmentReason?: "reconciliation"|"opening_debt"|null`.
+`FinanceActivity` mendapat `refundOfActivityId?: string|null`, `adjustmentReason?: "reconciliation"|"opening_debt"|null`, serta pada aktivitas `expense` berstatus `posted` langsung memuat `refundedMinor?: string` dan `netMinor?: string` (dari `refunded_in_chain` dan `spending_effects`).
 GET `/api/finance/activities?kind=` menerima ketujuh jenis.
 Analitik (`FinancialMeasures`) mendapat `adjustmentInMinor`, `adjustmentOutMinor`, `debtBorrowedMinor`, `debtRepaidMinor`, `refundCount` (string, opsional);
 `expensePrincipalMinor`/`spendingMinor` sudah dikurangi refund (bisa negatif per kategori) dan memuat bunga repay; `incomeMinor` tidak terpengaruh.
@@ -194,7 +194,7 @@ Dibangkitkan oleh `scripts/contract-examples.mjs` (jangan edit tangan; jalankan 
 
 ### Arti field
 
-- **Aktivitas:** `kind` jenis aktivitas; `baseAmountMinor` pokok (string minor unit, selalu positif); `sourceAssetId`/`destinationAssetId` akun asal/tujuan; `status` posted|voided|superseded; `charges[]` biaya (`amountMinor` > 0); `refundOfActivityId` pengeluaran yang di-refund; `adjustmentReason` reconciliation|opening_debt.
+- **Aktivitas:** `kind` jenis aktivitas; `baseAmountMinor` pokok (string minor unit, selalu positif); `sourceAssetId`/`destinationAssetId` akun asal/tujuan; `status` posted|voided|superseded; `charges[]` biaya (`amountMinor` > 0); `refundOfActivityId` pengeluaran yang di-refund; `refundedMinor`/`netMinor` total refund rantai dan pengeluaran bersih pada aktivitas `expense` posted; `adjustmentReason` reconciliation|opening_debt.
 - **Akun:** `assetClass` asset|liability|receivable; `balanceMinor` saldo = saldo awal + ledger (**boleh negatif** untuk liability); `openingMinor` saldo awal (>= 0); `creditInstallments[]` jadwal tagihan per bulan (`period` YYYY-MM, `principalMinor`, `interestMinor`, `status` scheduled|cancelled).
 - **Katalog:** `parentId` induk tingkat 1 (null = induk); `nature` sifat sendiri; `natureOverride` sifat pilihan pengguna; `effectiveNature` = override, lalu sifat sendiri, lalu sifat induk (null = tanpa sifat).
 - **Item:** `id` aktivitas; `kind` expense|transfer|repay|refund; `amountMinor` (**refund negatif**); `refundedMinor` total refund atas pengeluaran itu; `netMinor` bruto dikurangi refund.
@@ -258,6 +258,24 @@ Mengurangi pengeluaran asal (`refundOfActivityId`), tidak masuk pemasukan; kateg
   "categoryId": "50000000-0000-4000-8000-000000000003",
   "categoryName": "Belanja",
   "refundOfActivityId": "<id-7>",
+  "status": "posted"
+}
+```
+
+#### Aktivitas `expense` dengan `refundedMinor` dan `netMinor` (hasil `listActivities`)
+
+Pengeluaran posted langsung memuat total refund rantai (`refundedMinor`) dan pengeluaran bersih (`netMinor`) dari sumber `spending_effects`.
+
+```json
+{
+  "id": "<id-7>",
+  "kind": "expense",
+  "baseAmountMinor": "420000",
+  "refundedMinor": "100000",
+  "netMinor": "320000",
+  "sourceAssetId": "<id-3>",
+  "categoryId": "50000000-0000-4000-8000-000000000003",
+  "categoryName": "Belanja",
   "status": "posted"
 }
 ```

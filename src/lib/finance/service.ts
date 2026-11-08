@@ -357,13 +357,18 @@ export async function listActivities(includeHistory = false, limit: number | nul
   const result = await database().query<{
     cursor_time: string; id: string; kind: AnyActivityKind; base_amount_minor: string; currency_code: string; minor_unit_exponent: number;
     refund_of_activity_id: string | null; adjustment_reason: AdjustmentReason | null;
+    refunded_minor: string | null; net_minor: string | null;
     source_asset_id: string | null; source_name: string | null; destination_asset_id: string | null; destination_name: string | null;
     category_id: string | null; category_name: string | null; occurred_at: Date; note: string | null;
     status: "posted" | "voided" | "superseded"; replaces_activity_id: string | null;
   }>(`SELECT f.occurred_at::text AS cursor_time,f.id,f.kind,f.base_amount_minor::text,f.currency_code,c.minor_unit_exponent,
     f.source_asset_id,s.display_name AS source_name,f.destination_asset_id,d.display_name AS destination_name,
     f.category_id,cat.display_name AS category_name,f.occurred_at,f.note,f.status,f.replaces_activity_id,
-    f.refund_of_activity_id,f.adjustment_reason
+    f.refund_of_activity_id,f.adjustment_reason,
+    CASE WHEN f.kind='expense' AND f.status='posted' THEN refunded_in_chain(f.id)::text END AS refunded_minor,
+    CASE WHEN f.kind='expense' AND f.status='posted' THEN (
+      COALESCE((SELECT sum(se.amount_minor) FROM spending_effects se WHERE se.activity_id=f.id), 0) - refunded_in_chain(f.id)
+    )::text END AS net_minor
     FROM financial_activities f JOIN currencies c ON c.code=f.currency_code
     LEFT JOIN assets s ON s.id=f.source_asset_id LEFT JOIN assets d ON d.id=f.destination_asset_id
     LEFT JOIN transaction_categories cat ON cat.id=f.category_id
@@ -430,6 +435,7 @@ export async function listActivities(includeHistory = false, limit: number | nul
     destinationName: row.destination_name, categoryId: row.category_id, categoryName: row.category_name,
     occurredAt: row.occurred_at.toISOString(), note: row.note, status: row.status, replacesActivityId: row.replaces_activity_id,
     refundOfActivityId: row.refund_of_activity_id, adjustmentReason: row.adjustment_reason,
+    ...(row.refunded_minor !== null ? { refundedMinor: row.refunded_minor, netMinor: row.net_minor! } : {}),
     recurringRuleName: allocationNames.get(row.id)?.title ?? recurringNames.get(row.id) ?? eventNames.get(row.id)?.title ?? generalNames.get(row.id)?.title,
     automationInstanceId:allocationNames.get(row.id)?.instance_id ?? generalNames.get(row.id)?.instance_id,
     allocationAdjustmentId:allocationNames.get(row.id)?.adjustment_id,

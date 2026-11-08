@@ -30,7 +30,7 @@ test("rekonsiliasi angka pada data campuran (PostgreSQL terisolasi)", { skip: !e
       return next(specifier, context);
     } });
     const assets = await import("../src/lib/repositories/assets.ts");
-    const { postActivity, replaceActivity, voidActivity } = await import("../src/lib/finance/service.ts");
+    const { postActivity, replaceActivity, voidActivity, listActivities } = await import("../src/lib/finance/service.ts");
     const { postSplitBill } = await import("../src/lib/finance/split-bill-service.ts");
     const { financeSnapshot, monthlyExpenses } = await import("../src/lib/finance/summary.ts");
     const { readAggregates, readSpendingItems } = await import("../src/lib/analytics/queries.ts");
@@ -131,6 +131,13 @@ test("rekonsiliasi angka pada data campuran (PostgreSQL terisolasi)", { skip: !e
       // kategori refund mengikuti pengeluaran versi terbaru, bukan versi lama
       const parent = (k) => rows.find((r) => r.dimension === "category_parent" && r.name === k);
       assert.ok(parent("Belanja"));
+      const listed = await listActivities();
+      const listedE1b = listed.find((a) => a.id === e1b);
+      assert.equal(listedE1b.refundedMinor, "150000");
+      assert.equal(listedE1b.netMinor, "270000");
+      const listedWithFee = listed.find((a) => a.kind === "expense" && a.baseAmountMinor === "250000");
+      assert.equal(listedWithFee.refundedMinor, "0");
+      assert.equal(listedWithFee.netMinor, "255000");
     });
 
     await t.test("kekayaan bersih = Σ saldo akun + nilai pasar investasi = aset - kewajiban + piutang; dana siap pakai satu definisi", async () => {

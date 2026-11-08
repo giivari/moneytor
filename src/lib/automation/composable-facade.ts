@@ -2,7 +2,7 @@ import type { AllocationSummary } from "./allocation-domain";
 import type { ReviewContext } from "./review-domain";
 import type { AutomationView } from "./service";
 import type { IncomeEventView } from "./income-events";
-import { capabilities, ComposableError, normalizeGeneralRule, type GeneralRuleInput, type Trigger, type FinancialAction, type AssetReference } from "./composable-domain.ts";
+import { capabilities, ComposableError, normalizeGeneralRule, type AutomationActivityKind, type GeneralRuleInput, type Trigger, type FinancialAction, type AssetReference } from "./composable-domain.ts";
 import type { RuleInput } from "./service";
 import type { IncomeEventRuleInput } from "./income-events";
 import type { GeneralView } from "./composable-service";
@@ -41,7 +41,7 @@ export function builderCapabilities(rule: GeneralRuleInput, storage: Storage = "
   const sourceReferences:AssetReference["strategy"][]=storage==="income_event"?["trigger_destination_asset"]:base.references;
   return {...base,conditionFields:storage==="general"?base.conditionFields:[],
     triggers:(storage==="general"?["time","transaction_posted"]:storage==="schedule"?["time"]:["transaction_posted"]) as Trigger["namespace"][],
-    actionKinds:(storage==="income_event"?["expense","transfer"]:["income","expense","transfer"]) as FinancialAction["kind"][],
+    actionKinds:(storage==="income_event"?["expense","transfer"]:["income","expense","transfer"]) as AutomationActivityKind[],
     amountStrategies:storage==="income_event"?["percentage_of_trigger"] as const:base.amountStrategies,
     sourceReferences,destinationReferences:storage==="income_event"?["configured_asset"] as AssetReference["strategy"][]:base.references,
     timeFrequencies:storage==="schedule"?["daily","weekdays","weekly","monthly_day","monthly_last_day"] as const:["once","daily","weekdays","weekly","monthly_day","monthly_last_day"] as const};

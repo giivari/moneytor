@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { buildEditorDraft } from "../src/lib/domain/transaction-preset.ts";
 
 const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const editor = read("src/components/transaction-editor.tsx");
@@ -47,4 +48,101 @@ test("an installment top-up books the interest of every month and a correction r
   assert.match(editor, /initial\?\.kind === "expense" \|\| initial\?\.kind === "transfer" \? installmentEditDefaults/);
   assert.match(editor, /storedTopUpInterest = initialInstallment && initial\?\.kind === "transfer"/);
   assert.match(editor, /BigInt\(initial\.charges\[0\]\.amountMinor\) - storedTopUpInterest/);
+});
+
+test("borrow, repay, refund and adjustment build request drafts matching CONTRACT.md", () => {
+  assert.match(editor, /buildEditorDraft\(/);
+  const at = "2026-03-01T05:00:00.000Z";
+  const borrow = buildEditorDraft({
+    kind: "borrow",
+    amountMinor: "2000000",
+    occurredAt: at,
+    note: "Pinjaman cair",
+    primaryAssetId: "loan-1",
+    destinationAssetId: "wallet-1",
+    categoryId: "ignored-cat",
+  });
+  assert.deepEqual(borrow, {
+    kind: "borrow",
+    amountMinor: "2000000",
+    occurredAt: at,
+    note: "Pinjaman cair",
+    sourceAssetId: "loan-1",
+    destinationAssetId: "wallet-1",
+  });
+
+  const repay = buildEditorDraft({
+    kind: "repay",
+    amountMinor: "1000000",
+    occurredAt: at,
+    note: "Cicilan",
+    primaryAssetId: "wallet-1",
+    destinationAssetId: "loan-1",
+    repayInterestMinor: "50000",
+    loanInterestChargeTypeId: "60000000-0000-4000-8000-000000000007",
+    categoryId: "ignored-cat",
+  });
+  assert.deepEqual(repay, {
+    kind: "repay",
+    amountMinor: "1000000",
+    occurredAt: at,
+    note: "Cicilan",
+    sourceAssetId: "wallet-1",
+    destinationAssetId: "loan-1",
+    charges: [{ typeId: "60000000-0000-4000-8000-000000000007", amountMinor: "50000" }],
+  });
+
+  const refund = buildEditorDraft({
+    kind: "refund",
+    amountMinor: "40000",
+    occurredAt: at,
+    note: "Refund belanja",
+    primaryAssetId: "wallet-1",
+    refundOfActivityId: "expense-1",
+    categoryId: "ignored-cat",
+  });
+  assert.deepEqual(refund, {
+    kind: "refund",
+    amountMinor: "40000",
+    occurredAt: at,
+    note: "Refund belanja",
+    destinationAssetId: "wallet-1",
+    refundOfActivityId: "expense-1",
+  });
+
+  const adjIncrease = buildEditorDraft({
+    kind: "adjustment",
+    amountMinor: "700",
+    occurredAt: at,
+    note: "Selisih naik",
+    primaryAssetId: "wallet-1",
+    adjustmentReason: "reconciliation",
+    adjustmentDirection: "increase",
+  });
+  assert.deepEqual(adjIncrease, {
+    kind: "adjustment",
+    amountMinor: "700",
+    occurredAt: at,
+    note: "Selisih naik",
+    destinationAssetId: "wallet-1",
+    adjustmentReason: "reconciliation",
+  });
+
+  const adjOpeningDebt = buildEditorDraft({
+    kind: "adjustment",
+    amountMinor: "800000",
+    occurredAt: at,
+    note: "Utang lama",
+    primaryAssetId: "loan-1",
+    adjustmentReason: "opening_debt",
+    adjustmentDirection: "increase",
+  });
+  assert.deepEqual(adjOpeningDebt, {
+    kind: "adjustment",
+    amountMinor: "800000",
+    occurredAt: at,
+    note: "Utang lama",
+    sourceAssetId: "loan-1",
+    adjustmentReason: "opening_debt",
+  });
 });

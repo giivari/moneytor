@@ -11,7 +11,6 @@ import { LoadingIndicator } from "./loading-indicator";
 import { ArrowRight, FileArrowUp, Receipt, Rows } from "@phosphor-icons/react";
 import { financeRequest } from "@/lib/finance/client";
 import { formatMinor } from "@/lib/finance/format";
-import type { AnalyticsExpenseItem } from "@/lib/analytics/types";
 import type { FinanceActivity } from "@/lib/finance/types";
 import { ExportMenuButton } from "./export-menu-button";
 import { FinancialDataTable } from "./financial-data-table";
@@ -39,7 +38,7 @@ const visualKind = (kind: FinanceActivity["kind"]) => (kind === "income" || kind
 const activityRouteText = (item: FinanceActivity) =>
   item.sourceName && item.destinationName ? `${item.sourceName} → ${item.destinationName}` : item.sourceName || item.destinationName || "";
 const statusLabel = (item: FinanceActivity) => (item.status === "posted" ? "Aktif" : item.status === "voided" ? "Dibatalkan" : "Dikoreksi");
-function describeCharges(item: FinanceActivity, refundInfo?: AnalyticsExpenseItem): string | undefined {
+function describeCharges(item: FinanceActivity): string | undefined {
   const parts: string[] = [];
   if (item.charges.length) {
     const totalFee = item.charges.reduce((n, c) => n + BigInt(c.amountMinor), 0n);
@@ -52,8 +51,8 @@ function describeCharges(item: FinanceActivity, refundInfo?: AnalyticsExpenseIte
       parts.push(isFlowKind(item.kind) ? `${names}: ${formattedTotal}` : `Termasuk ${names} (${formattedTotal})`);
     }
   }
-  if (refundInfo?.refundedMinor && BigInt(refundInfo.refundedMinor) > 0n) {
-    parts.push(`Di-refund ${formatMinor(refundInfo.refundedMinor, item.currency, item.exponent)} · Bersih ${formatMinor(refundInfo.netMinor ?? refundInfo.spendingMinor, item.currency, item.exponent)}`);
+  if (item.refundedMinor && BigInt(item.refundedMinor) > 0n) {
+    parts.push(`Di-refund ${formatMinor(item.refundedMinor, item.currency, item.exponent)} · Bersih ${formatMinor(item.netMinor ?? item.baseAmountMinor, item.currency, item.exponent)}`);
   }
   return parts.length ? parts.join(" · ") : undefined;
 }
@@ -65,7 +64,7 @@ function totalMinor(item: FinanceActivity) {
  * Inspector body for one activity. Correction opens the editor (a replacement); cancellation posts a void
  * (reversal movements). Both keep the original record, as the ledger is append-only.
  */
-function ActivityInspector({ item, refundInfo, onEdit }: { item: FinanceActivity; refundInfo?: AnalyticsExpenseItem; onEdit: (item: FinanceActivity) => void }) {
+function ActivityInspector({ item, onEdit }: { item: FinanceActivity; onEdit: (item: FinanceActivity) => void }) {
   const { refresh, notify } = useFinanceFeedback();
   const { close } = useInspector();
   const { pending, begin, finish } = useMutationPending();
@@ -98,10 +97,10 @@ function ActivityInspector({ item, refundInfo, onEdit }: { item: FinanceActivity
       <div><dt>Jumlah dasar</dt><dd>{money(item.baseAmountMinor)}</dd></div>
       {item.charges.map((charge) => <div key={charge.id}><dt>{charge.typeName}</dt><dd>{money(charge.amountMinor)}</dd></div>)}
       <div className="detail-total"><dt>{isFlowKind(item.kind) ? "Pokok + biaya" : "Total"}</dt><dd>{money(totalMinor(item))}</dd></div>
-      {refundInfo?.refundedMinor && BigInt(refundInfo.refundedMinor) > 0n && (
+      {item.refundedMinor && BigInt(item.refundedMinor) > 0n && (
         <>
-          <div><dt>Di-refund</dt><dd>{money(refundInfo.refundedMinor)}</dd></div>
-          <div><dt>Pengeluaran bersih</dt><dd>{money(refundInfo.netMinor ?? refundInfo.spendingMinor)}</dd></div>
+          <div><dt>Di-refund</dt><dd>{money(item.refundedMinor)}</dd></div>
+          <div><dt>Pengeluaran bersih</dt><dd>{money(item.netMinor ?? item.baseAmountMinor)}</dd></div>
         </>
       )}
     </dl>
@@ -120,11 +119,9 @@ function ActivityInspector({ item, refundInfo, onEdit }: { item: FinanceActivity
 export function TransactionsView({
   activities,
   monthly,
-  expenseItems,
 }: {
   activities: FinanceActivity[];
   monthly: { currency: string; exponent: number; expenseMinor: string }[];
-  expenseItems?: AnalyticsExpenseItem[];
 }) {
   const { refreshing } = useFinanceFeedback();
   const { open } = useInspector();
@@ -134,12 +131,11 @@ export function TransactionsView({
   const sort = useListSort("transactions");
   const activityPage = useActivityPage(activities, filter, history, sort.direction);
   const shown = activityPage.items;
-  const expenseNetById = new Map((expenseItems ?? []).map((item) => [item.id, item]));
   function openDetails(item: FinanceActivity, trigger?: HTMLElement | null) {
     if (refreshing) return;
     const when = new Date(item.occurredAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" });
     open({ id: `activity:${item.id}`, title: item.note || labels[item.kind], subtitle: `${labels[item.kind]} · ${when} · ${statusLabel(item)}`,
-      body: <ActivityInspector key={item.id} item={item} refundInfo={expenseNetById.get(item.id)} onEdit={setEditing} /> }, trigger ?? (document.activeElement as HTMLElement | null));
+      body: <ActivityInspector key={item.id} item={item} onEdit={setEditing} /> }, trigger ?? (document.activeElement as HTMLElement | null));
   }
   const spending = monthly.length
     ? monthly.map((item) => formatMinor(BigInt(item.expenseMinor) < 0n ? "0" : item.expenseMinor, item.currency, item.exponent)).join(" · ")
@@ -171,7 +167,7 @@ export function TransactionsView({
             { key: "activity", heading: "Aktivitas", render: (item) => <><button type="button" className="record-title-button" disabled={refreshing} aria-haspopup="dialog" aria-label={`Buka rincian transaksi: ${item.note || labels[item.kind]}`} onClick={(event) => openDetails(item, event.currentTarget)}>{item.note || labels[item.kind]}</button><small data-kind={visualKind(item.kind)}>{labels[item.kind]}</small></> },
             { key: "asset", heading: "Akun / aset", render: (item) => <>{activityRouteText(item)}{item.categoryName && <small>{item.categoryName}</small>}</> },
             { key: "origin", heading: "Asal", secondary: true, render: (item) => <span className="record-muted">{item.recurringRuleName ? <>Otomatisasi<small>{item.recurringRuleName}</small></> : "Manual"}</span> },
-            { key: "amount", heading: "Nominal", numeric: true, render: (item) => { const feeText = describeCharges(item, expenseNetById.get(item.id)); return <><strong className="financial-value financial-value--row" data-kind={visualKind(item.kind)}>{item.kind === "expense" ? "−" : item.kind === "income" ? "+" : ""}{formatMinor(activityValueMinor(item), item.currency, item.exponent)}</strong>{feeText && <small>{feeText}</small>}</>; } },
+            { key: "amount", heading: "Nominal", numeric: true, render: (item) => { const feeText = describeCharges(item); return <><strong className="financial-value financial-value--row" data-kind={visualKind(item.kind)}>{item.kind === "expense" ? "−" : item.kind === "income" ? "+" : ""}{formatMinor(activityValueMinor(item), item.currency, item.exponent)}</strong>{feeText && <small>{feeText}</small>}</>; } },
             { key: "status", heading: "Status", render: (item) => <small>{statusLabel(item)}</small> },
           ]} compact={(item) => <button type="button" className="transaction-button" key={item.id} disabled={refreshing} onClick={(event) => openDetails(item, event.currentTarget)}>
             <MoneyMovementRow kind={item.kind} title={item.note || labels[item.kind]}
@@ -180,7 +176,7 @@ export function TransactionsView({
               status={item.status !== "posted" ? statusLabel(item) : undefined}
               amount={`${item.kind === "expense" ? "−" : item.kind === "income" ? "+" : ""}${formatMinor(activityValueMinor(item), item.currency, item.exponent)}`}
               date={new Date(item.occurredAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-              fee={describeCharges(item, expenseNetById.get(item.id))} />
+              fee={describeCharges(item)} />
           </button>} />)}
       </ListContent>
       <div className="transactions-pager">

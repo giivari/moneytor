@@ -1,26 +1,27 @@
 import { assertStoredMinor, parseMinor } from "../domain/money.ts";
 import { addDays, dateOnly, occursOn, scheduledAt, type Schedule } from "./schedule.ts";
-import type { ActivityDraft, ActivityKind } from "../finance/types";
+import type { ActivityDraft } from "../finance/types";
 
+export type AutomationActivityKind = "income" | "expense" | "transfer";
 export class ComposableError extends Error {}
 export type AssetReference = { strategy: "configured_asset"; assetId: string } | { strategy: "trigger_source_asset" | "trigger_destination_asset" };
 export type AmountStrategy = { strategy: "fixed"; amountMinor: string; currency: string }
   | { strategy: "percentage_of_trigger"; percentageBps: number } | { strategy: "trigger_amount" } | { strategy: "confirm_at_runtime" };
 export type TimeConfiguration = Omit<Schedule, "frequency"> & { frequency: Schedule["frequency"] | "once" };
 export type Trigger = { namespace: "time"; schedule: TimeConfiguration }
-  | { namespace: "transaction_posted"; activityKind?: ActivityKind };
+  | { namespace: "transaction_posted"; activityKind?: AutomationActivityKind };
 export type ConditionField = "transaction_type" | "source_asset" | "destination_asset" | "transaction_category" | "base_amount" | "currency";
 export type Operator = "equals" | "not_equals" | "greater_than" | "greater_or_equal" | "less_than" | "less_or_equal" | "between";
 export type Condition = { field: ConditionField; operator: Operator; value: string; upperValue?: string; currency?: string };
-export type FinancialAction = { kind: ActivityKind; source?: AssetReference; destination?: AssetReference; amount: AmountStrategy;
+export type FinancialAction = { kind: AutomationActivityKind; source?: AssetReference; destination?: AssetReference; amount: AmountStrategy;
   categoryId?: string; charges: { typeId: string; amountMinor: string }[]; transferFeeMinor?: string; note?: string };
 export type GeneralRuleInput = { title: string; automationCategoryId?: string; trigger: Trigger; conditionMode: "ALL" | "ANY";
   conditions: Condition[]; actions: FinancialAction[]; execution: "confirm_before_execute" | "automatic" };
 export type TriggerContext = { identity: string; eligibleAt: string; namespace: Trigger["namespace"]; rootActivityId?: string;
-  effectiveActivityId?: string; kind?: ActivityKind; status?: string; amountMinor?: string; currency?: string;
+  effectiveActivityId?: string; kind?: AutomationActivityKind; status?: string; amountMinor?: string; currency?: string;
   sourceAssetId?: string; destinationAssetId?: string; categoryId?: string; occurredAt: string;
   origin: "manual" | "time_automation" | "transaction_automation"; producingRuleId?: string; producingInstanceId?: string };
-const kinds: ActivityKind[] = ["income", "expense", "transfer"];
+const kinds: AutomationActivityKind[] = ["income", "expense", "transfer"];
 const referenceNames: AssetReference["strategy"][] = ["configured_asset", "trigger_source_asset", "trigger_destination_asset"];
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function validId(value: unknown): string {
@@ -126,7 +127,7 @@ export function normalizeGeneralRule(raw: GeneralRuleInput): GeneralRuleInput {
       return { field: item.field, operator: item.operator, value, upperValue, currency: item.currency };
     }
     if (["source_asset", "destination_asset", "transaction_category"].includes(item.field)) validId(item.value);
-    if (item.field === "transaction_type" && !kinds.includes(item.value as ActivityKind)) throw new ComposableError("Jenis transaksi kondisi tidak valid.");
+    if (item.field === "transaction_type" && !kinds.includes(item.value as AutomationActivityKind)) throw new ComposableError("Jenis transaksi kondisi tidak valid.");
     if (item.field === "currency" && !/^[A-Z]{3}$/.test(item.value)) throw new ComposableError("Mata uang kondisi tidak valid.");
     return { field: item.field, operator: item.operator, value: item.value };
   });
