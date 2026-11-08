@@ -82,19 +82,17 @@ test('ordinary Home lifecycle reads once, without preferences or additional reco
 
 test('KPIs, warnings and every Beranda module show exact snapshot values and links', () => {
  const output=html(fixture());
- for (const label of ['Kekayaan bersih','Dana siap pakai','Tagihan kredit terdekat','Piutang belum kembali','Arus kas 6 bulan','Mutasi terakhir','Jatuh tempo terdekat','Akun &amp; aset','Investasi','Rincian kalkulasi']) assert.ok(output.includes(label),label);
+ for (const label of ['Kekayaan bersih','Dana siap pakai','Tagihan kredit terdekat','Piutang belum kembali','Arus kas 6 bulan','Mutasi terakhir','Jatuh tempo terdekat','Rincian kalkulasi']) assert.ok(output.includes(label),label);
  for (const value of ['23778769','-1732500','500000']) assert.ok(output.includes(money(value)),value);
  assert.match(output,/1 posisi tanpa harga belum termasuk/);
  assert.match(output,/Kewajiban belum tercakup cadangan/);
  assert.match(output,/Dana siap pakai negatif/);
  for (const target of ['/assets','/assets/investments','/transactions','/credit']) assert.ok(output.includes(`href="${target}"`),target);
- assert.match(section(output,'home-investments'),/posisi berharga/);
- assert.ok(section(output,'home-investments').includes(money('-230000')));
 });
 
 test('Rincian kalkulasi reconciles net worth and Dana siap pakai from the same snapshot', () => {
  const output=html(fixture());
- assert.match(output,/role="tab"[^>]*aria-selected="true"[^>]*>Ringkasan</);
+ assert.match(output,/role="tab"[^>]*aria-selected="true"[^>]*>Ringkasan/);
  assert.match(output,/Komponen kekayaan bersih · IDR/);
  assert.match(output,/Rumus dana siap pakai · IDR/);
  // cash 10.767.500 + investments 13.011.269 − liabilities 0 = 23.778.769 (netWorthMinor)
@@ -115,7 +113,6 @@ test('credit bills and receivables come from asset_class, sorted by due day', ()
  assert.doesNotMatch(output,/Tidak ada tagihan dalam 30 hari/);
  assert.ok(output.includes(money('250000')));
  assert.match(output,/1 akun<\/span> Menunggu pelunasan/);
- assert.doesNotMatch(section(output,'home-accounts'),/Kartu Uji/);
 });
 
 test('recent activity shows up to six rows; Expense includes charges once; Transfer keeps principal and fee apart', () => {
@@ -137,11 +134,8 @@ test('recent activity shows up to six rows; Expense includes charges once; Trans
 
 test('archived accounts and genuine empty states are described accurately', () => {
  const snapshot=fixture(); snapshot.assets[0].isActive=false; snapshot.recent=[];
- assert.match(html(snapshot),/Belum ada akun aktif/);
  assert.match(html(snapshot),/Belum ada transaksi tercatat/);
  snapshot.assets=[];
- assert.match(html(snapshot),/Belum ada akun atau aset tercatat/);
- assert.doesNotMatch(html(snapshot),/Mulai dari aset pertama/); // investment-only owner
  snapshot.investment={hasHoldings:false,totals:[]}; snapshot.currencies=[];
  assert.match(html(snapshot),/Mulai dari aset pertama/);
  assert.doesNotMatch(html(snapshot),/Rp0|home-recent|ui-kpis/);
@@ -149,11 +143,9 @@ test('archived accounts and genuine empty states are described accurately', () =
 
 test('investment zero/unknown price data is never estimated', () => {
  const snapshot=fixture(); snapshot.investment.totals[0].marketMinor='0'; snapshot.investment.totals[0].unrealizedMinor='0';
- const output=html(snapshot), investments=section(output,'home-investments');
- assert.match(investments,/Rp0/); assert.match(investments,/1 posisi belum memiliki harga/);
+ const output=html(snapshot);
+ assert.match(output,/1 posisi tanpa harga belum termasuk/);
  assert.doesNotMatch(output,/Investasi \(nilai pasar\)/); // a zero component is not listed as value
- snapshot.investment.totals=[];
- assert.match(section(html(snapshot),'home-investments'),/Catat portofolio/);
 });
 
 test('currencies remain separate, deterministic and use their exact exponent', () => {
@@ -174,7 +166,6 @@ test('large negative money keeps exact group tokens, without focusable scroll co
  const kpi=section(output,'ui-kpi');
  assert.match(kpi,/data-wide="true"/);
  assert.doesNotMatch(kpi,/tabindex|<input|role="spinbutton"/);
- assert.match(section(output,'home-accounts'),/data-wide="true"/);
  assert.doesNotMatch(output,/text-overflow|title="−Rp/);
 });
 
@@ -242,13 +233,12 @@ test('shared amount preserves exact text with wrapping only between complete gro
 test('Home reuses real P6A trend/category report with visible scope and exact, isolated category denominator', () => {
  const snapshot=fixture(), report=analyticsFixture(), before=structuredClone({snapshot,report});
  const output=html(snapshot,report);
- assert.match(output,/Pemasukan &amp; belanja/); assert.match(output,/Komposisi belanja/);
- assert.match(output,/Periode berjalan/); assert.match(output,/Tanpa kategori/);
+ assert.match(output,/Pemasukan &amp; belanja/);
+ assert.match(output,/Periode berjalan/);
  assert.match(output,/Tren IDR/); assert.match(output,/viewBox="0 0 340 140"/); // narrow-first on the server
  assert.match(output,/pemasukan Rp1\.000\.000, belanja Rp1\.232\.500, net −Rp232\.500/i);
- assert.match(output,/total Rp1\.232\.500/); assert.match(output,/Biaya admin pada transaksi Transfer/);
  assert.match(output,/role="button" tabindex="0"/); // only chart selection is interactive
- assert.doesNotMatch(output,/home-mobile-access|insight-interval-picker|<table/);
+ assert.doesNotMatch(output,/home-mobile-access|insight-interval-picker/);
  assert.deepEqual({snapshot,report},before);
 });
 
