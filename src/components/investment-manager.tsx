@@ -313,7 +313,7 @@ export function InvestmentManager(workspace: Workspace) {
     catch (cause) { setError(cause instanceof Error ? cause.message : "Harga belum dapat dimuat. Gunakan harga manual."); } finally { finish(); }
   }
   return <div className="page investment-page">
-    <header className="page-header"><PageHeading title="Investasi" description="Portofolio, instrumen, posisi, dan harga pasar. Kas untuk membeli tetap dicatat di Aset."
+    <header className="page-header"><PageHeading title="Investasi"
       actions={<><ExportMenuButton dataset="investments" label="Ekspor Portofolio" />{workflow.recorded && workflow.canTrade && <button type="button" className="button-primary" disabled={refreshing} onClick={() => setForm({ mode: "trade" })}><Plus size={17} /> Catat transaksi</button>}</>} /></header>
     {workflow.stage !== "ready" && <section className="surface investment-onboarding" aria-labelledby="investment-start-title">
       <span className="eyebrow">MULAI DARI SINI</span><h2 id="investment-start-title">{workflow.stage === "portfolio" ? "Di mana investasi Anda disimpan?" : workflow.stage === "instrument" ? "Apa yang Anda miliki?" : workflow.stage === "ownership" ? "Sudah dimiliki atau pembelian baru?" : "Lengkapi nilai pasar"}</h2>

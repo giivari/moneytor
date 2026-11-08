@@ -163,7 +163,7 @@ export function TransactionsView({
     : "—";
   return <div className="page transactions-page">
     <header className="page-header">
-      <PageHeading title="Mutasi" description="Semua pemasukan, pengeluaran, dan transfer. Koreksi dan pembatalan dibalik, bukan dihapus."
+      <PageHeading title="Mutasi"
         actions={<><AppLink href="/transactions/imports" className="finance-edit-button transactions-import-trigger"><FileArrowUp size={ICON_SM} /> Impor CSV/Excel</AppLink>
           <AppLink href="/transactions/automation" className="text-link automation-entry">Otomatisasi <ArrowRight size={ICON_SM} /></AppLink></>} />
     </header>

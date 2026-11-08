@@ -1951,7 +1951,7 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
   ) : null;
 
   return <div className="page finance-assets-page">
-    <header className="page-header"><PageHeading title="Aset" description="Rekening, kas, e-money, tabungan, dan piutang beserta saldo awalnya."
+    <header className="page-header"><PageHeading title="Aset"
       actions={<><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></>} /></header>
     {totals.map((item) => {
       const money = (value: string | undefined) => formatMinor(value ?? "0", item.currency, item.exponent);

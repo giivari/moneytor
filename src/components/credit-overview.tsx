@@ -111,7 +111,7 @@ export function CreditOverview({ snapshot }: { snapshot: Snapshot }) {
   const horizon = shortDate(throughDay);
   const relevant = sortNamed(snapshot.currencies, (entry) => entry.currency, (entry) => entry.currency)
     .filter((entry) => facilities.some((item) => item.asset.currency === entry.currency) || receivablesSummary(assets, entry.currency).totalMinor !== 0n || assets.some((asset) => asset.currency === entry.currency && asset.assetClass === "receivable"));
-  const heading = <PageHeading title="Kredit & Talangan" description="Kartu kredit, PayLater, cicilan, dan uang yang Anda talangi."
+  const heading = <PageHeading title="Kredit & Talangan"
     actions={<Link href="/assets" className="text-link">Kelola akun di Aset <ArrowRight size={ICON_SM} aria-hidden="true" /></Link>} />;
 
   const kpis = <div className="credit-currencies">{relevant.map((entry) => {

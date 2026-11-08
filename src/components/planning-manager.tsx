@@ -295,7 +295,7 @@ export function PlanningManager({ data, positions, sources, throughDay, creditDe
         onReactivate={(row) => void reactivate(row)} busy={busy} />)}</div>}</section>;
   }
   return <div className="page planning-page">
-    <header className="page-header"><PageHeading title="Rencana" description="Batas belanja, target, dana yang disisihkan, dan kewajiban, tanpa mengubah saldo aset."
+    <header className="page-header"><PageHeading title="Rencana"
       actions={<><label className="planning-horizon field"><span>Jangka kewajiban</span><select value={horizon} onChange={(event) => setHorizon(Number(event.target.value) as 7 | 30 | 90)}>
         <option value={7}>7 hari</option><option value={30}>30 hari</option><option value={90}>90 hari</option></select></label>
         <ExportMenuButton dataset="planning" label="Ekspor Rencana" /></>} /></header>
