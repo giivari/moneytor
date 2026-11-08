@@ -14,6 +14,7 @@ import { Amount, Card, Chip, Kpi, PageHeading, monthLabel, shortDate, toneOf } f
 import { InspectorRow, InspectorRowButton } from "./inspector";
 import { PageTabs } from "./page-tabs";
 import { PayBillButton, RepayDebtButton, SettleReceivableButton } from "./pay-bill-button";
+import { ExcelStatusBar } from "./excel-status-bar";
 import { ICON_SM } from "./icon-size";
 
 type Snapshot = Awaited<ReturnType<typeof financeSnapshot>>;
@@ -172,12 +173,46 @@ export function CreditOverview({ snapshot }: { snapshot: Snapshot }) {
     </div>;
   })}</div>;
 
-  return <div className="page credit-page">
-    <PageTabs label="Tampilan Kredit & Talangan" heading={heading} shared={kpis}
-      tabs={[
-        { id: "kredit", label: "Kredit & PayLater", panel: <Facilities facilities={facilities} /> },
-        { id: "cicilan", label: "Cicilan", panel: <Installments facilities={facilities} /> },
-        { id: "piutang", label: "Piutang & talangan", panel: <Receivables assets={assets} currencies={relevant.map((entry) => entry.currency)} /> },
-      ]} />
-  </div>;
+  const primary = relevant[0] ?? snapshot.currencies[0];
+  const pCurr = primary?.currency ?? "IDR";
+  const pExp = primary?.exponent ?? 0;
+
+  const totalReceivablesBig = relevant.reduce(
+    (sum, entry) => sum + BigInt(receivablesSummary(assets, entry.currency).totalMinor),
+    0n
+  );
+  const totalBillsBig = relevant.reduce(
+    (sum, entry) => sum + BigInt(entry.creditDebtMinor),
+    0n
+  );
+  const totalDebtBig = relevant.reduce(
+    (sum, entry) => sum + BigInt(entry.liabilitiesMinor),
+    0n
+  );
+
+  return (
+    <div className="page credit-page">
+      <PageTabs
+        label="Tampilan Kredit & Talangan"
+        heading={heading}
+        shared={kpis}
+        tabs={[
+          { id: "kredit", label: "Kredit & PayLater", panel: <Facilities facilities={facilities} /> },
+          { id: "cicilan", label: "Cicilan", panel: <Installments facilities={facilities} /> },
+          {
+            id: "piutang",
+            label: "Piutang & talangan",
+            panel: <Receivables assets={assets} currencies={relevant.map((entry) => entry.currency)} />,
+          },
+        ]}
+      />
+      <ExcelStatusBar
+        rowCount={facilities.length}
+        totalIn={formatMinor(totalReceivablesBig.toString(), pCurr, pExp)}
+        totalOut={formatMinor(totalBillsBig.toString(), pCurr, pExp)}
+        customNetLabel="Total Seluruh Utang"
+        customNetValue={formatMinor(totalDebtBig.toString(), pCurr, pExp)}
+      />
+    </div>
+  );
 }

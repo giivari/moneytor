@@ -5,9 +5,10 @@ import { useListSort } from "./use-list-sort";
 import { ListSortControl } from "./list-sort-control";
 
 import { useEffect, useRef, useState } from "react";
-import { Bank, CheckCircle, CreditCard, Drop, PencilSimple, Plus, Wallet, X } from "@phosphor-icons/react";
+import { Bank, CaretDown, CaretRight, CheckCircle, CreditCard, Drop, PencilSimple, Plus, Wallet, X } from "@phosphor-icons/react";
 import { Kpi, monthLabel, PageHeading } from "./ui";
-import { StatusBar } from "./status-bar";
+import { PageTabs } from "./page-tabs";
+import { ExcelStatusBar } from "./excel-status-bar";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
 import {
   bpsToInput,
@@ -1958,48 +1959,292 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
     </section>
   ) : null;
 
-  return <div className="page finance-assets-page">
-    <header className="page-header"><PageHeading title="Aset"
-      description={totals[0] ? `Total Tercatat: ${formatMinor(totals[0].amountMinor, totals[0].currency, totals[0].exponent)}` : undefined}
-      actions={<><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></>} /></header>
-    {totals.map((item) => {
-      const money = (value: string | undefined) => formatMinor(value ?? "0", item.currency, item.exponent);
-      return <div className="ui-kpis assets-kpis" key={item.currency} aria-label={`Ringkasan aset ${item.currency}`}>
-        <Kpi title="Total aset tercatat" icon={Bank} tone="neutral" value={money(item.amountMinor)} valueTone={BigInt(item.amountMinor) < 0n ? "negative" : ""}
-          note={item.unpricedCount ? `${item.unpricedCount} posisi investasi tanpa harga belum termasuk` : `Termasuk investasi dan piutang · ${item.currency}`} />
-        <Kpi title="Dana likuid" icon={Drop} tone="info" value={money(item.liquidMinor)} valueTone={BigInt(item.liquidMinor ?? "0") < 0n ? "negative" : ""} note="Akun aktif bertanda likuid" />
-        <Kpi title="Dapat dipakai belanja" icon={Wallet} tone="positive" value={money(item.eligibleMinor)} valueTone={BigInt(item.eligibleMinor ?? "0") < 0n ? "negative" : ""} note="Sebelum cadangan dan kewajiban" />
-        <Kpi title="Kewajiban kredit" icon={CreditCard} tone="negative" value={money(item.liabilitiesMinor)} note="Termasuk cicilan bulan berikutnya"
-          action={<AppLink href="/credit" className="text-link">Kredit &amp; Talangan</AppLink>} />
-      </div>;
-    })}
-    <div className="asset-overview-grid">
-    <InvestmentSummary totals={investmentTotals} /></div>
-    {creditFirst && creditSection}
-    {!regularActive.length ? <section className="surface finance-empty"><h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2><p>{archived.length ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru." : "Buat akun atau aset pertama, lalu catat saldo awalnya."}</p>
-      <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : <section className="surface"><SectionHeading title="Akun & nilai tercatat" eyebrow="ASET AKTIF" action={
-        <div className="section-heading-actions">
-          <div className="view-mode-toggle" role="group" aria-label="Mode tampilan aset">
-            <button
-              type="button"
-              className={`view-mode-btn ${viewMode === "card" ? "view-mode-btn--active" : ""}`}
-              onClick={() => setViewMode("card")}
-            >
-              Kartu
-            </button>
-            <button
-              type="button"
-              className={`view-mode-btn ${viewMode === "table" ? "view-mode-btn--active" : ""}`}
-              onClick={() => setViewMode("table")}
-            >
-              Tabel
-            </button>
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const toggleGroup = (key: string) =>
+    setCollapsedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const emoneyAccounts = regularActive.filter((a) => {
+    const t = (a.assetTypeName || "").toLowerCase();
+    const d = (a.displayName || "").toLowerCase();
+    return (
+      t.includes("e-money") ||
+      d.includes("flazz") ||
+      d.includes("brizzi") ||
+      d.includes("tapcash") ||
+      d.includes("jakcard") ||
+      d.includes("e-money")
+    );
+  });
+
+  const tabunganDepositoAccounts = regularActive.filter((a) => {
+    if (emoneyAccounts.includes(a)) return false;
+    const t = (a.assetTypeName || "").toLowerCase();
+    const d = (a.displayName || "").toLowerCase();
+    const terms = parseAssetTerms(a.note);
+    return (
+      t.includes("deposito") ||
+      d.includes("deposito") ||
+      t.includes("tabungan") ||
+      d.includes("tabungan") ||
+      terms.interestRateBps > 0
+    );
+  });
+
+  const kasBankAccounts = regularActive.filter(
+    (a) => !emoneyAccounts.includes(a) && !tabunganDepositoAccounts.includes(a)
+  );
+
+  const primaryTotal = totals[0];
+  const pCurr = primaryTotal?.currency ?? "IDR";
+  const pExp = primaryTotal?.exponent ?? 0;
+
+  const totalBalanceBig = regularActive.reduce((sum, a) => sum + BigInt(a.balanceMinor), 0n);
+  const totalEstInterestBig = regularActive.reduce((sum, a) => {
+    const terms = parseAssetTerms(a.note);
+    if (terms.interestRateBps <= 0) return sum;
+    const yieldVal = estimateAssetMonthlyYield(BigInt(a.balanceMinor), terms);
+    return sum + yieldVal.netInterestMonthlyMinor;
+  }, 0n);
+  const totalAdminBig = regularActive.reduce((sum, a) => {
+    const terms = parseAssetTerms(a.note);
+    return sum + terms.adminFeeMinor;
+  }, 0n);
+
+  const renderOutlookGroup = (
+    id: string,
+    title: string,
+    items: FinanceAsset[],
+    isEmoney = false,
+    isTabungan = false
+  ) => {
+    const isCollapsed = Boolean(collapsedGroups[id]);
+    const groupSubtotal = items.reduce((sum, a) => sum + BigInt(a.balanceMinor), 0n);
+
+    return (
+      <section className="outlook-group" key={id}>
+        <button
+          type="button"
+          onClick={() => toggleGroup(id)}
+          className="outlook-group-header"
+          aria-expanded={!isCollapsed}
+        >
+          <div className="outlook-group-title">
+            {isCollapsed ? (
+              <CaretRight size={14} aria-hidden="true" />
+            ) : (
+              <CaretDown size={14} aria-hidden="true" />
+            )}
+            <span>{title}</span>
+            <span className="outlook-group-count">({items.length} akun)</span>
           </div>
-          <span className="count-pill">{regularActive.length} aset</span>
+          <span className="outlook-group-subtotal">
+            {formatMinor(groupSubtotal.toString(), pCurr, pExp)}
+          </span>
+        </button>
+
+        {!isCollapsed && (
+          <div className="outlook-group-body">
+            {!items.length ? (
+              <div
+                style={{
+                  padding: "var(--space-3) var(--space-4)",
+                  color: "var(--subtle)",
+                  fontSize: "var(--text-xs)",
+                }}
+              >
+                Tidak ada akun pada kategori ini.
+              </div>
+            ) : (
+              items.map((asset) => {
+                const terms = parseAssetTerms(asset.note);
+                const yieldVal =
+                  terms.interestRateBps > 0
+                    ? estimateAssetMonthlyYield(BigInt(asset.balanceMinor), terms)
+                    : null;
+
+                return (
+                  <div
+                    key={asset.id}
+                    onClick={(event) => {
+                      if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
+                    }}
+                    className="outlook-account-row"
+                    title="Klik untuk membuka rincian akun"
+                  >
+                    {/* Left: Avatar + Names */}
+                    <div className="outlook-account-left">
+                      <div className="account-card-initial" aria-hidden="true">
+                        {getAccountInitials(asset.displayName)}
+                      </div>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <button
+                            type="button"
+                            className="asset-title-trigger"
+                            onClick={() => setViewingAsset(asset)}
+                          >
+                            <strong>{asset.displayName}</strong>
+                          </button>
+                          {asset.safeSuffix && (
+                            <span className="account-card-number">•••• {asset.safeSuffix}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "var(--text-micro)", color: "var(--subtle)" }}>
+                          {[asset.providerName, asset.assetTypeName].filter(Boolean).join(" · ")}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Middle: Parameter info */}
+                    <div className="outlook-account-middle">
+                      {isTabungan && terms.interestRateBps > 0 ? (
+                        <span>
+                          Bunga {formatBpsRate(terms.interestRateBps)} p.a.
+                          {yieldVal && yieldVal.netInterestMonthlyMinor > 0n && (
+                            <strong style={{ color: "var(--positive)", marginLeft: "6px" }}>
+                              +{formatMinor(yieldVal.netInterestMonthlyMinor.toString(), asset.currency, asset.exponent)}/bln
+                            </strong>
+                          )}
+                        </span>
+                      ) : isEmoney ? (
+                        <span>Chip NFC Prabayar</span>
+                      ) : (
+                        <span>
+                          {terms.adminFeeMinor > 0n
+                            ? `Admin ${formatMinor(terms.adminFeeMinor.toString(), asset.currency, asset.exponent)}/bln`
+                            : "Bebas biaya admin"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Right: Balance + Action */}
+                    <div className="outlook-account-right">
+                      <div>
+                        <div className="outlook-account-balance">
+                          {formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}
+                        </div>
+                        <div className="outlook-account-sub">Saldo Tercatat</div>
+                      </div>
+
+                      {isEmoney && (
+                        <button
+                          type="button"
+                          className="finance-secondary"
+                          style={{ height: "26px", padding: "0 8px", fontSize: "var(--text-micro)" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditing(asset);
+                          }}
+                        >
+                          <Plus size={12} weight="bold" />
+                          <span>Top-Up</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  const heading = (
+    <PageHeading
+      title="Rekening & Aset"
+      description={
+        totals[0]
+          ? `Total Tercatat: ${formatMinor(totals[0].amountMinor, totals[0].currency, totals[0].exponent)}`
+          : undefined
+      }
+      actions={
+        <>
           <ExportMenuButton dataset="assets" label="Ekspor Aset" />
-        </div>
-      } />
-      {viewMode === "card" ? (
+          <button className="button-primary" type="button" onClick={openNewAsset}>
+            <Plus size={17} /> Tambah rekening
+          </button>
+        </>
+      }
+    />
+  );
+
+  const kpis = (
+    <>
+      {totals.map((item) => {
+        const money = (value: string | undefined) =>
+          formatMinor(value ?? "0", item.currency, item.exponent);
+        return (
+          <div className="ui-kpis assets-kpis" key={item.currency} aria-label={`Ringkasan aset ${item.currency}`}>
+            <Kpi
+              title="Total aset tercatat"
+              icon={Bank}
+              tone="neutral"
+              value={money(item.amountMinor)}
+              valueTone={BigInt(item.amountMinor) < 0n ? "negative" : ""}
+              note={
+                item.unpricedCount
+                  ? `${item.unpricedCount} posisi investasi tanpa harga belum termasuk`
+                  : `Termasuk investasi dan piutang · ${item.currency}`
+              }
+            />
+            <Kpi
+              title="Dana likuid"
+              icon={Drop}
+              tone="info"
+              value={money(item.liquidMinor)}
+              valueTone={BigInt(item.liquidMinor ?? "0") < 0n ? "negative" : ""}
+              note="Akun aktif bertanda likuid"
+            />
+            <Kpi
+              title="Dapat dipakai belanja"
+              icon={Wallet}
+              tone="positive"
+              value={money(item.eligibleMinor)}
+              valueTone={BigInt(item.eligibleMinor ?? "0") < 0n ? "negative" : ""}
+              note="Sebelum cadangan dan kewajiban"
+            />
+            <Kpi
+              title="Kewajiban kredit"
+              icon={CreditCard}
+              tone="negative"
+              value={money(item.liabilitiesMinor)}
+              note="Termasuk cicilan bulan berikutnya"
+              action={
+                <AppLink href="/credit" className="text-link">
+                  Kredit &amp; Talangan
+                </AppLink>
+              }
+            />
+          </div>
+        );
+      })}
+      <div className="asset-overview-grid">
+        <InvestmentSummary totals={investmentTotals} />
+      </div>
+    </>
+  );
+
+  const renderActiveContent = () => {
+    if (!regularActive.length) {
+      return (
+        <section className="surface finance-empty">
+          <h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2>
+          <p>
+            {archived.length
+              ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru."
+              : "Buat akun atau aset pertama, lalu catat saldo awalnya."}
+          </p>
+          <button className="button-primary" type="button" onClick={openNewAsset}>
+            Tambah aset
+          </button>
+        </section>
+      );
+    }
+
+    if (viewMode === "card") {
+      return (
         <div className="asset-cards-grid">
           {regularActive.map((asset) => {
             const isReceivable = isReceivableAsset(asset);
@@ -2008,7 +2253,9 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
               isReceivable ? "Piutang / Talangan" : ASSET_CLASS_LABEL[asset.assetClass],
               !mobile && asset.assetGroupName ? asset.assetGroupName : null,
               terms.interestRateBps > 0 ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.` : null,
-              terms.adminFeeMinor > 0n ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln` : null,
+              terms.adminFeeMinor > 0n
+                ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln`
+                : null,
             ]
               .filter(Boolean)
               .join(" · ");
@@ -2053,69 +2300,173 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
             );
           })}
         </div>
-      ) : (
-        <div className="asset-list">{regularActive.map((asset) => {
-        const isReceivable = isReceivableAsset(asset);
-        const mark = resolveProviderMark(
-          asset.providerName,
-          asset.displayName,
-          isReceivable ? "teal" : asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet",
-        );
-        const terms = parseAssetTerms(asset.note);
-        const termSummary = [
-          isReceivable ? "Piutang / Talangan" : ASSET_CLASS_LABEL[asset.assetClass],
-          !mobile && asset.assetGroupName ? asset.assetGroupName : null,
-          terms.interestRateBps > 0 ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.` : null,
-          terms.adminFeeMinor > 0n ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        return <article
-          className="asset-row asset-row--interactive data-list-row data-list-row--entity"
-          key={asset.id}
-          onClick={(event) => {
-            if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
-          }}
-        >
-        <div className="data-list-identity"><ProviderBrandMark mark={mark} />
-          <div className="asset-copy">
-            <button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}>
-              <strong>{asset.displayName}</strong>
-            </button>
-            <span>{[asset.providerName, asset.assetTypeName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ")}</span>
-            {termSummary && <small>{termSummary}</small>}
-          </div></div>
-        <div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong>
-        <div className="data-list-actions">
-          {isReceivable && BigInt(asset.balanceMinor) > 0n && (
-            <button
-              type="button"
-              className="row-action"
-              onClick={() => setSettlingReceivable(asset)}
-            >
-              Terima ganti
-            </button>
+      );
+    }
+
+    return (
+      <div>
+        {renderOutlookGroup("kas", "Kas, Bank Operasional & E-Wallet", kasBankAccounts)}
+        {renderOutlookGroup(
+          "tabungan",
+          "Tabungan Bunga Tinggi & Deposito",
+          tabunganDepositoAccounts,
+          false,
+          true
+        )}
+        {renderOutlookGroup("emoney", "Kartu Prabayar E-Money (Chip NFC)", emoneyAccounts, true)}
+      </div>
+    );
+  };
+
+  return (
+    <div className="page finance-assets-page">
+      <PageTabs
+        label="Kategori Rekening & Aset"
+        heading={heading}
+        shared={kpis}
+        tabs={[
+          {
+            id: "all",
+            label: "Semua",
+            panel: (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-3)" }}>
+                  <div className="view-mode-toggle" role="group" aria-label="Mode tampilan aset">
+                    <button
+                      type="button"
+                      className={`view-mode-btn ${viewMode === "table" ? "view-mode-btn--active" : ""}`}
+                      onClick={() => setViewMode("table")}
+                    >
+                      Daftar Grup
+                    </button>
+                    <button
+                      type="button"
+                      className={`view-mode-btn ${viewMode === "card" ? "view-mode-btn--active" : ""}`}
+                      onClick={() => setViewMode("card")}
+                    >
+                      Kartu
+                    </button>
+                  </div>
+                  <span className="count-pill">{regularActive.length} rekening</span>
+                </div>
+                {creditFirst && creditSection}
+                {renderActiveContent()}
+                {!creditFirst && creditSection}
+              </div>
+            ),
+          },
+          {
+            id: "kas",
+            label: "Kas & Rekening",
+            panel: renderOutlookGroup("kas", "Kas, Bank Operasional & E-Wallet", kasBankAccounts),
+          },
+          {
+            id: "tabungan",
+            label: "Tabungan & Deposito",
+            panel: renderOutlookGroup(
+              "tabungan",
+              "Tabungan Bunga Tinggi & Deposito",
+              tabunganDepositoAccounts,
+              false,
+              true
+            ),
+          },
+          {
+            id: "emoney",
+            label: "Kartu E-Money",
+            panel: renderOutlookGroup(
+              "emoney",
+              "Kartu Prabayar E-Money (Chip NFC)",
+              emoneyAccounts,
+              true
+            ),
+          },
+        ]}
+      />
+
+      {archived.length > 0 && (
+        <>
+          <label className="finance-history-toggle">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(event) => setShowArchived(event.target.checked)}
+            />{" "}
+            Tampilkan yang diarsipkan ({archived.length})
+          </label>
+          {showArchived && (
+            <section className="surface finance-archived">
+              <SectionHeading title="Aset diarsipkan" />
+              <div className="asset-list">
+                {archived.map((asset) => {
+                  const mark = resolveProviderMark(
+                    asset.providerName,
+                    asset.displayName,
+                    asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet"
+                  );
+                  return (
+                    <div
+                      className="asset-row asset-row--interactive data-list-row data-list-row--entity"
+                      key={asset.id}
+                      onClick={(event) => {
+                        if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
+                      }}
+                    >
+                      <div className="data-list-identity">
+                        <ProviderBrandMark mark={mark} />
+                        <div className="asset-copy">
+                          <button
+                            type="button"
+                            className="asset-title-trigger"
+                            onClick={() => setViewingAsset(asset)}
+                          >
+                            <strong>{asset.displayName}</strong>
+                          </button>
+                          <small>{ASSET_CLASS_LABEL[asset.assetClass]} · Diarsipkan</small>
+                        </div>
+                      </div>
+                      <div className="data-list-management">
+                        <strong className="asset-amount financial-value financial-value--entity">
+                          {formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}
+                        </strong>
+                        <div className="data-list-actions">
+                          <button
+                            type="button"
+                            className="row-action"
+                            onClick={() => setCorrecting(asset)}
+                          >
+                            Riwayat saldo awal
+                          </button>
+                          <button
+                            type="button"
+                            className="row-action"
+                            disabled={pending || refreshing}
+                            aria-busy={pending && restoringId === asset.id}
+                            onClick={() => void restore(asset.id)}
+                          >
+                            {pending && restoringId === asset.id ? (
+                              <LoadingIndicator>Memulihkan...</LoadingIndicator>
+                            ) : (
+                              "Pulihkan"
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <details className="context-help">
+                <summary>Tentang aset diarsipkan</summary>
+                <p className="finance-hint supporting-prose">
+                  Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk
+                  menggunakannya kembali.
+                </p>
+              </details>
+            </section>
           )}
-          <button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah</button>
-          <button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button>
-        </div></div></article>;
-      })}</div>
-      )}</section>}
-
-    {!creditFirst && creditSection}
-
-    {archived.length > 0 && <><label className="finance-history-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan ({archived.length})</label>
-      {showArchived && <section className="surface finance-archived"><SectionHeading title="Aset diarsipkan" />
-      <div className="asset-list">{archived.map((asset) => {
-        const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
-        return <div
-          className="asset-row asset-row--interactive data-list-row data-list-row--entity"
-          key={asset.id}
-          onClick={(event) => {
-            if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
-          }}
-        ><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}><strong>{asset.displayName}</strong></button><small>{ASSET_CLASS_LABEL[asset.assetClass]} · Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
-      })}</div><details className="context-help"><summary>Tentang aset diarsipkan</summary><p className="finance-hint supporting-prose">Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk menggunakannya kembali.</p></details></section>}</>}
+        </>
+      )}
     {error && <p className="finance-error" role="alert">{error}</p>}
     <details className="context-help"><summary>Cara membaca aset &amp; fasilitas kredit</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Klik nama atau baris aset untuk melihat rincian ketentuan akun, bunga simpanan, biaya admin, dan mutasi terakhir.</p></details>
     {liveViewingAsset && (
@@ -2153,9 +2504,13 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
       />
     )}
     {correcting && <AssetOpeningCorrection key={correcting.id} asset={correcting} onClose={() => setCorrecting(null)} />}
-    <StatusBar
+    <ExcelStatusBar
       rowCount={regularActive.length}
-      extraLabel={totals[0] ? `Dana Likuid: ${formatMinor(totals[0].liquidMinor ?? "0", totals[0].currency, totals[0].exponent)}` : undefined}
+      totalIn={formatMinor(totalEstInterestBig.toString(), pCurr, pExp)}
+      totalOut={formatMinor(totalAdminBig.toString(), pCurr, pExp)}
+      customNetLabel="Total Nilai Tercatat"
+      customNetValue={formatMinor(totalBalanceBig.toString(), pCurr, pExp)}
     />
-  </div>;
+    </div>
+  );
 }

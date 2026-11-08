@@ -309,6 +309,116 @@
 .ui-empty h2 { margin: 0; font-size: var(--text-lg); }
 .ui-empty p { margin: 0; }
 
+/* Outlook-style Collapsible Section Groups for Accounts */
+.outlook-group {
+  background: var(--surface);
+  border: 1px solid var(--line-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+}
+
+.outlook-group-header {
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-sunken);
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.outlook-group-header:hover {
+  background: var(--surface-hover);
+}
+
+.outlook-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.outlook-group-count {
+  font-size: var(--text-micro);
+  color: var(--subtle);
+  font-weight: var(--weight-regular);
+}
+
+.outlook-group-subtotal {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.outlook-group-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.outlook-account-row {
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.outlook-account-row:hover {
+  background: var(--surface-hover);
+}
+
+.outlook-account-row:last-child {
+  border-bottom: none;
+}
+
+.outlook-account-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 200px;
+}
+
+.outlook-account-middle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.outlook-account-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  text-align: right;
+}
+
+.outlook-account-balance {
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+  color: var(--ink-editorial);
+  font-variant-numeric: tabular-nums;
+}
+
+.outlook-account-sub {
+  font-size: var(--text-micro);
+  color: var(--subtle);
+}
+
 @container page (min-width: 560px) {
   .ui-kind { justify-self: start; justify-content: flex-start; width: auto; height: auto; min-height: 24px; padding-inline: var(--space-2); }
   .ui-kind > span { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
