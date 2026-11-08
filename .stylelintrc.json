@@ -2,6 +2,7 @@
   "$comment": "Token discipline: raw colors, font sizes, radii, shadows, !important and :root live only in src/app/tokens.css. Every stylesheet under src is checked; ignoreFiles only skips non-source folders.",
   "ignoreFiles": [
     "references/**",
+    "references/design-reference/**",
     "node_modules/**",
     ".next/**"
   ],

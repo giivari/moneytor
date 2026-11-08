@@ -1,6 +1,6 @@
 /* Shared semantic type scale. Feature styles own layout and color, not emphasis. */
 
-body { font-size: var(--type-copy); font-weight: var(--weight-regular); }
+body { font-family: var(--font-sans); font-size: var(--type-copy); font-weight: var(--weight-regular); }
 strong, b { font-weight: var(--weight-semibold); }
 h1 { font-size: var(--type-page); font-weight: var(--weight-strong); line-height: 1.12; }
 h2 { font-size: var(--type-section); font-weight: var(--weight-semibold); line-height: 1.25; }

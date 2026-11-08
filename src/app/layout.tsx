@@ -24,7 +24,7 @@ import "./onboarding.css";
 
 const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
 export const viewport: Viewport = {
-  themeColor: "#5044dc",
+  themeColor: "#0f6cbd",
   width: "device-width",
   initialScale: 1,
 };

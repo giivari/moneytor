@@ -37,6 +37,7 @@
   ],
   "exclude": [
     "node_modules",
-    "references"
+    "references",
+    "references/design-reference"
   ]
 }
