@@ -1,4 +1,4 @@
-.settings-page { margin-inline: auto; }
+.settings-page { margin-inline: auto; flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--space-5); width: 100%; }
 .settings-overview-page { max-width: 1000px; }
 .settings-overview-page .settings-heading { margin-bottom: 28px; }
 .settings-overview-page .settings-heading p { color: var(--ink-soft); }

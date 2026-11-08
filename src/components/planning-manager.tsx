@@ -223,18 +223,48 @@ function PlanRow({ item, today, onEdit, onConfirm, onReactivate, busy }: {
   const archived = item.kind !== "obligation" && !item.isActive;
   const statusLabel = archived ? item.kind === "reserve" ? "Dilepaskan" : "Diarsipkan"
     : item.kind === "obligation" && item.status !== "open" ? item.status === "settled" ? "Selesai" : "Dibatalkan" : null;
-  return <article className="planning-row" data-state={state}><div className="planning-row-main"><div className="planning-row-title"><h3>{item.title}</h3>
-      {statusLabel && <span className={`planning-status${item.kind === "obligation" && item.status === "settled" ? " planning-status-positive" : ""}`}>{statusLabel}</span>}</div>
+
+  const badgeChip = item.kind === "budget" && progress ? (
+    <span className={`planning-chip ${state === "over" ? "planning-chip--over" : state === "near" ? "planning-chip--near" : "planning-chip--ok"}`}>
+      {progress.text}%
+    </span>
+  ) : item.kind === "obligation" && item.status === "open" ? (
+    <span className={`planning-chip ${item.dueOn < today ? "planning-chip--over" : "planning-chip--near"}`}>
+      {item.dueOn < today ? "Lewat tempo" : "Jatuh tempo"}
+    </span>
+  ) : item.kind === "goal" && progress ? (
+    <span className="planning-chip planning-chip--ok">
+      {progress.text}%
+    </span>
+  ) : null;
+
+  return <article className="planning-row" data-state={state}><div className="planning-row-main">
+      <div className="planning-row-title">
+        <h3>{item.title}</h3>
+        {badgeChip}
+        {statusLabel && <span className={`planning-status${item.kind === "obligation" && item.status === "settled" ? " planning-status-positive" : ""}`}>{statusLabel}</span>}
+      </div>
       {item.kind === "reserve" ? <><p>{item.obligationName ? `Untuk ${item.obligationName}` : item.goalName ? `Untuk ${item.goalName}` : purposeNames[item.purpose]}</p>
         <details className="history-detail"><summary>Rincian cadangan</summary>{item.sourceAssetName && <p>Sumber: {item.sourceAssetName}</p>}<p>{item.labelName} · {purposeNames[item.purpose]}</p>{item.goalName && item.obligationName && <p>Target: {item.goalName}</p>}{item.note && <p>{item.note}</p>}</details></> : <>
         <p>{item.labelName}{item.kind === "budget" ? ` · ${fmtDay(item.periodStart)} – ${fmtDay(item.periodEnd)}${item.categoryName ? ` · ${item.categoryName}` : " · Semua pengeluaran"}` :
           item.kind === "goal" ? item.targetOn ? ` · Target ${fmtDay(item.targetOn)}` : "" : ` · Jatuh tempo ${fmtDay(item.dueOn)}`}</p>
         {item.note && <details className="history-detail"><summary>Catatan</summary><p className="planning-note-text">{item.note}</p></details>}</>}
-      {progress && <div className="planning-progress" aria-label={`${progress.text}% tercapai`} role="img"><span style={{ width: `${progress.width}%` }} /></div>}
-      {item.kind === "budget" && <p>{progress!.text}% terpakai · sisa {formatMinor((BigInt(item.limitMinor)-BigInt(item.spentMinor)).toString(),item.currency,item.exponent)}</p>}
+      {progress && <div className="planning-progress" aria-label={`${progress.text}% tercapai`} role="img" data-state={state}><span style={{ width: `${progress.width}%` }} /></div>}
+      {item.kind === "budget" && (
+        <p>
+          <strong className={state === "over" ? "planning-text-over" : state === "near" ? "planning-text-near" : ""}>
+            {progress!.text}% terpakai
+          </strong>
+          {" · "}
+          <span className={state === "over" ? "planning-text-over" : ""}>
+            sisa {formatMinor((BigInt(item.limitMinor)-BigInt(item.spentMinor)).toString(),item.currency,item.exponent)}
+            {state === "over" ? " (Melebihi anggaran)" : ""}
+          </span>
+        </p>
+      )}
       {item.kind === "goal" && <p>{progress!.text}% terkumpul</p>}
       {item.kind === "obligation" && <p>{item.status === "open"
-        ? `Dicadangkan ${formatMinor(item.coveredMinor,item.currency,item.exponent)} · belum tercakup ${formatMinor(item.uncoveredMinor,item.currency,item.exponent)}`
+        ? <>Dicadangkan {formatMinor(item.coveredMinor,item.currency,item.exponent)} · <strong className={BigInt(item.uncoveredMinor) > 0n ? "planning-text-over" : ""}>belum tercakup {formatMinor(item.uncoveredMinor,item.currency,item.exponent)}</strong></>
         : item.status === "settled" ? "Selesai — tidak lagi dihitung dalam kewajiban aktif."
         : "Dibatalkan — tidak lagi dihitung dalam kewajiban aktif."}</p>}</div>
     <div className="planning-row-end"><strong className="financial-value financial-value--entity">{formatMinor(amount,item.currency,item.exponent)}</strong>

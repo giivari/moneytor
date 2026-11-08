@@ -40,7 +40,10 @@ export function OutlookSplitAdd() {
       <button
         type="button"
         className="split-btn-main"
-        onClick={() => setOpenPreset({ kind: "expense", scenarioTab: "pengeluaran" })}
+        onClick={() => {
+          setMenuOpen(false);
+          setOpenPreset({ kind: "expense", scenarioTab: "pengeluaran" });
+        }}
         aria-label="Catat transaksi baru (Pengeluaran)"
       >
         <Plus size={ICON_MD} weight="bold" aria-hidden="true" />

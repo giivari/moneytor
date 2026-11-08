@@ -61,6 +61,39 @@
 .planning-row[data-state="over"] .planning-progress > span { background: var(--data-coral); }
 .planning-status { color: var(--warning); background: var(--warning-light); padding: 2px 6px; border-radius: var(--radius-sm); font-size: var(--text-2xs); font-weight: var(--weight-semibold); }
 .planning-status-positive { color: var(--positive); background: var(--positive-light); }
+.planning-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.planning-chip--over {
+  background: var(--negative-light);
+  color: var(--negative);
+  border: 1px solid color-mix(in srgb, var(--negative) 24%, transparent);
+}
+.planning-chip--near {
+  background: var(--warning-light);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
+}
+.planning-chip--ok {
+  background: var(--positive-light);
+  color: var(--positive);
+  border: 1px solid color-mix(in srgb, var(--positive) 24%, transparent);
+}
+.planning-text-over {
+  color: var(--negative);
+  font-weight: var(--weight-semibold);
+}
+.planning-text-near {
+  color: var(--warning);
+  font-weight: var(--weight-semibold);
+}
 .planning-row-end { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 4px; flex: none; }
 .planning-row-end > strong { font-size: var(--text-sm); font-weight: var(--weight-bold); }
 .planning-row-end > small { color: var(--muted); font-size: var(--text-2xs); }
