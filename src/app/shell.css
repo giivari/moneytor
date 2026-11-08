@@ -11,7 +11,10 @@
   grid-template-columns: var(--rail-width) minmax(0, 1fr);
   grid-template-rows: var(--header-height) minmax(0, 1fr);
   grid-template-areas: "header header" "rail main";
+  height: 100dvh;
   min-height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   background: var(--shell-bg);
 }
 
@@ -301,14 +304,16 @@
   width: 100%;
   min-width: 0;
   max-width: var(--content-max-width);
-  margin: 0 auto;
-  padding: var(--desktop-content-top-space) var(--page-gutter) var(--space-8);
+  height: calc(100dvh - var(--header-height));
+  margin: 0;
+  padding: var(--space-6);
   background: var(--surface);
   border-top: 1px solid var(--line-shell);
   border-left: 1px solid var(--line-shell);
   border-top-left-radius: var(--radius-workspace);
   box-shadow: var(--shadow-1);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Inspector */
