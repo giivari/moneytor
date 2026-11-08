@@ -611,11 +611,11 @@ export function TransactionEditor({
   }
 
   const scenarioTabs = [
-    { id: "pengeluaran" as const, num: "1", label: "Pengeluaran" },
-    { id: "transfer" as const, num: "2", label: "Top-Up & Transfer", badge: "3 Mode Admin" },
-    { id: "splitbill" as const, num: "3", label: "Split Bill / Talangan" },
-    { id: "pemasukan" as const, num: "4", label: "Pemasukan & Refund" },
-    { id: "pelunasan" as const, num: "5", label: "Bayar Tagihan / Ganti" },
+    { id: "pengeluaran" as const, num: "1", label: "1. Pengeluaran" },
+    { id: "transfer" as const, num: "2", label: "2. Top-Up & Transfer" },
+    { id: "splitbill" as const, num: "3", label: "3. Split Bill" },
+    { id: "pemasukan" as const, num: "4", label: "4. Pemasukan & Refund" },
+    { id: "pelunasan" as const, num: "5", label: "5. Bayar / Ganti" },
   ];
 
   return (
@@ -677,11 +677,7 @@ export function TransactionEditor({
               className="tx-pivot-tab"
               data-active={isActive}
             >
-              <span className="tx-tab-num" aria-hidden="true">
-                {tab.num}
-              </span>
               <span>{tab.label}</span>
-              {tab.badge && <span className="tx-tab-badge">{tab.badge}</span>}
               {isActive && <span className="tx-tab-indicator" />}
             </button>
           );

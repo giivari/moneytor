@@ -80,8 +80,8 @@ dialog.transaction-modal::backdrop {
   background: var(--scrim);
 }
 dialog.transaction-modal[data-mode="modal"] {
-  width: min(94vw, 780px);
-  max-height: min(92vh, 900px);
+  width: min(680px, calc(100vw - 24px));
+  max-height: calc(100dvh - 40px);
   border-radius: var(--radius-lg);
 }
 dialog.transaction-modal[data-mode="slideover"] {
@@ -89,7 +89,7 @@ dialog.transaction-modal[data-mode="slideover"] {
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(100vw, 680px);
+  width: min(480px, 100vw);
   height: 100dvh;
   max-height: 100dvh;
   margin: 0 0 0 auto;
@@ -153,18 +153,32 @@ dialog.transaction-modal[data-mode="slideover"] {
   color: var(--ink);
 }
 .tx-close-btn {
+  display: inline-grid;
+  place-items: center;
   width: 28px;
   height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
   cursor: pointer;
+}
+.tx-close-btn:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
 }
 
 /* Scenario Pivot Tabs */
 .tx-pivot-tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-4);
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
   border-bottom: 1px solid var(--line);
   background: var(--surface-sunken);
   flex-shrink: 0;
@@ -173,15 +187,18 @@ dialog.transaction-modal[data-mode="slideover"] {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: var(--space-2) var(--space-3);
+  justify-content: center;
+  gap: 4px;
+  padding: var(--space-2) var(--space-1);
   border: 0;
   background: transparent;
   color: var(--muted);
   font-family: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 .tx-pivot-tab:hover {

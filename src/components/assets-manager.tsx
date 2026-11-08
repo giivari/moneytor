@@ -5,8 +5,8 @@ import { useListSort } from "./use-list-sort";
 import { ListSortControl } from "./list-sort-control";
 
 import { useEffect, useRef, useState } from "react";
-import { Bank, CaretDown, CaretRight, CheckCircle, CreditCard, Drop, PencilSimple, Plus, Wallet, X } from "@phosphor-icons/react";
-import { Kpi, monthLabel, PageHeading } from "./ui";
+import { CaretDown, CaretRight, PencilSimple, Plus, X } from "@phosphor-icons/react";
+import { monthLabel, PageHeading } from "./ui";
 import { PageTabs } from "./page-tabs";
 import { ExcelStatusBar } from "./excel-status-bar";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
@@ -49,8 +49,6 @@ import type { InvestmentTotal } from "@/lib/investments/types";
 import { AppLink } from "./app-link";
 import { FinancialAmount } from "./financial-amount";
 import { SectionHeading } from "./section-heading";
-import { InvestmentSummary } from "./investment-summary";
-import { useMobileViewport } from "./use-mobile-viewport";
 
 const ADMIN_DAY_CHOICES = [
   { value: "0", label: "Akhir bulan" },
@@ -1843,9 +1841,7 @@ function getAccountInitials(name: string) {
   return name.slice(0, 2).toUpperCase();
 }
 
-export function AssetsManager({ assets, totals, investmentTotals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number; liquidMinor?: string; eligibleMinor?: string; liabilitiesMinor?: string }[]; investmentTotals: InvestmentTotal[] }) {
-  const mobile = useMobileViewport();
-  const [viewMode, setViewMode] = useState<"card" | "table">("card");
+export function AssetsManager({ assets, totals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number; liquidMinor?: string; eligibleMinor?: string; liabilitiesMinor?: string }[]; investmentTotals?: InvestmentTotal[] }) {
   const [viewingAsset, setViewingAsset] = useState<FinanceAsset | null>(null);
   const [editing, setEditing] = useState<FinanceAsset | "new" | null>(null);
   const [payingCredit, setPayingCredit] = useState<FinanceAsset | null>(null);
@@ -1865,99 +1861,11 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
   const openNewAsset = () => setEditing("new");
   const active = assets.filter((item) => item.isActive);
   const regularActive = active.filter((item) => !isCreditAsset(item));
-  const creditActive = active.filter((item) => isCreditAsset(item));
   const archived = assets.filter((item) => !item.isActive);
-  const creditFirst = creditActive.some((item) => computeCreditBills(item).totalUnpaidMinor > 0n);
 
   const liveViewingAsset = viewingAsset
     ? assets.find((item) => item.id === viewingAsset.id) ?? viewingAsset
     : null;
-
-  const creditSection = creditActive.length > 0 ? (
-    <section className="surface credit-assets-section">
-      <SectionHeading
-        title="Fasilitas Kredit"
-        eyebrow={creditFirst ? "PERLU PERHATIAN · ADA TAGIHAN" : "TAGIHAN BERJALAN & FASILITAS KREDIT"}
-        action={<div className="section-heading-actions"><span className="count-pill">{creditActive.length} akun</span></div>}
-      />
-      <div className="credit-card-list">
-        {creditActive.map((asset) => {
-          const mark = resolveProviderMark(asset.providerName, asset.displayName, "coral");
-          const meta = parseCreditMeta(asset.note);
-          const bills = computeCreditBills(asset);
-          const hasBill = bills.totalUnpaidMinor > 0n;
-          const subtitle = [asset.providerName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ");
-          const limitUsedPct = bills.limitMinor > 0n && bills.availableLimitMinor !== null
-            ? Math.min(100, Math.max(0, Math.round(Number(((bills.limitMinor - bills.availableLimitMinor) * 100n) / bills.limitMinor))))
-            : null;
-          return (
-            <article
-              className={`credit-card credit-card--interactive${hasBill ? " credit-card--due" : ""}`}
-              key={asset.id}
-              onClick={(event) => {
-                if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
-              }}
-            >
-              <div className="credit-card-head">
-                <ProviderBrandMark mark={mark} />
-                <div className="credit-card-title">
-                  <button
-                    type="button"
-                    className="asset-title-trigger"
-                    onClick={() => setViewingAsset(asset)}
-                  >
-                    <strong>{asset.displayName}</strong>
-                  </button>
-                  {subtitle && <span>{subtitle}</span>}
-                </div>
-              </div>
-              <div className="credit-card-chips">
-                <span className="credit-chip">{ASSET_CLASS_LABEL[asset.assetClass]}</span>
-                <span className="credit-chip">Cutoff tgl {bills.cutoffDay}</span>
-                <span className="credit-chip">Jatuh tempo tgl {bills.dueDay}</span>
-                {(asset.creditInstallments ?? []).filter((row) => row.status === "scheduled").length > 0 && (
-                  <span className="credit-chip">
-                    {(asset.creditInstallments ?? []).filter((row) => row.status === "scheduled").length} cicilan terjadwal
-                  </span>
-                )}
-              </div>
-              {bills.availableLimitMinor !== null && (
-                <div className="credit-limit">
-                  <div className="credit-limit-text">
-                    <span>Sisa limit</span>
-                    <strong className="financial-value">{formatMinor(bills.availableLimitMinor.toString(), asset.currency, asset.exponent)}</strong>
-                    <small>dari {formatMinor(bills.limitMinor.toString(), asset.currency, asset.exponent)}</small>
-                  </div>
-                  {limitUsedPct !== null && <div className="credit-limit-bar" aria-hidden="true"><span style={{ width: `${limitUsedPct}%` }} /></div>}
-                </div>
-              )}
-              {meta.cleanNote && <small className="credit-card-note">{meta.cleanNote}</small>}
-              {hasBill ? (
-                <div className="credit-bills">
-                  <div className="credit-bill-box credit-bill-box--current">
-                    <span>Tagihan {formatShortDueIso(bills.currentDueIso)}</span>
-                    <strong className="financial-value financial-value--entity">{formatMinor(bills.currentBillMinor.toString(), asset.currency, asset.exponent)}</strong>
-                  </div>
-                  {bills.nextBillMinor > 0n && (
-                    <div className="credit-bill-box">
-                      <span>Periode {formatShortDueIso(bills.nextDueIso)}</span>
-                      <strong className="financial-value financial-value--entity">{formatMinor(bills.nextBillMinor.toString(), asset.currency, asset.exponent)}</strong>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <strong className="pnl-positive credit-settled-pill"><CheckCircle size={15} weight="fill" /> {CREDIT_STATUS_LABEL[creditAccountStatus(bills)]}</strong>
-              )}
-              <div className="credit-card-actions">
-                {hasBill && <button type="button" className="button-primary credit-pay-button" onClick={() => setPayingCredit(asset)}>Bayar tagihan</button>}
-                <button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah / Atur tagihan</button>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  ) : null;
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const toggleGroup = (key: string) =>
@@ -2170,62 +2078,6 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
     />
   );
 
-  const kpis = (
-    <>
-      {totals.map((item) => {
-        const money = (value: string | undefined) =>
-          formatMinor(value ?? "0", item.currency, item.exponent);
-        return (
-          <div className="ui-kpis assets-kpis" key={item.currency} aria-label={`Ringkasan aset ${item.currency}`}>
-            <Kpi
-              title="Total aset tercatat"
-              icon={Bank}
-              tone="neutral"
-              value={money(item.amountMinor)}
-              valueTone={BigInt(item.amountMinor) < 0n ? "negative" : ""}
-              note={
-                item.unpricedCount
-                  ? `${item.unpricedCount} posisi investasi tanpa harga belum termasuk`
-                  : `Termasuk investasi dan piutang · ${item.currency}`
-              }
-            />
-            <Kpi
-              title="Dana likuid"
-              icon={Drop}
-              tone="info"
-              value={money(item.liquidMinor)}
-              valueTone={BigInt(item.liquidMinor ?? "0") < 0n ? "negative" : ""}
-              note="Akun aktif bertanda likuid"
-            />
-            <Kpi
-              title="Dapat dipakai belanja"
-              icon={Wallet}
-              tone="positive"
-              value={money(item.eligibleMinor)}
-              valueTone={BigInt(item.eligibleMinor ?? "0") < 0n ? "negative" : ""}
-              note="Sebelum cadangan dan kewajiban"
-            />
-            <Kpi
-              title="Kewajiban kredit"
-              icon={CreditCard}
-              tone="negative"
-              value={money(item.liabilitiesMinor)}
-              note="Termasuk cicilan bulan berikutnya"
-              action={
-                <AppLink href="/credit" className="text-link">
-                  Kredit &amp; Talangan
-                </AppLink>
-              }
-            />
-          </div>
-        );
-      })}
-      <div className="asset-overview-grid">
-        <InvestmentSummary totals={investmentTotals} />
-      </div>
-    </>
-  );
-
   const renderActiveContent = () => {
     if (!regularActive.length) {
       return (
@@ -2240,66 +2092,6 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
             Tambah aset
           </button>
         </section>
-      );
-    }
-
-    if (viewMode === "card") {
-      return (
-        <div className="asset-cards-grid">
-          {regularActive.map((asset) => {
-            const isReceivable = isReceivableAsset(asset);
-            const terms = parseAssetTerms(asset.note);
-            const termSummary = [
-              isReceivable ? "Piutang / Talangan" : ASSET_CLASS_LABEL[asset.assetClass],
-              !mobile && asset.assetGroupName ? asset.assetGroupName : null,
-              terms.interestRateBps > 0 ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.` : null,
-              terms.adminFeeMinor > 0n
-                ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <article
-                className="account-card"
-                key={asset.id}
-                onClick={(event) => {
-                  if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
-                }}
-              >
-                <div className="account-card-header">
-                  <div className="account-card-brand">
-                    <div className="account-card-initial" aria-hidden="true">
-                      {getAccountInitials(asset.displayName)}
-                    </div>
-                    <div className="account-card-names">
-                      <button
-                        type="button"
-                        className="asset-title-trigger"
-                        onClick={() => setViewingAsset(asset)}
-                      >
-                        <strong>{asset.displayName}</strong>
-                      </button>
-                      <small>{asset.providerName ?? asset.assetTypeName}</small>
-                    </div>
-                  </div>
-                  {asset.safeSuffix && (
-                    <span className="account-card-number">•••• {asset.safeSuffix}</span>
-                  )}
-                </div>
-                <div className="account-card-body">
-                  <span className="account-card-label">Saldo Aktif</span>
-                  <strong className="financial-value financial-value--entity account-card-amount">
-                    {formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}
-                  </strong>
-                </div>
-                <div className="account-card-footer">
-                  <span>{termSummary || ASSET_CLASS_LABEL[asset.assetClass]}</span>
-                </div>
-              </article>
-            );
-          })}
-        </div>
       );
     }
 
@@ -2323,37 +2115,11 @@ export function AssetsManager({ assets, totals, investmentTotals }: { assets: Fi
       <PageTabs
         label="Kategori Rekening & Aset"
         heading={heading}
-        shared={kpis}
         tabs={[
           {
             id: "all",
             label: "Semua",
-            panel: (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-3)" }}>
-                  <div className="view-mode-toggle" role="group" aria-label="Mode tampilan aset">
-                    <button
-                      type="button"
-                      className={`view-mode-btn ${viewMode === "table" ? "view-mode-btn--active" : ""}`}
-                      onClick={() => setViewMode("table")}
-                    >
-                      Daftar Grup
-                    </button>
-                    <button
-                      type="button"
-                      className={`view-mode-btn ${viewMode === "card" ? "view-mode-btn--active" : ""}`}
-                      onClick={() => setViewMode("card")}
-                    >
-                      Kartu
-                    </button>
-                  </div>
-                  <span className="count-pill">{regularActive.length} rekening</span>
-                </div>
-                {creditFirst && creditSection}
-                {renderActiveContent()}
-                {!creditFirst && creditSection}
-              </div>
-            ),
+            panel: renderActiveContent(),
           },
           {
             id: "kas",
