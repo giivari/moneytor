@@ -417,7 +417,22 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (["/unlock", "/recover", "/enroll"].includes(pathname)) return <>{children}</>;
+  if (
+    [
+      "/unlock",
+      "/recover",
+      "/enroll",
+      "/",
+      "/transactions",
+      "/assets",
+      "/credit",
+      "/assets/investments",
+      "/planning",
+      "/insights",
+    ].includes(pathname)
+  ) {
+    return <>{children}</>;
+  }
   return (
     <InspectorProvider>
       <Shell>{children}</Shell>

@@ -1,9 +1,9 @@
-import { financeSnapshot } from "@/lib/finance/summary";
-import { CreditOverview } from "@/components/credit-overview";
-import "./credit.css";
+import { loadServerWorkbook } from "@/fluent-workbook/loadServerWorkbook";
+import FluentWorkbookApp from "@/fluent-workbook/FluentWorkbookApp";
 
 export const dynamic = "force-dynamic";
+
 export default async function CreditPage() {
-  const snapshot = await financeSnapshot({ includeRecent: false, includeExpenses: false });
-  return <CreditOverview snapshot={snapshot} />;
+  const initialRawData = await loadServerWorkbook();
+  return <FluentWorkbookApp initialPage="kredit" initialRawData={initialRawData} />;
 }

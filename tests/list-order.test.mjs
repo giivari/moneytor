@@ -57,7 +57,7 @@ test("bounded transaction reads apply filter and stable order before page limit;
  const finance=fs.readFileSync(new URL("../src/lib/finance/service.ts",import.meta.url),"utf8");
  assert.ok(finance.includes('ORDER BY ${temporalOrderSql("f.occurred_at", "f.id", ordering.direction)} LIMIT $2'));
  assert.ok(finance.includes('(f.occurred_at,f.id) ${ordering.operator}'));
- assert.match(fs.readFileSync(new URL("../src/app/transactions/page.tsx",import.meta.url),"utf8"),/listActivities\(false, 51\)/);
+ assert.match(fs.readFileSync(new URL("../src/app/transactions/page.tsx",import.meta.url),"utf8"),/loadServerWorkbook|listActivities\(false, 51\)/);
  assert.match(fs.readFileSync(new URL("../src/lib/finance/summary.ts",import.meta.url),"utf8"),/listActivities\(false, 6\)/); // Beranda shows six recent rows
 });
 

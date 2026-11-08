@@ -1,12 +1,9 @@
-import { TransactionsView } from "@/components/transactions-view";
-import "./transactions.css";
-import { listActivities } from "@/lib/finance/service";
-import { monthlyExpenses } from "@/lib/finance/summary";
-import { reconcileAllAutomation } from "@/lib/automation/reconcile";
+import { loadServerWorkbook } from "@/fluent-workbook/loadServerWorkbook";
+import FluentWorkbookApp from "@/fluent-workbook/FluentWorkbookApp";
 
 export const dynamic = "force-dynamic";
+
 export default async function TransactionsPage() {
-  await reconcileAllAutomation();
-  const [activities, monthly] = await Promise.all([listActivities(false, 51), monthlyExpenses()]);
-  return <TransactionsView activities={activities} monthly={monthly} />;
+  const initialRawData = await loadServerWorkbook();
+  return <FluentWorkbookApp initialPage="mutasi" initialRawData={initialRawData} />;
 }

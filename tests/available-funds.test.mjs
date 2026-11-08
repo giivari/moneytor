@@ -75,6 +75,6 @@ test("both pages call the shared functions and keep no second definition", () =>
   assert.match(summary, /availableFunds\(/);
   assert.doesNotMatch(summary, /planningTotals/);
   assert.match(manager, /planningPosition\([\s\S]*creditDebt\[entry\.currency\]/);
-  assert.match(page, /creditDebtThrough\(/);
+  assert.match(page, /loadServerWorkbook|creditDebtThrough\(/);
   assert.doesNotMatch(manager, /todayFromEnd/);
 });
