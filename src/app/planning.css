@@ -23,6 +23,7 @@
 .planning-archive-toggle { margin: 13px 0; }
 .planning-toolbar { display: flex; justify-content: flex-end; }
 .planning-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--content-column-gap); }
+.planning-sections--single { grid-template-columns: minmax(0, 1fr); }
 .planning-column { display: grid; gap: 16px; min-width: 0; align-content: start; }
 .planning-section { min-width: 0; padding: 20px 22px; }
 .planning-section[data-kind="goal"] .section-header-icon { background: var(--data-teal-soft); color: var(--data-teal); }

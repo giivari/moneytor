@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Info } from "@phosphor-icons/react";
 import type { AnalyticsGranularity } from "@/lib/analytics/periods";
 import type { AnalyticsReport } from "@/lib/analytics/types";
 import { insightsDraft, insightsQuery, periodLabel, type InsightsDraft } from "@/lib/analytics/presentation";
+import { formatMinor } from "@/lib/finance/format";
 import { useInsightsReport } from "./use-insights-report";
 import { InsightsReportView } from "./insights-report";
 import { useInsightsMonth } from "./use-insights-month";
+import { ExcelStatusBar } from "./excel-status-bar";
 
 const QUICK_PERIODS = [
   { kind: "last_7_days", label: "1 Minggu" },
@@ -86,11 +89,50 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
     return () => window.removeEventListener("popstate", pop);
   }, [apply, defaultCurrency]);
 
+  const [analyticsMode, setAnalyticsMode] = useState<"consumption" | "cashflow">("consumption");
   const isCustom = draft.kind === "custom";
   const isTrendMonths = draft.kind === "monthly_trend";
+  const summaryItem = state.report?.summary.find(
+    (s) => s.currency === (selected || defaultCurrency)
+  ) ?? state.report?.summary[0];
 
   return (
     <div className="insight-workspace">
+      <div className="insight-mode-bar">
+        <div className="fluent-segmented-control" role="radiogroup" aria-label="Mode Analitik">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={analyticsMode === "consumption"}
+            className={`segmented-button ${analyticsMode === "consumption" ? "active" : ""}`}
+            onClick={() => setAnalyticsMode("consumption")}
+          >
+            Mode Konsumsi Murni
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={analyticsMode === "cashflow"}
+            className={`segmented-button ${analyticsMode === "cashflow" ? "active" : ""}`}
+            onClick={() => setAnalyticsMode("cashflow")}
+          >
+            Mode Arus Kas Riil
+          </button>
+        </div>
+        <div className="insight-mode-info">
+          <Info size={15} className="insight-mode-icon" aria-hidden="true" />
+          {analyticsMode === "consumption" ? (
+            <span>
+              <strong>Mode Konsumsi Murni:</strong> Hanya menghitung porsi belanja konsumsi pribadi &amp; mengabaikan transfer internal.
+            </span>
+          ) : (
+            <span>
+              <strong>Mode Arus Kas Riil:</strong> Menghitung seluruh arus kas keluar dari rekening bank termasuk talangan &amp; mutasi.
+            </span>
+          )}
+        </div>
+      </div>
+
       <section className="surface insight-toolbar" aria-label="Filter periode dan tampilan grafik">
         <div className="insight-toolbar-top">
           <div className="insight-toolbar-period">
@@ -233,6 +275,32 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
           />
         )}
       </div>
+
+      <ExcelStatusBar
+        rowCount={
+          state.report
+            ? (state.report.byCategory?.length ?? 0) + (state.report.byAccount?.length ?? 0)
+            : 0
+        }
+        totalIn={
+          summaryItem?.incomeMinor !== undefined
+            ? formatMinor(summaryItem.incomeMinor, summaryItem.currency, summaryItem.exponent ?? 0)
+            : undefined
+        }
+        totalOut={
+          summaryItem?.spendingMinor !== undefined
+            ? formatMinor(summaryItem.spendingMinor, summaryItem.currency, summaryItem.exponent ?? 0)
+            : undefined
+        }
+        customNetLabel="Net Operasional"
+        customNetValue={
+          summaryItem?.netMinor !== undefined
+            ? formatMinor(summaryItem.netMinor, summaryItem.currency, summaryItem.exponent ?? 0)
+            : undefined
+        }
+        isNetNegative={summaryItem?.netMinor ? BigInt(summaryItem.netMinor) < 0n : false}
+        extraLabel={`Basis: ${analyticsMode === "consumption" ? "Mode Konsumsi Murni" : "Mode Arus Kas Riil"}`}
+      />
     </div>
   );
 }

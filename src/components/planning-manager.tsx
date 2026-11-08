@@ -12,6 +12,8 @@ import { SectionHeading } from "./section-heading";
 import { InlineCatalogSelect } from "./inline-catalog-select";
 import { Archive, ArrowCounterClockwise, CalendarBlank, CalendarCheck, PencilSimple, PiggyBank, Plus, ShieldCheck, Target, Wallet } from "@phosphor-icons/react";
 import { Kpi, PageHeading } from "./ui";
+import { PageTabs } from "./page-tabs";
+import { ExcelStatusBar } from "./excel-status-bar";
 import { useFinanceDialog } from "./finance-form-hooks";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
@@ -294,40 +296,275 @@ export function PlanningManager({ data, positions, sources, throughDay, creditDe
         onEdit={(row) => setForm({ kind: row.kind,item: row })} onConfirm={(row,action) => setConfirm({ item: row,action })}
         onReactivate={(row) => void reactivate(row)} busy={busy} />)}</div>}</section>;
   }
-  return <div className="page planning-page">
-    <header className="page-header"><PageHeading title="Rencana"
-      actions={<><label className="planning-horizon field"><span>Jangka kewajiban</span><select value={horizon} onChange={(event) => setHorizon(Number(event.target.value) as 7 | 30 | 90)}>
-        <option value={7}>7 hari</option><option value={30}>30 hari</option><option value={90}>90 hari</option></select></label>
-        <ExportMenuButton dataset="planning" label="Ekspor Rencana" /></>} /></header>
-    <div className="planning-position-grid">{sortNamed(positions, entry => entry.currency, entry => entry.currency).map((entry) => {
-      const total = planningPosition(entry.eligibleMinor,entry.currency,data.reserves.filter((row) => row.currency === entry.currency).map((row) => ({
-        currency: row.currency,amountMinor: row.amountMinor,isActive: row.isActive,goalId: row.goalId,obligationId: row.obligationId })),
-      data.obligations.filter((row) => row.currency === entry.currency).map((row) => ({
-        id: row.id,currency: row.currency,amountMinor: row.amountMinor,dueOn: row.dueOn,status: row.status,note: row.note })),end,creditDebt[entry.currency]?.[horizon] ?? "0");
-      const money = (value: string) => formatMinor(value, entry.currency, entry.exponent);
-      const tone = (value: string) => (BigInt(value) < 0n ? "negative" : "") as "" | "negative";
-      return <div className="planning-position" key={entry.currency} data-warning={BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n}>
-        <div className="ui-kpis" aria-label={`Ringkasan rencana ${entry.currency}`}>
-          <Kpi title="Dapat digunakan" icon={Wallet} tone="info" value={money(total.spendableMinor)} valueTone={tone(total.spendableMinor)} note={<>Saldo dapat dipakai {money(entry.eligibleMinor)} − cadangan</>} />
-          <Kpi title={`Setelah kewajiban rencana ${horizon} hari`} icon={CalendarCheck} tone="warning" value={money(total.availableMinor)} valueTone={tone(total.availableMinor)} note={horizon === 30 ? "Sama dengan Dana siap pakai di Beranda" : "Termasuk tagihan kredit dalam jangka ini"} />
-          <Kpi title="Cadangan aktif" icon={ShieldCheck} tone="positive" value={money(total.reservedMinor)} note={<>Likuid {money(entry.liquidMinor)} · {entry.currency}</>} />
-          <Kpi title="Kewajiban belum tercakup" icon={CalendarBlank} tone="negative" value={money(total.uncoveredMinor)} valueTone={BigInt(total.uncoveredMinor) > 0n ? "negative" : ""} note={<>Jatuh tempo {money(total.dueMinor)}, tercakup {money(total.coveredMinor)}</>} />
+  const primaryPos = positions[0];
+  const primaryTotal = primaryPos
+    ? planningPosition(
+        primaryPos.eligibleMinor,
+        primaryPos.currency,
+        data.reserves
+          .filter((row) => row.currency === primaryPos.currency)
+          .map((row) => ({
+            currency: row.currency,
+            amountMinor: row.amountMinor,
+            isActive: row.isActive,
+            goalId: row.goalId,
+            obligationId: row.obligationId,
+          })),
+        data.obligations
+          .filter((row) => row.currency === primaryPos.currency)
+          .map((row) => ({
+            id: row.id,
+            currency: row.currency,
+            amountMinor: row.amountMinor,
+            dueOn: row.dueOn,
+            status: row.status,
+            note: row.note,
+          })),
+        end,
+        creditDebt[primaryPos.currency]?.[horizon] ?? "0"
+      )
+    : null;
+
+  const heading = (
+    <PageHeading
+      title="Perencanaan"
+      actions={
+        <>
+          <label className="planning-horizon field">
+            <span>Jangka kewajiban</span>
+            <select
+              value={horizon}
+              onChange={(event) => setHorizon(Number(event.target.value) as 7 | 30 | 90)}
+            >
+              <option value={7}>7 hari</option>
+              <option value={30}>30 hari</option>
+              <option value={90}>90 hari</option>
+            </select>
+          </label>
+          <ExportMenuButton dataset="planning" label="Ekspor Rencana" />
+        </>
+      }
+    />
+  );
+
+  const sharedContent = (
+    <>
+      <div className="planning-position-grid">
+        {sortNamed(positions, (entry) => entry.currency, (entry) => entry.currency).map((entry) => {
+          const total = planningPosition(
+            entry.eligibleMinor,
+            entry.currency,
+            data.reserves
+              .filter((row) => row.currency === entry.currency)
+              .map((row) => ({
+                currency: row.currency,
+                amountMinor: row.amountMinor,
+                isActive: row.isActive,
+                goalId: row.goalId,
+                obligationId: row.obligationId,
+              })),
+            data.obligations
+              .filter((row) => row.currency === entry.currency)
+              .map((row) => ({
+                id: row.id,
+                currency: row.currency,
+                amountMinor: row.amountMinor,
+                dueOn: row.dueOn,
+                status: row.status,
+                note: row.note,
+              })),
+            end,
+            creditDebt[entry.currency]?.[horizon] ?? "0"
+          );
+          const money = (value: string) => formatMinor(value, entry.currency, entry.exponent);
+          const tone = (value: string) => (BigInt(value) < 0n ? "negative" : "") as "" | "negative";
+          return (
+            <div
+              className="planning-position"
+              key={entry.currency}
+              data-warning={BigInt(total.spendableMinor) < 0n || BigInt(total.availableMinor) < 0n}
+            >
+              <div className="ui-kpis" aria-label={`Ringkasan rencana ${entry.currency}`}>
+                <Kpi
+                  title="Dapat digunakan"
+                  icon={Wallet}
+                  tone="info"
+                  value={money(total.spendableMinor)}
+                  valueTone={tone(total.spendableMinor)}
+                  note={<>Saldo dapat dipakai {money(entry.eligibleMinor)} − cadangan</>}
+                />
+                <Kpi
+                  title={`Setelah kewajiban rencana ${horizon} hari`}
+                  icon={CalendarCheck}
+                  tone="warning"
+                  value={money(total.availableMinor)}
+                  valueTone={tone(total.availableMinor)}
+                  note={
+                    horizon === 30
+                      ? "Sama dengan Dana siap pakai di Beranda"
+                      : "Termasuk tagihan kredit dalam jangka ini"
+                  }
+                />
+                <Kpi
+                  title="Cadangan aktif"
+                  icon={ShieldCheck}
+                  tone="positive"
+                  value={money(total.reservedMinor)}
+                  note={<>Likuid {money(entry.liquidMinor)} · {entry.currency}</>}
+                />
+                <Kpi
+                  title="Kewajiban belum tercakup"
+                  icon={CalendarBlank}
+                  tone="negative"
+                  value={money(total.uncoveredMinor)}
+                  valueTone={BigInt(total.uncoveredMinor) > 0n ? "negative" : ""}
+                  note={<>Jatuh tempo {money(total.dueMinor)}, tercakup {money(total.coveredMinor)}</>}
+                />
+              </div>
+              {(BigInt(total.spendableMinor) < 0n || BigInt(total.availableMinor) < 0n) && (
+                <p className="ui-notice" data-tone="negative">
+                  Komitmen melebihi dana yang dapat digunakan.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {!positions.length && (
+        <p className="planning-intro">Belum ada aset atau komitmen dalam mata uang yang tercatat.</p>
+      )}
+      <details className="context-help">
+        <summary>Cara menghitung</summary>
+        <p className="planning-intro supporting-prose supporting-prose--section">
+          Setiap mata uang dihitung terpisah. Hanya cadangan aktif yang mengurangi dana dapat digunakan; kewajiban terbuka yang jatuh tempo mengurangi sisanya setelah memperhitungkan cadangan terkait. Saldo aset tidak berubah.
+        </p>
+      </details>
+      {!empty && (
+        <label className="finance-history-toggle planning-archive-toggle">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.target.checked)}
+          />{" "}
+          Tampilkan yang diarsipkan atau dilepaskan
+        </label>
+      )}
+    </>
+  );
+
+  const tabs = [
+    {
+      id: "all",
+      label: "Semua",
+      panel: empty ? (
+        <section className="surface planning-first-run">
+          <h2>Belum ada perencanaan</h2>
+          <p>Pilih yang paling berguna sekarang. Perencanaan tidak wajib untuk menggunakan moneytor.</p>
+          <div className="planning-first-actions">
+            {kinds.map((row) => (
+              <button
+                type="button"
+                className="finance-secondary"
+                key={row.kind}
+                onClick={() => setForm({ kind: row.kind })}
+              >
+                <Plus size={16} />{" "}
+                {row.kind === "reserve"
+                  ? "Sisihkan dana"
+                  : row.kind === "obligation"
+                  ? "Tambah kewajiban"
+                  : `Buat ${row.name.toLowerCase()}`}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <div className="planning-sections">
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "budget" || kind === "reserve").map(renderSection)}
+          </div>
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "goal" || kind === "obligation").map(renderSection)}
+          </div>
         </div>
-        {(BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n) && <p className="ui-notice" data-tone="negative">Komitmen melebihi dana yang dapat digunakan.</p>}
-      </div>;
-    })}</div>
-    {!positions.length && <p className="planning-intro">Belum ada aset atau komitmen dalam mata uang yang tercatat.</p>}
-    <details className="context-help"><summary>Cara menghitung</summary><p className="planning-intro supporting-prose supporting-prose--section">Setiap mata uang dihitung terpisah. Hanya cadangan aktif yang mengurangi dana dapat digunakan; kewajiban terbuka yang jatuh tempo mengurangi sisanya setelah memperhitungkan cadangan terkait. Saldo aset tidak berubah.</p></details>
-    {empty ? <section className="surface planning-first-run"><h2>Belum ada perencanaan</h2><p>Pilih yang paling berguna sekarang. Perencanaan tidak wajib untuk menggunakan moneytor.</p>
-      <div className="planning-first-actions">{kinds.map((row) => <button type="button" className="finance-secondary" key={row.kind} onClick={() => setForm({ kind: row.kind })}><Plus size={16} /> {row.kind === "reserve" ? "Sisihkan dana" : row.kind === "obligation" ? "Tambah kewajiban" : `Buat ${row.name.toLowerCase()}`}</button>)}</div></section> : <>
-      <label className="finance-history-toggle planning-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan atau dilepaskan</label>
-      <div className="planning-sections">
-        <div className="planning-column">{kinds.filter(({ kind }) => kind === "budget" || kind === "reserve").map(renderSection)}</div>
-        <div className="planning-column">{kinds.filter(({ kind }) => kind === "goal" || kind === "obligation").map(renderSection)}</div>
-      </div></>}
-    {error && <p className="finance-error" role="alert">{error}</p>}
-    <LabelManager data={data} />
-    {form && <PlanningForm key={form.item?.id ?? form.kind} kind={form.kind} initial={form.item} data={data} sources={sources} positions={positions} today={today} onClose={() => setForm(null)} />}
-    {confirm && <ConfirmAction key={confirm.item.id + confirm.action} item={confirm.item} action={confirm.action} onClose={() => setConfirm(null)} />}
-  </div>;
+      ),
+    },
+    {
+      id: "budgets",
+      label: "Anggaran",
+      panel: (
+        <div className="planning-sections planning-sections--single">
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "budget").map(renderSection)}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "goals",
+      label: "Target & Cadangan",
+      panel: (
+        <div className="planning-sections">
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "goal").map(renderSection)}
+          </div>
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "reserve").map(renderSection)}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "obligations",
+      label: "Kewajiban",
+      panel: (
+        <div className="planning-sections planning-sections--single">
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "obligation").map(renderSection)}
+          </div>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="page planning-page">
+      <PageTabs
+        label="Tampilan perencanaan"
+        heading={heading}
+        shared={sharedContent}
+        tabs={tabs}
+      />
+      {error && <p className="finance-error" role="alert">{error}</p>}
+      <LabelManager data={data} />
+      <ExcelStatusBar
+        rowCount={all.filter((item) => (item.kind === "obligation" ? item.status === "open" : item.isActive)).length}
+        totalIn={primaryTotal && primaryPos ? formatMinor(primaryTotal.reservedMinor, primaryPos.currency, primaryPos.exponent) : undefined}
+        totalOut={primaryTotal && primaryPos ? formatMinor(primaryTotal.dueMinor, primaryPos.currency, primaryPos.exponent) : undefined}
+        customNetLabel="Dana Siap Pakai"
+        customNetValue={primaryTotal && primaryPos ? formatMinor(primaryTotal.availableMinor, primaryPos.currency, primaryPos.exponent) : undefined}
+        isNetNegative={primaryTotal ? BigInt(primaryTotal.availableMinor) < 0n : false}
+      />
+      {form && (
+        <PlanningForm
+          key={form.item?.id ?? form.kind}
+          kind={form.kind}
+          initial={form.item}
+          data={data}
+          sources={sources}
+          positions={positions}
+          today={today}
+          onClose={() => setForm(null)}
+        />
+      )}
+      {confirm && (
+        <ConfirmAction
+          key={confirm.item.id + confirm.action}
+          item={confirm.item}
+          action={confirm.action}
+          onClose={() => setConfirm(null)}
+        />
+      )}
+    </div>
+  );
 }
