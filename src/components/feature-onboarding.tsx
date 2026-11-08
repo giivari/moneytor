@@ -536,12 +536,13 @@ export function FeatureOnboarding() {
     <>
       <button
         type="button"
-        className="onboarding-help-trigger"
+        className="header-pill-btn onboarding-help-trigger"
         onClick={replayCurrentTour}
         aria-label={`Panduan fitur ${tour.featureName}`}
         title={`Panduan fitur: ${tour.featureName}`}
       >
-        <Question size={19} weight="bold" aria-hidden="true" />
+        <Question size={15} weight="bold" aria-hidden="true" />
+        <span className="header-pill-label">Panduan</span>
       </button>
 
       {open && currentStep && (

@@ -2,7 +2,7 @@
 
 import { useLinkStatus } from "next/link";
 import { AppLink as Link } from "./app-link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { CalendarCheck, ChartBar, CreditCard, DotsThree, GearSix, House, MagnifyingGlass, Rows, TrendUp, Wallet, type IconProps } from "@phosphor-icons/react";
 import { BrandIdentity } from "./brand-identity";
@@ -69,6 +69,30 @@ function MoreMenu({ current }: { current: ModuleArea | null }) {
   </div>;
 }
 
+function HeaderSearch() {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    router.push("/transactions");
+  };
+
+  return (
+    <form className="header-search" onSubmit={handleSubmit} role="search">
+      <MagnifyingGlass size={15} aria-hidden="true" className="header-search-icon" />
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        aria-label="Cari transaksi, rekening, atau teman split bill"
+        placeholder="Cari transaksi, rekening, atau teman split bill..."
+        className="header-search-input"
+      />
+    </form>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   const { refreshing, navigating, routeSkeleton, loading } = useFinanceFeedback();
   const { entry } = useInspector();
@@ -76,16 +100,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   return <div className="app-shell" data-inspector={entry ? "open" : "closed"}>
     <header className="app-header" data-loading={loading}>
       <Link href="/" className="brand" aria-label="moneytor, ke Beranda"><BrandIdentity /></Link>
-      <div className="header-search" role="search">
-        <MagnifyingGlass size={16} aria-hidden="true" className="header-search-icon" />
-        <input
-          type="search"
-          aria-label="Cari transaksi atau rekening"
-          placeholder="Cari transaksi, rekening, atau entitas…"
-          className="header-search-input"
-        />
+      <HeaderSearch />
+      <div className="header-actions">
+        <PrivacyAmountToggle />
+        <FeatureOnboarding />
+        <ThemeQuickToggle />
+        <QuickAdd label="Transaksi baru" />
       </div>
-      <div className="header-actions"><PrivacyAmountToggle /><FeatureOnboarding /><ThemeQuickToggle /><QuickAdd /></div>
     </header>
 
     <nav className="app-rail" aria-label="Navigasi utama">

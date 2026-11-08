@@ -199,13 +199,14 @@ export function PrivacyAmountToggle() {
   return (
     <button
       type="button"
-      className="onboarding-help-trigger privacy-toggle-trigger"
+      className="header-pill-btn privacy-toggle-trigger"
       onClick={togglePrivacy}
       aria-pressed={hidden}
       aria-label={hidden ? "Tampilkan nominal uang" : "Sembunyikan nominal uang"}
       title={hidden ? "Tampilkan nominal uang" : "Sembunyikan nominal uang"}
     >
-      {hidden ? <EyeSlash size={18} weight="bold" aria-hidden="true" /> : <Eye size={18} weight="bold" aria-hidden="true" />}
+      {hidden ? <EyeSlash size={15} weight="bold" aria-hidden="true" /> : <Eye size={15} weight="bold" aria-hidden="true" />}
+      <span className="header-pill-label">{hidden ? "Tampilkan Rp" : "Privasi Rp"}</span>
     </button>
   );
 }
