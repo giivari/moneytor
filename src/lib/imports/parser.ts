@@ -46,7 +46,7 @@ function readZipEntries(buffer: Buffer): Record<string, string> {
       const localExtraLen = buffer.readUInt16LE(localHeaderOffset + 28);
       const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
       const raw = buffer.subarray(dataStart, dataStart + compressedSize);
-      const unpacked = method === 8 ? inflateRawSync(raw) : method === 0 ? raw : null;
+      const unpacked = method === 8 ? inflateRawSync(raw, { maxOutputLength: 64 * 1024 * 1024 }) : method === 0 ? raw : null;
       if (unpacked) entries[name] = unpacked.toString("utf8");
     }
   }
@@ -141,7 +141,8 @@ export function parseXlsxBuffer(buffer: Buffer, requestedSheet?: string): RawShe
 
 export function parseCsvText(csvText: string): RawSheetTable {
   const cleaned = csvText.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const firstLine = cleaned.split("\n", 1)[0] ?? "";
+  // The delimiter is voted over the first lines, so a title row above the header does not decide it.
+  const firstLine = cleaned.split("\n", 5).join("\n");
   const counts = [
     { sep: ",", n: (firstLine.match(/,/g) ?? []).length },
     { sep: ";", n: (firstLine.match(/;/g) ?? []).length },
@@ -167,7 +168,7 @@ export function parseCsvText(csvText: string): RawSheetTable {
       } else {
         currentField += ch;
       }
-    } else if (ch === '"') {
+    } else if (ch === '"' && currentField.trim() === "") {
       inQuotes = true;
     } else if (ch === delimiter) {
       currentRow.push(currentField.trim());
@@ -181,6 +182,7 @@ export function parseCsvText(csvText: string): RawSheetTable {
       currentField += ch;
     }
   }
+  if (inQuotes) throw new ImportValidationError("Berkas CSV tidak valid: ada tanda kutip yang tidak tertutup.");
   currentRow.push(currentField.trim());
   if (currentRow.some((cell) => cell !== "")) parsedRows.push(currentRow);
 
@@ -273,6 +275,8 @@ export function detectColumnsAndHeader(
   };
 }
 
+const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
+
 export function parseImportDate(raw: string): { occurredAt: string; occurredDay: string } | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -281,11 +285,12 @@ export function parseImportDate(raw: string): { occurredAt: string; occurredDay:
   if (/^\d{4,6}(?:\.\d+)?$/.test(trimmed)) {
     const serial = Number(trimmed);
     if (Number.isFinite(serial) && serial >= 25569 && serial <= 80000) {
-      const utcMs = Math.round((serial - 25569) * 86400 * 1000);
-      const d = new Date(utcMs);
-      if (!Number.isNaN(d.getTime())) {
-        const iso = d.toISOString();
-        return { occurredAt: iso, occurredDay: iso.slice(0, 10) };
+      // Serial Excel = jam dinding WIB; hari tetap hari dinding, instan digeser -7 jam agar tidak melompat hari di Jakarta.
+      const wall = new Date(Math.round((serial - 25569) * 86400 * 1000));
+      if (!Number.isNaN(wall.getTime())) {
+        // Serial bulat (tanpa jam) = tanggal saja, sama seperti YYYY-MM-DD: 00:00Z jatuh di hari yang sama di WIB.
+        const instant = Number.isInteger(serial) ? wall : new Date(wall.getTime() - JAKARTA_OFFSET_MS);
+        return { occurredAt: instant.toISOString(), occurredDay: wall.toISOString().slice(0, 10) };
       }
     }
   }
@@ -313,10 +318,11 @@ export function parseImportDate(raw: string): { occurredAt: string; occurredDay:
     return null;
   }
 
-  const parsed = new Date(trimmed);
+  // Teks tanpa zona waktu ("2026-09-20 21:00") dibaca sebagai WIB, bukan zona waktu server.
+  const local = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(:\d{2})?$/.exec(trimmed);
+  const parsed = new Date(local ? `${local[1]}T${local[2]}${local[3] ?? ":00"}+07:00` : trimmed);
   if (!Number.isNaN(parsed.getTime())) {
-    const iso = parsed.toISOString();
-    return { occurredAt: iso, occurredDay: iso.slice(0, 10) };
+    return { occurredAt: parsed.toISOString(), occurredDay: new Date(parsed.getTime() + JAKARTA_OFFSET_MS).toISOString().slice(0, 10) };
   }
   return null;
 }

@@ -68,7 +68,7 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
   const [chargesEnabled, setChargesEnabled] = useState(Boolean(editing?.input.actions[0].charges.length));
   const [chargeRows,setChargeRows]=useState<{typeId:string;amount:string}[]|null>(null);
   const [feeEnabled, setFeeEnabled] = useState(Boolean(editing?.input.actions[0].transferFeeMinor));
-  const requestKey = useRef(crypto.randomUUID());
+  const requestKey = useRef<{ payload: string; key: string }>({ payload: "", key: crypto.randomUUID() });
   const mobile = useMobileViewport();
   const [openSections, setOpenSections] = useState<BuilderSection[]>(editing ? ["basics"] : ["basics", "trigger"]);
   const [sectionErrors, setSectionErrors] = useState<BuilderSection[]>([]);
@@ -176,8 +176,12 @@ export function AutomationBuilder({ editing, categories }: { editing?: { id: str
         charges: action.kind === "expense" && chargesEnabled && currency ? chargeRows===null?action.charges:chargeRows.map((item)=>({typeId:item.typeId,amountMinor:inputToMinor(item.amount,exponent)})) : [],
         transferFeeMinor: action.kind === "transfer" && feeEnabled && currency ? feeInput === null ? action.transferFeeMinor : inputToMinor(feeInput, exponent) : undefined }] };
       conversionSection = undefined;
+      const rulePayload = storage==="general"?normalizeGeneralRule(submitted):legacyRulePayload(storage,submitted);
+      // Same payload = same key (safe replay after a lost response); an edited payload gets a fresh key instead of a permanent "key already used" error.
+      const payloadSignature = JSON.stringify({ id: editing?.id, storage, rule: rulePayload });
+      if (requestKey.current.payload !== payloadSignature) requestKey.current = { payload: payloadSignature, key: crypto.randomUUID() };
       await automationMutation(storage==="general"?"general-save":storage==="schedule"?"save":"event-save", {
-        id: editing?.id, rule: storage==="general"?normalizeGeneralRule(submitted):legacyRulePayload(storage,submitted), idempotencyKey: requestKey.current });
+        id: editing?.id, rule: rulePayload, idempotencyKey: requestKey.current.key });
       notify("Otomatisasi disimpan."); leaving.current = true; navigate("/transactions/automation", "replace"); refresh();
     } catch (cause) { if (conversionSection) revealError(conversionSection); setError(cause instanceof Error ? cause.message : "Otomatisasi gagal disimpan."); } finally { finish(); }
   }

@@ -192,9 +192,10 @@ export function estimateAssetMonthlyYield(
   const taxAnnualMinor = (grossAnnualMinor * taxBps) / 10000n;
   const netInterestAnnualMinor = grossAnnualMinor - taxAnnualMinor;
 
+  // Monthly figures derive from the annual ones, so 12 x monthly net never drifts above the annual net.
   const grossMonthlyMinor = grossAnnualMinor / 12n;
-  const taxMonthlyMinor = (grossMonthlyMinor * taxBps) / 10000n;
-  const netInterestMonthlyMinor = grossMonthlyMinor - taxMonthlyMinor;
+  const netInterestMonthlyMinor = netInterestAnnualMinor / 12n;
+  const taxMonthlyMinor = grossMonthlyMinor - netInterestMonthlyMinor;
   const netAfterAdminMonthlyMinor = netInterestMonthlyMinor - terms.adminFeeMinor;
 
   return {

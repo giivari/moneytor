@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X } from "@phosphor-icons/react";
+import { Plus, X } from "@phosphor-icons/react";
 import { OptionalChargesEditor, type ChargeEditorRow } from "./optional-charges-editor";
 import { OptionalFormSection } from "./optional-form-section";
 import { InlineCatalogSelect } from "./inline-catalog-select";
 import { financeRequest, requestJson } from "@/lib/finance/client";
-import { FinanceOptionsStatus, useFinanceDialog, useFinanceOptions } from "./finance-form-hooks";
+import { FinanceOptionsStatus, invalidateFinanceOptions, useFinanceDialog, useFinanceOptions } from "./finance-form-hooks";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
+import { ICON_SM } from "./icon-size";
 import { formatMinor, inputToMinor, minorToInput } from "@/lib/finance/format";
 import { editableInstallmentCharges, installmentEditDefaults, installmentPurchaseRequest, installmentTopUpRequest } from "@/lib/domain/credit-purchase";
 import { isDedicatedCategory } from "@/lib/domain/catalog";
@@ -23,7 +24,6 @@ import {
   nextMonthlyDueDayIso,
   parseCreditMeta,
 } from "@/lib/domain/credit";
-import { planSplitBill } from "@/lib/domain/split-bill";
 import { buildEditorDraft, pickTransferSource, type TransactionPreset } from "@/lib/domain/transaction-preset";
 import type { ActivityDraft, AdjustmentReason, AnyActivityKind, FinanceActivity, FinanceAsset } from "@/lib/finance/types";
 
@@ -46,7 +46,11 @@ function formatAssetOptionLabel(item: FinanceAsset) {
 export function TransactionEditor({ onClose, initial, preset }: { onClose: () => void; initial?: FinanceActivity; preset?: TransactionPreset }) {
   const { refresh, notify } = useFinanceFeedback();
   const dialog = useFinanceDialog(onClose);
-  const replay = useRef<{ payload: string; key: string } | null>(null);
+  const replay = useRef<{ payload: string; key: string; reminderKey: string } | null>(null);
+  // Kunci tetap per payload untuk split bill multi-teman (satu kunci per teman) dan piutang yang dibuat pada sesi ini.
+  const multiSplitReplay = useRef<{ payload: string; keys: string[] } | null>(null);
+  const createdReceivables = useRef(new Map<string, string>());
+  const receivableRequests = useRef(new Map<string, { key: string; at: string }>());
   // A retried split bill must reuse its keys and receivable account, or a retry after a partial failure
   // would post the personal share twice or create a second receivable account.
   const splitReplay = useRef<{ payload: string; key: string; personalKey: string; transferKey: string; receivableId?: string } | null>(null);
@@ -103,9 +107,11 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
   const [deductedFee, setDeductedFee] = useState("");
 
   const [splitEnabled, setSplitEnabled] = useState(false);
-  const [reimburseAmount, setReimburseAmount] = useState("");
-  const [reimbursePerson, setReimbursePerson] = useState("");
-  const [receivableAssetId, setReceivableAssetId] = useState("");
+  type SplitFriendRow = { id: string; name: string; amount: string };
+  const [splitFriends, setSplitFriends] = useState<SplitFriendRow[]>([
+    { id: "f-1", name: "", amount: "" },
+  ]);
+  const [splitMode, setSplitMode] = useState<"custom" | "equal">("custom");
 
   const active = options?.assets ?? [];
   const requiresLiabilityPrimary = kind === "borrow" || (kind === "adjustment" && adjustmentReason === "opening_debt");
@@ -235,19 +241,102 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
     }
   }
 
-  let splitSummaryHint: string | null = null;
-  if (kind === "expense" && splitEnabled && amount.trim() && reimburseAmount.trim()) {
+  function applyEqualSplit(baseAmount: string, friends: SplitFriendRow[]) {
+    if (!baseAmount.trim()) return friends;
+    try {
+      const totalMinor = BigInt(inputToMinor(baseAmount.trim(), exponent));
+      const count = 1 + friends.length;
+      const shareMinor = totalMinor / BigInt(count);
+      const shareInput = minorToInput(shareMinor.toString(), exponent);
+      return friends.map((f) => ({ ...f, amount: shareInput }));
+    } catch {
+      return friends;
+    }
+  }
+
+  async function getOrCreateReceivable(friendName: string) {
+    const trimmed = friendName.trim();
+    if (!trimmed) return undefined;
+    const wanted = trimmed.toLowerCase();
+    const targetTitle = `piutang · ${wanted}`;
+    // Cocok persis (judul "Piutang · Nama" atau nama saja): "Budi" tidak boleh jatuh ke "Piutang · Budiman".
+    const existing = (options?.assets ?? []).find(
+      (a) =>
+        a.isActive &&
+        a.assetClass === "receivable" &&
+        a.currency === currency &&
+        [targetTitle, wanted].includes(a.displayName.trim().toLowerCase())
+    );
+    if (existing) return existing.id;
+    const createdHere = createdReceivables.current.get(`${currency}:${wanted}`);
+    if (createdHere) return createdHere;
+    try {
+      const assetTypeId = options?.catalogs.assetTypes[0]?.id;
+      if (!assetTypeId) return undefined;
+      const requestKey = `${currency}:${wanted}`;
+      const request = receivableRequests.current.get(requestKey) ?? { key: crypto.randomUUID(), at: new Date().toISOString() };
+      receivableRequests.current.set(requestKey, request);
+      const res = await financeRequest<{ id: string }>("asset-create", {
+        idempotencyKey: request.key,
+        displayName: `Piutang · ${trimmed}`,
+        assetTypeId,
+        normallyLiquid: false,
+        normallySpendable: false,
+        assetClass: "receivable",
+        currency,
+        openingAmountMinor: "0",
+        openingEffectiveAt: request.at,
+        note: `Talangan split bill untuk ${trimmed}`,
+      });
+      createdReceivables.current.set(`${currency}:${wanted}`, res.id);
+      invalidateFinanceOptions();
+      return res.id;
+    } catch {
+      return undefined;
+    }
+  }
+
+  let splitBreakdown: {
+    totalBayar: string;
+    talangan: string;
+    porsiPribadi: string;
+    perFriends: { name: string; amount: string }[];
+    warning?: string;
+  } | null = null;
+  if (kind === "expense" && splitEnabled && amount.trim()) {
     try {
       const totalBayarBig = BigInt(inputToMinor(amount.trim(), exponent));
-      const talanganBig = BigInt(inputToMinor(reimburseAmount.trim(), exponent));
-      if (talanganBig > 0n && talanganBig <= totalBayarBig) {
-        const porsiPribadiBig = totalBayarBig - talanganBig;
-        splitSummaryHint = `Total keluar dari rekening: ${formatMinor(totalBayarBig.toString(), currency, exponent)} · Pengeluaran pribadi Anda: ${formatMinor(porsiPribadiBig.toString(), currency, exponent)} · Masuk ke Piutang/Talangan: ${formatMinor(talanganBig.toString(), currency, exponent)}`;
-      } else if (talanganBig > totalBayarBig) {
-        splitSummaryHint = "Perhatian: Nominal talangan melebihi total nominal pembayaran.";
+      let talanganTotalBig = 0n;
+      const perFriends: { name: string; amount: string }[] = [];
+      for (const f of splitFriends) {
+        if (f.amount.trim()) {
+          const m = BigInt(inputToMinor(f.amount.trim(), exponent));
+          talanganTotalBig += m;
+          perFriends.push({
+            name: f.name.trim() || `Teman ${perFriends.length + 1}`,
+            amount: formatMinor(m.toString(), currency, exponent),
+          });
+        }
+      }
+      if (talanganTotalBig > totalBayarBig) {
+        splitBreakdown = {
+          totalBayar: formatMinor(totalBayarBig.toString(), currency, exponent),
+          talangan: formatMinor(talanganTotalBig.toString(), currency, exponent),
+          porsiPribadi: formatMinor("0", currency, exponent),
+          perFriends,
+          warning: "Perhatian: Total nominal talangan melebihi total nominal pembayaran.",
+        };
+      } else {
+        const porsiPribadiBig = totalBayarBig - talanganTotalBig;
+        splitBreakdown = {
+          totalBayar: formatMinor(totalBayarBig.toString(), currency, exponent),
+          talangan: formatMinor(talanganTotalBig.toString(), currency, exponent),
+          porsiPribadi: formatMinor(porsiPribadiBig.toString(), currency, exponent),
+          perFriends,
+        };
       }
     } catch {
-      splitSummaryHint = null;
+      splitBreakdown = null;
     }
   }
 
@@ -288,64 +377,138 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
           })
         : null;
 
-      if (splitEnabled && !initial && kind === "expense" && reimburseAmount.trim()) {
-        const splitCharges = (chargesEnabled ? charges : []).map((charge) => ({
-          typeId: charge.typeId,
-          amountMinor: inputToMinor(charge.amount, exponent),
-        }));
-        const split = planSplitBill({
-          totalMinor: BigInt(rawPrincipalMinor),
-          reimbursedMinor: BigInt(inputToMinor(reimburseAmount.trim(), exponent)),
-          chargesMinor: splitCharges.reduce((sum, charge) => sum + BigInt(charge.amountMinor), 0n),
-        });
-        const talanganBig = split.reimbursedMinor;
-        const splitPayload = JSON.stringify({
-          amount,
-          reimburseAmount,
-          reimbursePerson,
-          receivableAssetId,
-          accountId: account.id,
-          categoryId,
-          occurredAt,
-          note,
-          splitCharges,
-        });
-        if (splitReplay.current?.payload !== splitPayload) {
-          splitReplay.current = {
-            payload: splitPayload,
-            key: crypto.randomUUID(),
-            personalKey: crypto.randomUUID(),
-            transferKey: crypto.randomUUID(),
-          };
-        }
-        const splitKeys = splitReplay.current;
-        const splitResult = await financeRequest<{
-          personalActivityId: string | null;
-          transferActivityId: string;
-          receivableAssetId: string;
-          receivableCreated: boolean;
-        }>("split-bill", {
-          idempotencyKey: splitKeys.key,
-          sourceAssetId: account.id,
-          totalMinor: rawPrincipalMinor,
-          reimbursedMinor: talanganBig.toString(),
-          occurredAt: new Date(occurredAt).toISOString(),
-          categoryId: categoryId || undefined,
-          charges: splitCharges.length ? splitCharges : undefined,
-          person: reimbursePerson.trim() || undefined,
-          note: note.trim() || undefined,
-          receivableAssetId: receivableAssetId || splitKeys.receivableId || undefined,
-        });
-        splitKeys.receivableId = splitResult.receivableAssetId;
-
-        refresh();
-        notify(
-          splitResult.receivableCreated
-            ? "Transaksi berhasil dicatat (Akun Piutang & Talangan dibuat otomatis)."
-            : "Transaksi berhasil dicatat (Porsi talangan dialihkan ke akun Piutang).",
+      if (splitEnabled && !initial && kind === "expense") {
+        const validFriends = splitFriends.filter(
+          (f) => f.amount.trim() && BigInt(inputToMinor(f.amount.trim(), exponent)) > 0n
         );
-        onClose();
-        return;
+        if (validFriends.length > 0) {
+          const splitCharges = (chargesEnabled ? charges : []).map((charge) => ({
+            typeId: charge.typeId,
+            amountMinor: inputToMinor(charge.amount, exponent),
+          }));
+          const totalBayarBig = BigInt(rawPrincipalMinor);
+          const totalFriendsTalangan = validFriends.reduce(
+            (sum, f) => sum + BigInt(inputToMinor(f.amount.trim(), exponent)),
+            0n
+          );
+          if (totalFriendsTalangan > totalBayarBig) {
+            throw new Error("Total talangan tidak boleh melebihi jumlah pembayaran.");
+          }
+          const porsiPribadiBig = totalBayarBig - totalFriendsTalangan;
+
+          // Case 1: Tepat 1 Teman
+          if (validFriends.length === 1) {
+            const friend = validFriends[0];
+            const friendTalanganBig = BigInt(inputToMinor(friend.amount.trim(), exponent));
+            const splitPayload = JSON.stringify({
+              amount,
+              friendName: friend.name,
+              friendAmount: friend.amount,
+              accountId: account.id,
+              categoryId,
+              occurredAt,
+              note,
+              splitCharges,
+            });
+            if (splitReplay.current?.payload !== splitPayload) {
+              splitReplay.current = {
+                payload: splitPayload,
+                key: crypto.randomUUID(),
+                personalKey: crypto.randomUUID(),
+                transferKey: crypto.randomUUID(),
+              };
+            }
+            const splitKeys = splitReplay.current;
+            const targetReceivableId =
+              splitKeys.receivableId ||
+              (await getOrCreateReceivable(friend.name)) ||
+              undefined;
+            const splitResult = await financeRequest<{
+              personalActivityId: string | null;
+              transferActivityId: string;
+              receivableAssetId: string;
+              receivableCreated: boolean;
+            }>("split-bill", {
+              idempotencyKey: splitKeys.key,
+              sourceAssetId: account.id,
+              totalMinor: rawPrincipalMinor,
+              reimbursedMinor: friendTalanganBig.toString(),
+              occurredAt: new Date(occurredAt).toISOString(),
+              categoryId: categoryId || undefined,
+              charges: splitCharges.length ? splitCharges : undefined,
+              person: friend.name.trim() || undefined,
+              note: note.trim() || undefined,
+              receivableAssetId: targetReceivableId,
+            });
+            splitKeys.receivableId = splitResult.receivableAssetId;
+
+            refresh();
+            notify(
+              splitResult.receivableCreated
+                ? "Transaksi berhasil dicatat (Akun Piutang & Talangan dibuat otomatis)."
+                : "Transaksi berhasil dicatat (Porsi talangan dialihkan ke akun Piutang)."
+            );
+            onClose();
+            return;
+          }
+
+          // Case 2: Banyak Teman (Multi-Teman)
+          const multiPayload = JSON.stringify({
+            amount, accountId: account.id, categoryId, occurredAt, note, splitCharges,
+            friends: validFriends.map((f) => ({ name: f.name.trim(), amount: f.amount.trim() })),
+          });
+          if (multiSplitReplay.current?.payload !== multiPayload) {
+            multiSplitReplay.current = { payload: multiPayload, keys: validFriends.map(() => crypto.randomUUID()) };
+          }
+          const friendKeys = multiSplitReplay.current.keys;
+          const firstFriend = validFriends[0];
+          const firstFriendTalanganBig = BigInt(inputToMinor(firstFriend.amount.trim(), exponent));
+          const firstTotalMinor = (porsiPribadiBig + firstFriendTalanganBig).toString();
+          const firstReceivableId = await getOrCreateReceivable(firstFriend.name);
+
+          await financeRequest<{
+            personalActivityId: string | null;
+            transferActivityId: string;
+            receivableAssetId: string;
+            receivableCreated: boolean;
+          }>("split-bill", {
+            idempotencyKey: friendKeys[0],
+            sourceAssetId: account.id,
+            totalMinor: firstTotalMinor,
+            reimbursedMinor: firstFriendTalanganBig.toString(),
+            occurredAt: new Date(occurredAt).toISOString(),
+            categoryId: categoryId || undefined,
+            charges: splitCharges.length ? splitCharges : undefined,
+            person: firstFriend.name.trim() || undefined,
+            note: note.trim() || undefined,
+            receivableAssetId: firstReceivableId,
+          });
+
+          for (const [friendIndex, otherFriend] of validFriends.slice(1).entries()) {
+            const otherTalanganBig = BigInt(inputToMinor(otherFriend.amount.trim(), exponent));
+            const otherReceivableId = await getOrCreateReceivable(otherFriend.name);
+            await financeRequest<{
+              personalActivityId: string | null;
+              transferActivityId: string;
+              receivableAssetId: string;
+              receivableCreated: boolean;
+            }>("split-bill", {
+              idempotencyKey: friendKeys[friendIndex + 1],
+              sourceAssetId: account.id,
+              totalMinor: otherTalanganBig.toString(),
+              reimbursedMinor: otherTalanganBig.toString(),
+              occurredAt: new Date(occurredAt).toISOString(),
+              person: otherFriend.name.trim() || undefined,
+              note: note.trim() || undefined,
+              receivableAssetId: otherReceivableId,
+            });
+          }
+
+          refresh();
+          notify(`Transaksi split bill berhasil dicatat untuk ${validFriends.length} teman.`);
+          onClose();
+          return;
+        }
       }
 
       let finalAmountMinor = rawPrincipalMinor;
@@ -430,7 +593,7 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
         adjustmentDirection,
       });
       const payload = JSON.stringify({ id: initial?.id, draft, tenorMonths: isCreditPurchase || hasDebtSchedule ? tenorMonths : 1, targetCycle });
-      if (replay.current?.payload !== payload) replay.current = { payload, key: crypto.randomUUID() };
+      if (replay.current?.payload !== payload) replay.current = { payload, key: crypto.randomUUID(), reminderKey: crypto.randomUUID() };
       // The server assigns a credit outflow to the next billing cycle in the same database transaction as
       // the posting, using the authoritative ledger impact and the freshly locked account note.
       await financeRequest(initial ? "replace" : "post", {
@@ -473,7 +636,7 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
             title: `Cicilan ${account.displayName}`,
             currency,
             installments,
-            idempotencyKey: crypto.randomUUID(),
+            idempotencyKey: replay.current.reminderKey,
           }),
           cache: "no-store",
         });
@@ -505,11 +668,11 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
     refund: "Refund",
     adjustment: "Koreksi",
   };
-  const kindLabel = kindLabels[kind];
+  const kindLabel = kind === "expense" && splitEnabled ? "Pengeluaran (Split Bill / Talangan)" : kindLabels[kind];
   return <dialog ref={dialog} className="finance-dialog transaction-dialog" aria-labelledby="transaction-editor-title"
     onCancel={(event) => { if (pending) event.preventDefault(); }}>
     <div className="dialog-heading"><div><span className="eyebrow">CATAT PERGERAKAN</span><h2 id="transaction-editor-title">{initial ? "Koreksi transaksi" : "Transaksi baru"}</h2></div>
-      <button className="icon-button" type="button" onClick={() => dialog.current?.close()} aria-label="Tutup" disabled={pending}><X size={20} /></button></div>
+      <button className="icon-button" type="button" onClick={() => dialog.current?.close()} aria-label="Tutup" disabled={pending}><X size={ICON_SM} /></button></div>
     {initial && <p className="finance-hint">Koreksi membalik catatan lama dan menyimpan penggantinya. Riwayat lama tetap tersedia.</p>}
     {!options ? <FinanceOptionsStatus error={optionsError} retry={retry} /> : <form ref={formRef} onSubmit={save} aria-busy={pending}><fieldset className="finance-fieldset" disabled={pending}>
       <ol className="transaction-steps" aria-label="Langkah pencatatan">
@@ -520,8 +683,33 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
 
       {step === 1 && <>
       <div className="field"><span>Jenis transaksi</span><div className="segmented" role="group" aria-label="Jenis transaksi">
-        {(["expense", "income", "transfer", "borrow", "repay", "refund", "adjustment"] as const).map((item) => <button type="button" key={item} className={kind === item ? "selected" : ""}
-          onClick={() => { setKind(item); setCategoryId(""); goTo(2); }}>{kindLabels[item]}</button>)}
+        {(["expense", "income", "transfer", "borrow", "repay", "refund", "adjustment"] as const).map((item) => (
+          <button
+            type="button"
+            key={item}
+            className={kind === item && !(item === "expense" && splitEnabled) ? "selected" : ""}
+            onClick={() => {
+              setKind(item);
+              setSplitEnabled(false);
+              setCategoryId("");
+              goTo(2);
+            }}
+          >
+            {kindLabels[item]}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={kind === "expense" && splitEnabled ? "selected" : ""}
+          onClick={() => {
+            setKind("expense");
+            setSplitEnabled(true);
+            setCategoryId("");
+            goTo(2);
+          }}
+        >
+          Split Bill
+        </button>
       </div></div>
       </>}
       {step === 2 && <>
@@ -674,6 +862,161 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
           </select>
         </label>
       )}
+
+      {kind === "expense" && splitEnabled && (
+        <div className="split-bill-box">
+          <div className="split-bill-header">
+            <span style={{ fontWeight: "var(--weight-semibold)", fontSize: "var(--text-sm)", color: "var(--ink)" }}>
+              Split Bill / Talangan Teman
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <div className="split-mode-toggle" role="group" aria-label="Mode pembagian talangan">
+                <button
+                  type="button"
+                  className={`split-mode-btn ${splitMode === "custom" ? "active" : ""}`}
+                  onClick={() => setSplitMode("custom")}
+                >
+                  Per Orang
+                </button>
+                <button
+                  type="button"
+                  className={`split-mode-btn ${splitMode === "equal" ? "active" : ""}`}
+                  onClick={() => {
+                    setSplitMode("equal");
+                    setSplitFriends(applyEqualSplit(amount, splitFriends));
+                  }}
+                >
+                  Bagi Rata
+                </button>
+              </div>
+              <button
+                type="button"
+                className="text-link"
+                style={{ fontSize: "var(--text-xs)" }}
+                onClick={() => {
+                  setSplitEnabled(false);
+                  setSplitFriends([{ id: "f-1", name: "", amount: "" }]);
+                }}
+              >
+                Batalkan
+              </button>
+            </div>
+          </div>
+
+          <div className="split-friends-list">
+            {splitFriends.map((friend, idx) => (
+              <div className="split-friend-row" key={friend.id}>
+                <input
+                  type="text"
+                  placeholder={`Nama teman (mis. Teman ${idx + 1})`}
+                  value={friend.name}
+                  onChange={(e) => {
+                    const newFriends = splitFriends.map((f) =>
+                      f.id === friend.id ? { ...f, name: e.target.value } : f
+                    );
+                    setSplitFriends(newFriends);
+                  }}
+                />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder={`Nominal (${currency})`}
+                  required
+                  value={friend.amount}
+                  onChange={(e) => {
+                    if (splitMode === "equal") setSplitMode("custom");
+                    const newFriends = splitFriends.map((f) =>
+                      f.id === friend.id ? { ...f, amount: e.target.value } : f
+                    );
+                    setSplitFriends(newFriends);
+                  }}
+                />
+                {splitFriends.length > 1 && (
+                  <button
+                    type="button"
+                    className="split-friend-remove"
+                    title="Hapus teman"
+                    aria-label={`Hapus ${friend.name || `Teman ${idx + 1}`}`}
+                    onClick={() => {
+                      const newFriends = splitFriends.filter((f) => f.id !== friend.id);
+                      setSplitFriends(splitMode === "equal" ? applyEqualSplit(amount, newFriends) : newFriends);
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="split-add-friend-btn"
+            onClick={() => {
+              const newFriends = [
+                ...splitFriends,
+                { id: `f-${Date.now()}-${splitFriends.length}`, name: "", amount: "" },
+              ];
+              setSplitFriends(splitMode === "equal" ? applyEqualSplit(amount, newFriends) : newFriends);
+            }}
+          >
+            <Plus size={14} /> + Tambah teman
+          </button>
+
+          {splitBreakdown && (
+            <div className="finance-hint" style={{ display: "grid", gap: "var(--space-1)", fontSize: "var(--text-xs)" }}>
+              {splitBreakdown.warning ? (
+                <span className="finance-error">{splitBreakdown.warning}</span>
+              ) : (
+                <div style={{ display: "grid", gap: "var(--space-1)" }}>
+                  <div>• <strong>Total keluar dari rekening:</strong> {splitBreakdown.totalBayar}</div>
+                  <div>• <strong>Masuk ke daftar talangan:</strong> {splitBreakdown.talangan}</div>
+                  <div>• <strong>Pengeluaran murni pribadi Anda:</strong> {splitBreakdown.porsiPribadi}</div>
+                  {splitBreakdown.perFriends.length > 1 && (
+                    <div style={{ color: "var(--muted)", marginTop: "2px" }}>
+                      Rincian: {splitBreakdown.perFriends.map((pf) => `${pf.name}: ${pf.amount}`).join(" · ")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(kind === "expense" || kind === "income") ? (
+        <div className="field-grid">
+          <InlineCatalogSelect
+            label="Kategori (opsional)"
+            catalog="transactionCategories"
+            appliesTo={kind}
+            value={categoryId}
+            emptyLabel="Tanpa kategori"
+            items={categories}
+            onCreated={() => void reload()}
+            onChange={setCategoryId}
+          />
+          <label className="field">
+            <span>Catatan (opsional)</span>
+            <input
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Tambahkan keterangan bila perlu"
+              maxLength={1000}
+            />
+          </label>
+        </div>
+      ) : (
+        <label className="field">
+          <span>Catatan (opsional)</span>
+          <input
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Tambahkan keterangan bila perlu"
+            maxLength={1000}
+          />
+        </label>
+      )}
       </>}
       {step === 3 && <>
         {kind === "transfer" && (
@@ -736,16 +1079,6 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
             )}
           </OptionalFormSection>
         )}
-      {(kind === "expense" || kind === "income") && <InlineCatalogSelect
-        label="Kategori (opsional)"
-        catalog="transactionCategories"
-        appliesTo={kind}
-        value={categoryId}
-        emptyLabel="Tanpa kategori"
-        items={categories}
-        onCreated={() => void reload()}
-        onChange={setCategoryId}
-      />}
       {kind === "expense" && <OptionalChargesEditor enabled={chargesEnabled} onEnabledChange={setChargesEnabled}
         rows={charges} onChange={setCharges} chargeTypes={chargeTypes} maxRows={20} onChargeTypeCreated={() => void reload()} />}
       {kind === "repay" && (
@@ -761,60 +1094,51 @@ export function TransactionEditor({ onClose, initial, preset }: { onClose: () =>
         </label>
       )}
       {!initial && kind === "expense" && !isCreditPurchase && (
-        <OptionalFormSection
-          label="Ada porsi talangan / bayarin orang lain (Split Bill)"
-          enabled={splitEnabled}
-          onChange={setSplitEnabled}
-        >
-          <div className="field-grid">
-            <label className="field">
-              <span>Nominal yang ditalangi / porsi orang lain ({currency})</span>
-              <input
-                inputMode="decimal"
-                value={reimburseAmount}
-                onChange={(event) => setReimburseAmount(event.target.value)}
-                placeholder="0"
-              />
-            </label>
-            <label className="field">
-              <span>Nama teman / keterangan talangan (opsional)</span>
-              <input
-                value={reimbursePerson}
-                onChange={(event) => setReimbursePerson(event.target.value)}
-                placeholder="Mis. Budi & Siti"
-              />
-            </label>
-          </div>
-          <label className="field">
-            <span>Akun penampung piutang/talangan</span>
-            <select
-              value={receivableAssetId}
-              onChange={(event) => setReceivableAssetId(event.target.value)}
-            >
-              <option value="">Buat/gunakan akun &apos;Piutang &amp; Talangan&apos; otomatis</option>
-              {destinationOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {formatAssetOptionLabel(item)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {splitSummaryHint && (
-            <small className="finance-hint">{splitSummaryHint}</small>
-          )}
-        </OptionalFormSection>
+        <small className="finance-hint">
+          Catatan &amp; Split Bill dapat diatur langsung di langkah 2.
+        </small>
       )}
-      <section className="transaction-step-group" aria-label="Waktu dan catatan"><h3>Waktu &amp; catatan <span>opsional</span></h3>
-        <div className="field-grid"><label className="field"><span>Waktu</span><input required type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} /></label>
-          <label className="field"><span>Catatan</span><textarea rows={2} maxLength={1000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Tambahkan keterangan bila perlu" /></label></div>
+      <section className="transaction-step-group" aria-label="Waktu transaksi">
+        <label className="field">
+          <span>Waktu transaksi</span>
+          <input required type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} />
+        </label>
       </section>
       </>}
       {error && <p className="finance-error" role="alert">{error}</p>}
       <div className="finance-actions">
-        {step === 1 ? <button type="button" className="finance-secondary" onClick={() => dialog.current?.close()} disabled={pending}>Batal</button>
-          : <button type="button" className="finance-secondary" onClick={() => goTo((step - 1) as 1 | 2)} disabled={pending}>Kembali</button>}
-        {step === 2 && <button type="button" className="finance-secondary" onClick={() => goTo(3)} disabled={pending}>Lanjut</button>}
-        {step > 1 && <button type="submit" className="button-primary" disabled={pending || !active.length} aria-busy={pending}>{pending ? <LoadingIndicator>{initial ? "Memperbarui…" : "Menyimpan…"}</LoadingIndicator> : initial ? "Simpan koreksi" : "Simpan transaksi"}</button>}
+        {step === 1 ? (
+          <button
+            className="finance-secondary"
+            type="button"
+            onClick={() => dialog.current?.close()}
+            disabled={pending}
+          >
+            Batal
+          </button>
+        ) : (
+          <button
+            className="finance-secondary"
+            type="button"
+            onClick={() => goTo((step - 1) as 1 | 2)}
+            disabled={pending}
+          >
+            Kembali
+          </button>
+        )}
+        {step === 2 && (
+          <button
+            className="finance-secondary"
+            type="button"
+            onClick={() => goTo(3)}
+            disabled={pending}
+          >
+            Opsi lanjutan
+          </button>
+        )}
+        {step > 1 && <button type="submit" className="button-primary" disabled={pending || !active.length} aria-busy={pending}>
+          {pending ? <LoadingIndicator>{initial ? "Memperbarui..." : "Menyimpan..."}</LoadingIndicator> : "Simpan transaksi"}
+        </button>}
       </div>
     </fieldset></form>}
   </dialog>;

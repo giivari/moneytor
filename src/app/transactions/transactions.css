@@ -1,6 +1,582 @@
-/* Mutasi: list toolbar and pager sit inside the history card; the table runs edge to edge. */
-.transactions-kpis { margin-bottom: var(--space-5); }
-.transactions-toolbar, .transactions-pager { padding: var(--space-3) var(--space-4); }
-.transactions-pager { border-top: 1px solid var(--line-soft); }
-.transactions-toolbar .list-toolbar, .transactions-pager .list-toolbar { margin: 0; }
-.transactions-history .list-content, .transactions-history .list-state { margin-inline: var(--space-4); }
+/* Buku Mutasi: Adaptive Desktop Table (zero horizontal scroll) & Mobile 2-Sided List */
+.transactions-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mutasi-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.mutasi-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--positive-light);
+  color: var(--positive);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+/* Filter & Command Ribbon */
+.mutasi-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-lg);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+
+.mutasi-ribbon-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mutasi-ribbon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-weight: var(--weight-medium);
+}
+
+.mutasi-select {
+  height: var(--control-md);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  font-family: inherit;
+}
+
+.mutasi-select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+}
+
+.mutasi-void-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mutasi-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: var(--control-md);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.mutasi-btn:hover {
+  background: var(--surface-hover);
+}
+
+.mutasi-btn[data-active="true"] {
+  background: var(--info-light);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+/* Desktop Table: Locked Geometry, No Horizontal Scroll */
+.mutasi-table-wrapper {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+}
+
+.mutasi-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+}
+
+.mutasi-table th {
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--line-strong);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mutasi-table td {
+  height: 42px;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mutasi-table tbody tr {
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.mutasi-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.mutasi-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mutasi-table tbody tr[data-voided="true"] {
+  opacity: 0.6;
+  text-decoration: line-through;
+  background: var(--surface-sunken);
+}
+
+/* Column Proportions on Wide Desktop (7 Columns) */
+.mutasi-col-date {
+  width: 138px;
+}
+
+.mutasi-col-kind {
+  width: 120px;
+}
+
+.mutasi-col-route {
+  width: 21%;
+}
+
+.mutasi-col-category {
+  width: 14%;
+}
+
+.mutasi-col-note {
+  width: auto;
+}
+
+.mutasi-col-fee {
+  width: 105px;
+}
+
+.mutasi-col-total {
+  width: 135px;
+}
+
+.mutasi-cell-inline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.mutasi-date-main {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+
+.mutasi-time-inline {
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.mutasi-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--weight-medium);
+}
+
+.mutasi-route-dest {
+  color: var(--muted);
+  font-weight: var(--weight-regular);
+}
+
+.mutasi-note-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.mutasi-inline-cat-pill {
+  display: none;
+  flex-shrink: 0;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.mutasi-note-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mutasi-total-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.mutasi-inline-fee-dot {
+  display: none;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-light);
+  color: var(--warning);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+/* When Inspector is Open OR Medium Desktop (< 1280px): Auto-Collapse to 5 Core Columns */
+.app-shell[data-inspector="open"] .mutasi-col-secondary {
+  display: none;
+}
+
+.app-shell[data-inspector="open"] .mutasi-inline-cat-pill,
+.app-shell[data-inspector="open"] .mutasi-inline-fee-dot {
+  display: inline-flex;
+}
+
+@media (max-width: 1279px) {
+  .mutasi-col-secondary {
+    display: none;
+  }
+
+  .mutasi-inline-cat-pill,
+  .mutasi-inline-fee-dot {
+    display: inline-flex;
+  }
+
+  .mutasi-col-date {
+    width: 120px;
+  }
+
+  .mutasi-col-kind {
+    width: 112px;
+  }
+
+  .mutasi-col-route {
+    width: 26%;
+  }
+
+  .mutasi-col-total {
+    width: 130px;
+  }
+}
+
+.mutasi-text-right {
+  text-align: right;
+}
+
+.mutasi-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.mutasi-time-sub {
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.mutasi-dash {
+  color: var(--subtle);
+}
+
+/* Badges */
+.mutasi-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.mutasi-badge--income,
+.mutasi-badge--repay,
+.mutasi-badge--refund {
+  background: var(--positive-light);
+  color: var(--positive);
+}
+
+.mutasi-badge--expense {
+  background: var(--negative-light);
+  color: var(--negative);
+}
+
+.mutasi-badge--borrow,
+.mutasi-badge--adjustment {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+
+.mutasi-badge--transfer {
+  background: var(--info-light);
+  color: var(--info);
+}
+
+.mutasi-badge-corrected {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--warning-light);
+  color: var(--warning);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.mutasi-amount--in {
+  color: var(--positive);
+  font-weight: var(--weight-semibold);
+}
+
+.mutasi-amount--out {
+  color: var(--negative);
+  font-weight: var(--weight-semibold);
+}
+
+.mutasi-amount--neutral {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.mutasi-fee {
+  color: var(--warning);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+/* Inspector Action Buttons */
+.mutasi-inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.mutasi-inspector-actions > button {
+  flex: 1 1 auto;
+}
+
+/* Pager & Secondary Tab Cards */
+.mutasi-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.mutasi-pager-label {
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.mutasi-tab-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-1);
+}
+
+.mutasi-tab-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.mutasi-tab-card-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+
+.mutasi-tab-card-desc {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.mutasi-tab-card-body {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.mutasi-empty-state {
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  color: var(--subtle);
+  font-size: var(--text-sm);
+}
+
+/* Responsive Mobile List vs Desktop Table */
+@media (min-width: 768px) {
+  .mutasi-list-mobile {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .mutasi-table-desktop {
+    display: none;
+  }
+
+  .mutasi-ribbon {
+    padding: var(--space-2);
+    gap: var(--space-1);
+  }
+
+  .mutasi-ribbon-filters {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-1);
+  }
+
+  .mutasi-ribbon-label {
+    display: none;
+  }
+
+  .mutasi-select {
+    width: 100%;
+    height: var(--control-md);
+    font-size: var(--text-xs);
+  }
+
+  .mutasi-void-toggle {
+    grid-column: 1 / -1;
+    min-height: var(--control-md);
+    font-size: var(--text-xs);
+  }
+
+  .mutasi-ribbon-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: var(--space-1);
+  }
+
+  .mutasi-btn {
+    min-height: var(--control-md);
+    padding: 0 var(--space-2);
+    font-size: var(--text-xs);
+  }
+
+  .mutasi-list-mobile {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-1);
+  }
+
+  .mutasi-mobile-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--line-soft);
+    cursor: pointer;
+  }
+
+  .mutasi-mobile-item:last-child {
+    border-bottom: 0;
+  }
+
+  .mutasi-mobile-item:active {
+    background: var(--surface-hover);
+  }
+
+  .mutasi-mobile-item[data-voided="true"] {
+    opacity: 0.6;
+    text-decoration: line-through;
+  }
+
+  .mutasi-mobile-left {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .mutasi-mobile-title {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mutasi-mobile-route {
+    font-size: var(--text-xs);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mutasi-mobile-right {
+    display: grid;
+    justify-items: end;
+    gap: 2px;
+    text-align: right;
+    white-space: nowrap;
+  }
+}

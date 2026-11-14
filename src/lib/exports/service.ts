@@ -7,7 +7,7 @@ import { validateCatalogName } from "@/lib/domain/catalog";
 import { stripAssetMetaTags } from "@/lib/domain/asset-terms";
 import { computeCreditBills, isCreditAsset, isReceivableAsset } from "@/lib/domain/credit";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
-import { formatMinor } from "@/lib/finance/format";
+import { formatMinor, minorToInput } from "@/lib/finance/format";
 import { listActivities } from "@/lib/finance/service";
 import { listImportBatches } from "@/lib/imports/service";
 import { investmentSnapshot } from "@/lib/investments/read";
@@ -39,8 +39,21 @@ type PreparedDataset = {
   rightAlignCols: number[];
 };
 
+/** Current calendar day in Asia/Jakarta (file names and defaults must not lag a day between 00:00 and 07:00 WIB). */
+function jakartaToday(): string {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** Spreadsheet money cell in major units: a number while it is exactly representable, otherwise an exact decimal string. */
+function moneyCell(minor: string | bigint, exponent: number): number | string {
+  const value = BigInt(minor);
+  const magnitude = value < 0n ? -value : value;
+  if (magnitude > BigInt(Number.MAX_SAFE_INTEGER)) return minorToInput(value.toString(), exponent);
+  return exponent === 0 ? Number(value) : Number(value) / 10 ** exponent;
+}
+
 async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset> {
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = jakartaToday();
 
   if (kind === "transactions") {
     const activities = await listActivities(true);
@@ -48,12 +61,12 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
     // Every currency is totalled separately so non-IDR activity is never dropped from the summary.
     const postedIncome = sumByCurrency(posted, (act) => act.kind === "income"
       ? { currency: act.currency, exponent: act.exponent, amountMinor: BigInt(act.baseAmountMinor) } : null);
-    // Loan interest (a repay charge) is an expense; a refund lowers expenses; borrow/adjustment are neither income nor expense.
+    // Same definition as the spending_effects view: expense principal, every charge (transfer fees, loan interest, installment top-up
+    // interest) and refunds as negatives; the principal of transfer/borrow/repay/adjustment is neither income nor expense.
     const postedExpense = sumByCurrency(posted, (act) => {
       const charges = act.charges.reduce((acc, c) => acc + BigInt(c.amountMinor), 0n);
       const kind = act.kind as AnyActivityKind;
-      const amountMinor = kind === "expense" ? BigInt(act.baseAmountMinor) + charges
-        : kind === "repay" ? charges : kind === "refund" ? -BigInt(act.baseAmountMinor) : 0n;
+      const amountMinor = (kind === "expense" ? BigInt(act.baseAmountMinor) : kind === "refund" ? -BigInt(act.baseAmountMinor) : 0n) + charges;
       return amountMinor === 0n ? null : { currency: act.currency, exponent: act.exponent, amountMinor };
     });
     const postedTransfer = sumByCurrency(posted, (act) => act.kind === "transfer"
@@ -115,9 +128,9 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
         accountCol,
         toAccountCol,
         act.categoryName ?? "",
-        Number(act.baseAmountMinor),
-        Number(chargesSum),
-        Number(total),
+        moneyCell(act.baseAmountMinor, act.exponent),
+        moneyCell(chargesSum, act.exponent),
+        moneyCell(total, act.exponent),
         act.currency,
         act.recurringRuleName ?? "",
         act.note ?? "",
@@ -197,7 +210,7 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
       a.assetTypeName,
       a.assetGroupName ?? "-",
       a.currency,
-      Number(a.balanceMinor),
+      moneyCell(a.balanceMinor, a.exponent),
       formatMinor(a.balanceMinor, a.currency, a.exponent),
       a.normallyLiquid ? "Ya" : "Tidak",
       a.normallySpendable ? "Ya" : "Tidak",
@@ -287,10 +300,10 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
         cur,
         h.quantity,
         h.price?.price ?? "",
-        Number(h.costBasisMinor),
+        moneyCell(h.costBasisMinor, exp),
         0,
-        h.marketMinor !== null ? Number(h.marketMinor) : "",
-        h.unrealizedMinor !== null ? Number(h.unrealizedMinor) : "",
+        h.marketMinor !== null ? moneyCell(h.marketMinor, exp) : "",
+        h.unrealizedMinor !== null ? moneyCell(h.unrealizedMinor, exp) : "",
         "Aktif",
         h.price?.asOf ?? "",
       ]);
@@ -319,10 +332,10 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
         t.currency,
         t.quantity,
         t.unitPrice,
-        Number(t.grossMinor),
-        Number(t.feeMinor),
+        moneyCell(t.grossMinor, exp),
+        moneyCell(t.feeMinor, exp),
         "",
-        t.realizedMinor !== null ? Number(t.realizedMinor) : "",
+        t.realizedMinor !== null ? moneyCell(t.realizedMinor, exp) : "",
         t.status === "posted" ? "Aktif" : t.status === "voided" ? "Dibatalkan" : "Dikoreksi",
         t.occurredAt,
       ]);
@@ -391,8 +404,8 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
         "Anggaran (Budget)",
         b.title,
         b.currency,
-        Number(b.limitMinor),
-        Number(b.spentMinor),
+        moneyCell(b.limitMinor, b.exponent),
+        moneyCell(b.spentMinor, b.exponent),
         b.periodStart,
         b.periodEnd,
         b.isActive ? "Aktif" : "Diarsipkan",
@@ -413,8 +426,8 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
         "Target Tabungan (Goal)",
         g.title,
         g.currency,
-        Number(g.targetMinor),
-        Number(g.progressMinor),
+        moneyCell(g.targetMinor, g.exponent),
+        moneyCell(g.progressMinor, g.exponent),
         g.targetOn ?? "",
         "",
         g.isActive ? "Aktif" : "Diarsipkan",
@@ -435,7 +448,7 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
         "Dana Cadangan (Reserve)",
         r.title,
         r.currency,
-        Number(r.amountMinor),
+        moneyCell(r.amountMinor, r.exponent),
         "",
         "",
         "",
@@ -457,8 +470,8 @@ async function prepareDataset(kind: ExportDatasetKind): Promise<PreparedDataset>
         "Kewajiban (Obligation)",
         o.title,
         o.currency,
-        Number(o.amountMinor),
-        Number(o.uncoveredMinor),
+        moneyCell(o.amountMinor, o.exponent),
+        moneyCell(o.uncoveredMinor, o.exponent),
         o.dueOn,
         "",
         o.status === "open" ? "Terbuka" : o.status === "settled" ? "Selesai" : "Dibatalkan",
@@ -541,7 +554,7 @@ export async function exportCsvDataset(kind: ExportDatasetKind): Promise<{ fileN
 
 export async function exportFullSnapshotJson(): Promise<{ fileName: string; payload: Record<string, unknown> }> {
   await requireOwnerSession();
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = jakartaToday();
   const [
     currenciesRes,
     providers,
@@ -655,7 +668,7 @@ export async function commitWorkbookAccountMigration(input: {
     throw new Error("Pilih setidaknya satu akun baru yang belum ada di daftar aset.");
   }
 
-  const effectiveAt = input.openingEffectiveAt ? new Date(input.openingEffectiveAt) : new Date("2026-09-20T00:00:00.000Z");
+  const effectiveAt = input.openingEffectiveAt ? new Date(input.openingEffectiveAt) : new Date(`${jakartaToday()}T00:00:00.000Z`);
   if (Number.isNaN(effectiveAt.getTime())) {
     throw new Error("Tanggal saldo awal tidak valid.");
   }

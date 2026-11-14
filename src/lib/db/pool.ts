@@ -38,6 +38,7 @@ export function database(): Pool {
 
 export async function inDatabaseTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await database().connect();
+  let broken = false;
   try {
     await client.query("BEGIN");
     try {
@@ -45,10 +46,10 @@ export async function inDatabaseTransaction<T>(work: (client: PoolClient) => Pro
       await client.query("COMMIT");
       return result;
     } catch (error) {
-      await client.query("ROLLBACK");
+      await client.query("ROLLBACK").catch(() => { broken = true; });
       throw error;
     }
   } finally {
-    client.release();
+    client.release(broken);
   }
 }

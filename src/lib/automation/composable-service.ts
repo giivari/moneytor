@@ -1,3 +1,4 @@
+import { publicMessage } from "@/lib/http/public-error";
 import "server-only";
 import { allocationDiscoveryFilter, allocationResultOrigin, readAllocationSummaries } from "./allocation-service";
 import type { AllocationSummary } from "./allocation-domain";
@@ -201,7 +202,7 @@ async function evaluated(client: PoolClient, rule: GeneralRuleInput, context: Tr
     currency = assets[0].currency_code;
     const amountCurrency = action.amount.strategy === "fixed" ? action.amount.currency : action.amount.strategy === "confirm_at_runtime" ? currency : context.currency;
     if (amountCurrency !== currency) throw new ComposableError("Mata uang nominal berbeda dari aset tindakan.");
-  } catch (cause) { status = "failed"; failure = cause instanceof Error ? cause.message : "Konfigurasi tindakan perlu diperiksa."; }
+  } catch (cause) { status = "failed"; failure = publicMessage(cause, "Konfigurasi tindakan perlu diperiksa."); }
   return { conditions, action, amount: amount ?? null, source: source ?? null, destination: destination ?? null, currency: currency ?? null, status, failure };
 }
 async function capture(client: PoolClient, id: string, version: number, rule: GeneralRuleInput, context: TriggerContext) {

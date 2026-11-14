@@ -9,6 +9,7 @@ import { isCreditAsset, isReceivableAsset } from "@/lib/domain/credit";
 import { creditBillsDue, netWorthComponents, receivablesSummary } from "@/lib/domain/home-briefing";
 import { HomeComposition, HomeTrend } from "./home-analytics";
 import { HomeAutomationConfirmations } from "./home-automation-confirmations";
+import { HomeKpiCarousel } from "./home-kpi-carousel";
 import { ActivityDetail, AssetDetail, CreditDetail, activityParts } from "./entity-details";
 import { Amount, Breakdown, Card, Kpi, PageHeading, shortDate, toneOf } from "./ui";
 import { InspectorRow, InspectorRowButton } from "./inspector";
@@ -98,18 +99,20 @@ export function HomeOverview({ snapshot, date, analytics = null }: { snapshot: S
     const receivables = receivablesSummary(assets, entry.currency);
     const ready = planningReady ? BigInt(entry.availableMinor) : BigInt(entry.spendableMinor);
     return <div className="home-currency" key={entry.currency}>
-      <div className="ui-kpis" aria-label={`Ringkasan ${entry.currency}`}>
-        <Kpi title="Kekayaan bersih" icon={Scales} tone="neutral" value={money(entry.netWorthMinor)} valueTone={toneOf(BigInt(entry.netWorthMinor))}
-          note={<>Aset − seluruh kewajiban · {entry.currency}</>} action={<PageTabLink tab="rincian">Lihat rincian</PageTabLink>} />
-        <Kpi title="Dana siap pakai" icon={Wallet} tone="info" value={money(ready)} valueTone={toneOf(ready)}
-          note={planningReady ? <>Setelah cadangan &amp; kewajiban s.d. {horizon}</> : "Rencana belum diaktifkan"} action={<PageTabLink tab="rincian">Cara hitung</PageTabLink>} />
-        <Kpi title="Tagihan kredit terdekat" icon={CreditCard} tone="negative" value={money(nearest?.amountMinor ?? 0n)}
-          note={nearest ? <><span className="ui-chip">{shortDate(nearest.dueIso)}</span> <span className="ui-kpi-names">{nearest.names.join(", ")}</span></> : "Tidak ada tagihan dalam 30 hari"}
-          action={<Link href="/credit" className="text-link">Kredit</Link>} />
-        <Kpi title="Piutang belum kembali" icon={HandCoins} tone="warning" value={money(receivables.totalMinor)} valueTone={toneOf(receivables.totalMinor)}
-          note={receivables.openCount ? <><span className="ui-chip">{receivables.openCount} akun</span> Menunggu pelunasan</> : "Tidak ada piutang terbuka"}
-          action={<Link href="/credit" className="text-link">Talangan</Link>} />
-      </div>
+      <HomeKpiCarousel currency={entry.currency}>
+        <div className="ui-kpis" aria-label={`Ringkasan ${entry.currency}`}>
+          <Kpi title="Kekayaan bersih" icon={Scales} tone="neutral" value={money(entry.netWorthMinor)} valueTone={toneOf(BigInt(entry.netWorthMinor))}
+            note={<>Aset − seluruh kewajiban · {entry.currency}</>} action={<PageTabLink tab="rincian">Lihat rincian</PageTabLink>} />
+          <Kpi title="Dana siap pakai" icon={Wallet} tone="info" value={money(ready)} valueTone={toneOf(ready)}
+            note={planningReady ? <>Setelah cadangan &amp; kewajiban s.d. {horizon}</> : "Rencana belum diaktifkan"} action={<PageTabLink tab="rincian">Cara hitung</PageTabLink>} />
+          <Kpi title="Tagihan kredit terdekat" icon={CreditCard} tone="negative" value={money(nearest?.amountMinor ?? 0n)}
+            note={nearest ? <><span className="ui-chip">{shortDate(nearest.dueIso)}</span> <span className="ui-kpi-names">{nearest.names.join(", ")}</span></> : "Tidak ada tagihan dalam 30 hari"}
+            action={<Link href="/credit" className="text-link">Kredit</Link>} />
+          <Kpi title="Piutang belum kembali" icon={HandCoins} tone="warning" value={money(receivables.totalMinor)} valueTone={toneOf(receivables.totalMinor)}
+            note={receivables.openCount ? <><span className="ui-chip">{receivables.openCount} akun</span> Menunggu pelunasan</> : "Tidak ada piutang terbuka"}
+            action={<Link href="/credit" className="text-link">Talangan</Link>} />
+        </div>
+      </HomeKpiCarousel>
       <div className="ui-notices">
         {entry.unpricedCount > 0 && <p className="ui-notice" data-tone="warning">{entry.unpricedCount} posisi tanpa harga belum termasuk. <Link href="/assets/investments">Lihat investasi</Link></p>}
         {planningReady && BigInt(entry.uncoveredMinor) > 0n && <p className="ui-notice" data-tone="warning">Kewajiban belum tercakup cadangan: <Amount value={money(entry.uncoveredMinor)} />, s.d. {horizon}.</p>}

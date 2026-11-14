@@ -20,18 +20,16 @@ html[data-privacy="hidden"] .financial-amount {
 .onboarding-backdrop {
   position: fixed;
   inset: 0;
-  background: var(--scrim);
-  backdrop-filter: blur(1.5px);
+  background: transparent;
   pointer-events: auto;
-  animation: onboarding-fade-in 0.18s ease-out both;
 }
 
 .onboarding-spotlight {
   position: fixed;
   z-index: 81;
   border-radius: var(--radius-lg);
-  border: 2.5px solid var(--data-cyan);
-  outline: 4px solid var(--data-cyan-soft);
+  border: 2px solid var(--primary);
+  outline: 4px solid var(--info-light);
   box-shadow: var(--shadow-2);
   background: transparent;
   pointer-events: none;

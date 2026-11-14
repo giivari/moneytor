@@ -129,3 +129,18 @@ transaction-editor,quick-add,pay-bill-button,credit-overview}.tsx, app/{forms,cr
 Hasil: typecheck, lint (eslint + stylelint) bersih; test:unit 146 lulus 1 skip; test:ui 149 lulus; DB container 55434: credit 8, finance 8, planning 8.
 Belum: wordmark halaman login masih berpendar warna (visual.css lama); belum ada tombol "Catat transfer" per halaman yang memakai `QuickAdd kind`;
 koreksi top-up lama (tanpa baris jadwal) tidak menjadwal ulang.
+
+## Audit 360 (2026-11-14) — eksekusi lima batch
+Keputusan: K8 bucket gagal-saja per hash IP harian; K5 soft-delete + migrasi 021; T7 filter regex investasi dihapus; T15 TIDAK diubah (lihat bawah).
+Migrasi baru: 021 (guard rencana), 022 (rate limit per klien), 023 (idempotensi asset-create). Rincian: docs/AUDIT-2026-11-14.md, docs/CONTRACT.md.
+File utama: db/migrations/02[1-3]*, lib/{db/pool,db/required-migration,auth/store,planning/repository,imports/{parser,service},exports/{service,format},
+finance/{service,format},domain/{credit,asset-terms,net-worth},repositories/{assets,lifecycle},automation/reconcile,http/*}, api/{auth,finance,health,imports,exports,automation},
+components/{inspector,finance-feedback,finance-form-hooks,transaction-editor,assets-manager,credit-overview,automation-builder,planning-manager,
+investment-manager,transactions-view,global-search,theme-toggle,import-workspace}, app/{layout,*.css (sapuan selector yatim)}, 4 komponen yatim dihapus.
+Hasil: typecheck + lint bersih; test:unit 167 lulus; test:ui 156 lulus; DB (disposable 55433): planning, finance, import, analytics, allocation,
+automation, composable, income-event, presentation lulus; auth-db (schema terisolasi) 12 lulus; DB 55434: credit+split-bill+debt 27 lulus.
+Dua tes DB yang gagal sudah dibereskan di sesi penutup (keduanya masalah tes: env .env.local bocor ke tes investasi; tes lifecycle usang soal arsip kategori bawaan).
+Sesi penutup: konflik CSS .page-heading-actions/.finance-dialog dipusatkan; spinner non-tombol dihapus; ARIA pencarian + fokus Inspector; "type":"module" menghapus warning Node.
+Hasil akhir: tsc/lint/test:unit 168/test:ui 156 bersih, semua tes DB lulus (55433 170, auth 12, 55434 47), next build sukses.
+Langkah berikutnya: keputusan Beranda vs income event (home-overview.test melarang reconcile penuh di Beranda); idempotensi portfolio/instrument/type-create;
+konflik CSS .page-heading-actions/.finance-dialog; skrip user-migrate; peringatan MODULE_TYPELESS_PACKAGE_JSON.

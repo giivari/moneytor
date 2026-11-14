@@ -14,6 +14,7 @@ import { readGeneralAutomation } from "@/lib/automation/composable-service";
 import { unifyAutomation, type WorkspaceInstance } from "@/lib/automation/composable-facade";
 import { orderAutomationInstances } from "@/lib/automation/list-order";
 import { activityClassification } from "@/lib/automation/review-domain";
+import { summarizeActivityTotals, type ActivityKindRow } from "@/lib/domain/activity-totals";
 
 async function readPendingAutomations(): Promise<WorkspaceInstance[]> {
   try {
@@ -63,6 +64,18 @@ async function readMonthlyExpenses(client?: PoolClient, at: Date = new Date()) {
       OR EXISTS (SELECT 1 FROM investment_transactions t WHERE t.currency_code=c.code)
     GROUP BY c.code,c.minor_unit_exponent ORDER BY c.code`, monthRange(at));
   return result.rows;
+}
+/** Count and money totals of every posted activity (all time), independent of how many rows the list has loaded. */
+export async function activityTotals() {
+  await requireOwnerSession();
+  const result = await database().query<ActivityKindRow>(`
+    SELECT f.currency_code AS currency, c.minor_unit_exponent AS exponent, f.kind, count(*)::int AS count,
+      COALESCE(sum(f.base_amount_minor),0)::text AS "baseMinor", COALESCE(sum(ch.amount),0)::text AS "chargeMinor"
+    FROM financial_activities f JOIN currencies c ON c.code=f.currency_code
+    LEFT JOIN LATERAL (SELECT sum(ac.amount_minor) AS amount FROM activity_charges ac WHERE ac.activity_id=f.id) ch ON true
+    WHERE f.status='posted'
+    GROUP BY f.currency_code, c.minor_unit_exponent, f.kind`);
+  return summarizeActivityTotals(result.rows);
 }
 /** Transactions does not need cash balances or investment replay to show monthly spending. */
 export async function monthlyExpenses(at: Date = new Date()) {

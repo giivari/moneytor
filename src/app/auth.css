@@ -13,12 +13,6 @@
 .auth-error.auth-error { color: var(--negative); }
 .settings-page { max-width: 1020px; }
 .settings-page .settings-heading { margin-bottom: 24px; }
-.settings-page .settings-panel { max-width: none; padding: 26px 28px; }
-.settings-page .settings-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
-.settings-page .settings-row { min-width: 0; min-height: 72px; padding: 12px 2px; }
-.settings-page .settings-row > div { min-width: 0; }
-.settings-page .settings-icon { flex: none; }
-.settings-page .page-footnote { margin: 24px 0 0; }
 .security-panel { margin-top: 30px; }
 .security-intro { margin-bottom: 18px; }
 .security-intro h2 { margin: 6px 0 8px; }
@@ -75,9 +69,6 @@
   .auth-primary { min-height: 52px; }
   .auth-secondary { margin-top: auto; padding-top: 32px; }
   .settings-page .settings-heading { margin-bottom: 20px; }
-  .settings-page .settings-panel { padding: 20px; }
-  .settings-page .settings-list { grid-template-columns: 1fr; }
-  .settings-page .settings-row { min-height: 66px; }
   .security-panel { margin-top: 26px; }
   .security-layout { gap: 14px; }
   .security-group { padding: 20px; }

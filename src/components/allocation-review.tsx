@@ -57,7 +57,7 @@ export function AllocationReview({storage,id,title,onClose}:{storage:AllocationS
     onCancel={event=>{if(pending)event.preventDefault();}}>
     <div className="dialog-heading"><div><span className="eyebrow">PENYESUAIAN ALOKASI</span><h2 id="allocation-title">{title}</h2></div>
       <button type="button" className="icon-button" disabled={pending} aria-label="Tutup peninjauan" onClick={()=>dialog.current?.close()}><X size={20}/></button></div>
-    {!value && !error && <p role="status"><LoadingIndicator>Memeriksa sumber dan hasil…</LoadingIndicator></p>}
+    {!value && !error && <p className="finance-hint" role="status" aria-live="polite">Memeriksa sumber dan hasil…</p>}
     {value && <><AllocationSummaryContent value={value}/>
       <p className="finance-hint">Tindakan: {value.actionKind==='expense'?'Pengeluaran':value.actionKind==='transfer'?'Transfer':'Pemasukan'} · {value.sourceName?`Dari ${value.sourceName}`:''}{value.destinationName?` → ${value.destinationName}`:''}</p>
       {canConfirm && <>

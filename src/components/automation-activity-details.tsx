@@ -87,7 +87,7 @@ export function AutomationActivityDetails({ item, status, onClose }: { item: Wor
       <button autoFocus type="button" className="icon-button" disabled={pending} aria-label="Tutup rincian aktivitas" onClick={() => dialog.current?.close()}><X size={20} /></button>
     </div>
     <AutomationActivityDetailsContent item={current} status={status} />
-    {detail ? <AutomationActivityTimeline detail={detail}/> : !error && <p role="status" className="finance-hint"><LoadingIndicator>Memuat riwayat…</LoadingIndicator></p>}
+    {detail ? <AutomationActivityTimeline detail={detail}/> : !error && <p role="status" aria-live="polite" className="finance-hint">Memuat riwayat…</p>}
     {error && <p role="alert" className="finance-error">{error} <button type="button" className="row-action" disabled={pending} onClick={()=>setAttempt(value=>value+1)}>Muat ulang rincian</button></p>}
     {detail && !detail.context.ready && ['needs_review','needs_action'].includes(detail.context.attention) && <p className="finance-hint">Pencatatan tinjauan menunggu aktivasi migration 012.</p>}
     {detail?.context.assessmentStale && <p className="finance-hint">Sumber / hasil berubah sejak assessment terakhir. Keputusan akan memeriksa revisi terbaru terlebih dahulu.</p>}

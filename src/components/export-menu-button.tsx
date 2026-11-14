@@ -7,9 +7,11 @@ import type { ExportDatasetKind } from "@/lib/exports/service";
 export function ExportMenuButton({
   dataset,
   label = "Ekspor",
+  className = "",
 }: {
   dataset: ExportDatasetKind;
   label?: string;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,7 +41,7 @@ export function ExportMenuButton({
   }
 
   return (
-    <div ref={containerRef} className="export-dropdown" data-open={open}>
+    <div ref={containerRef} className={`export-dropdown${className ? ` ${className}` : ""}`} data-open={open}>
       <button
         type="button"
         className="export-trigger-button"

@@ -269,8 +269,10 @@ export function ImportWorkspace({ assets, categories, initialBatches }: Props) {
         body: JSON.stringify({ ...bodyPayload, idempotencyKey: commitReplay.current.key }),
         cache: "no-store",
       });
-      const historyRes = await requestJson<{ batches: ImportBatchSummary[] }>("/api/imports/history", { cache: "no-store" });
-      setBatches(historyRes.batches);
+      // The import is already committed; a failing history reload must not be reported as a failed import.
+      await requestJson<{ batches: ImportBatchSummary[] }>("/api/imports/history", { cache: "no-store" })
+        .then((historyRes) => setBatches(historyRes.batches))
+        .catch(() => undefined);
       refresh();
       notify(`${response.result.importedCount} transaksi berhasil diimpor (${response.result.skippedCount} dilewati).`);
       setPreview(null);

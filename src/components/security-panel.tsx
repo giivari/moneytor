@@ -83,7 +83,7 @@ export function SecurityPanel({ initial, section }: { initial: Overview; section
   return <>
     <section className="security-panel settings-security-detail" aria-label="Pengelolaan keamanan">
       <div className="security-intro"><p>Perubahan keamanan perlu sesi baru (10 menit). <Link href="/unlock">Konfirmasi dengan passkey</Link> bila diminta.</p></div>
-      {busy && <p className="settings-security-pending" role="status"><LoadingIndicator>{pendingLabel}</LoadingIndicator></p>}
+      {busy && <p className="settings-security-pending" role="status" aria-live="polite">{pendingLabel}</p>}
 
       <div className="security-layout">
       {section === "passkeys" && <div className="security-group security-passkeys" aria-labelledby="passkey-title">

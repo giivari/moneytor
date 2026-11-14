@@ -1,13 +1,14 @@
 /* Beranda: KPI row, then Ringkasan (trend, recent, due bills, accounts) or Rincian kalkulasi.
    Shared primitives live in ui.css; container queries use the page container. */
 .home-currencies { display: grid; gap: var(--space-4); margin-bottom: var(--space-5); }
+.home-currency { display: grid; gap: var(--space-3); }
 
 /* Ringkasan grid */
 .home-grid, .home-main, .home-side { display: grid; gap: var(--space-4); align-content: start; min-width: 0; }
 
 /* Trend and composition reuse the Analitik visuals */
 .home-chart { padding: var(--space-3) var(--space-4) var(--space-4); }
-.home-page .home-chart .insight-fit-chart { height: 148px; max-height: none; margin-block: var(--space-2); }
+.home-page .home-chart .insight-fit-chart { width: 100%; max-width: 100%; height: 148px; max-height: none; margin-block: var(--space-2); }
 .home-page .home-chart .insight-legend, .home-page .home-chart .insight-note { font-size: var(--text-xs); }
 .home-page .home-chart .section-heading { display: none; }
 .home-composition > div { padding: var(--space-3) var(--space-4) var(--space-4); }
@@ -53,13 +54,141 @@
 .home-details { display: grid; gap: var(--space-4); }
 .home-reading { margin: 0; font-size: var(--text-sm); max-width: 72ch; }
 
-/* Automation confirmations keep their component, restyled as an alert card */
-.home-automation-alert { margin-bottom: var(--space-4); border-color: var(--line-strong); background: var(--surface); }
-.home-automation-alert .eyebrow { color: var(--info); }
-.home-automation-list { display: grid; margin-top: var(--space-1); }
-.home-automation-item { padding-block: var(--space-3); border-top: 1px solid var(--line); }
-.home-automation-item:first-child { border-top: 0; padding-top: 2px; }
-.home-automation-item:last-child { padding-bottom: 0; }
+/* Automation confirmations: compact card ala Figma Make */
+.home-automation-alert {
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  display: grid;
+  gap: var(--space-3);
+  box-shadow: var(--shadow-1);
+}
+.home-automation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.home-automation-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.home-automation-header-left h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+.home-automation-sparkle {
+  color: var(--warning);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-automation-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.home-automation-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.home-automation-box {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  display: grid;
+  gap: var(--space-2);
+}
+.home-automation-box-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.home-automation-box-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.home-automation-box-info strong {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+.home-automation-box-context {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+}
+.home-automation-box-amount {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+}
+.home-automation-box-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.home-automation-amount-input {
+  height: var(--control-md);
+  max-width: 140px;
+  flex: 1;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: var(--text-xs);
+  color: var(--ink);
+}
+.home-automation-btn {
+  height: 28px;
+  min-height: 28px;
+  padding-inline: var(--space-3);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Trend footer bar */
+.home-trend-footer {
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface-sunken);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.home-month-figures-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.home-month-name {
+  font-weight: var(--weight-semibold);
+  color: var(--ink);
+}
+.home-month-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.home-stat-label {
+  color: var(--muted);
+}
 
 @container page (min-width: 560px) {
   .home-recent-head {
@@ -100,3 +229,42 @@
 .home-month-figures > div { display: grid; gap: 2px; }
 .home-month-figures dt { color: var(--muted); font-size: var(--text-xs); }
 .home-month-figures dd { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+
+@media (max-width: 767px) {
+  .home-currencies {
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  .home-currency {
+    gap: var(--space-2);
+  }
+  .home-grid,
+  .home-main,
+  .home-side {
+    gap: var(--space-3);
+  }
+  .home-chart {
+    padding: var(--space-2) var(--space-3) var(--space-3);
+  }
+  .home-page .home-chart .insight-fit-chart {
+    height: 112px;
+    margin-block: var(--space-1);
+  }
+  .home-month-figures {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+  .home-month-figures dd {
+    font-size: var(--text-md);
+  }
+  .home-recent-row {
+    padding: var(--space-2) var(--space-3);
+    gap: 0 var(--space-2);
+  }
+  .home-automation-alert {
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+    gap: var(--space-2);
+  }
+}

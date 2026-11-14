@@ -23,6 +23,9 @@ import "./home.css";
 import "./onboarding.css";
 
 const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
+// Runs before first paint so dark-mode users never see a light flash; falls back to the system preference.
+const THEME_SCRIPT = 'try{var t=localStorage.getItem("moneytor-theme");if(!t&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";document.documentElement.setAttribute("data-theme",t==="dark"?"dark":"light")}catch(e){}';
+
 export const viewport: Viewport = {
   themeColor: "#0f6cbd",
   width: "device-width",
@@ -40,5 +43,5 @@ export const metadata: Metadata = {
   },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="id" className={inter.variable} data-scroll-behavior="smooth" suppressHydrationWarning><body suppressHydrationWarning><a className="skip-link" href="#main-content">Lewati ke konten</a><FinanceFeedbackProvider><AppShell>{children}</AppShell></FinanceFeedbackProvider></body></html>;
+  return <html lang="id" className={inter.variable} data-scroll-behavior="smooth" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} /></head><body suppressHydrationWarning><a className="skip-link" href="#main-content">Lewati ke konten</a><FinanceFeedbackProvider><AppShell>{children}</AppShell></FinanceFeedbackProvider></body></html>;
 }

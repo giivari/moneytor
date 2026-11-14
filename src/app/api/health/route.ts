@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { database } from "@/lib/db/pool";
+import { REQUIRED_MIGRATION } from "@/lib/db/required-migration";
 import { validateProductionEnvironment } from "@/lib/ops/production-readiness";
 
 export const dynamic = "force-dynamic";
@@ -16,14 +17,14 @@ export async function GET(request: Request) {
   if (checkDb && envReport.ready) {
     try {
       const pool = database();
-      const result = await pool.query<{ mig_count: string }>(
+      const result = await pool.query<{ ready: boolean }>(
         `SELECT CASE
-           WHEN to_regclass('public.schema_migrations') IS NULL THEN '0'
-           ELSE (SELECT count(*)::text FROM public.schema_migrations)
-         END AS mig_count`,
+           WHEN to_regclass('public.schema_migrations') IS NULL THEN false
+           ELSE EXISTS (SELECT 1 FROM public.schema_migrations WHERE name = $1)
+         END AS ready`,
+        [REQUIRED_MIGRATION],
       );
-      const appliedCount = Number(result.rows[0]?.mig_count ?? "0");
-      migrationsReady = appliedCount >= 14;
+      migrationsReady = result.rows[0]?.ready === true;
     } catch {
       dbReachable = false;
       migrationsReady = false;

@@ -228,8 +228,9 @@ function creditPlanFor(posting: CreditPosting): CreditSchedulePlan | null {
 /** Schedules a freshly posted credit outflow by due month inside the posting transaction. */
 async function scheduleCreditOutflow(client: PoolClient, activityId: string, kind: "expense" | "transfer", assetId: string,
   plan: CreditSchedulePlan): Promise<void> {
-  const asset = await client.query<{ note: string | null; currency_code: string }>("SELECT note,currency_code FROM assets WHERE id=$1 FOR UPDATE", [assetId]);
+  const asset = await client.query<{ note: string | null; currency_code: string; asset_class: AssetClass }>("SELECT note,currency_code,asset_class FROM assets WHERE id=$1 FOR UPDATE", [assetId]);
   if (!asset.rows[0]) return;
+  if (asset.rows[0].asset_class !== "liability") throw new Error("Jadwal tagihan hanya untuk akun kredit");
   const impact = await sourceImpactMinor(client, activityId, assetId);
   if (impact <= 0n) return;
   const before = { note: asset.rows[0].note, installments: [] };
@@ -321,13 +322,16 @@ export async function replaceActivity(oldId: string, raw: ActivityDraft, key: st
   const draft = normalizeDraft(raw);
   const plan = scheduleKindOf(draft) ? debtPlanFor(draft, options) : null;
   // Plain corrections keep their historical request hash; a rescheduled credit correction hashes its billing as well.
-  const payload = plan ? { oldId, draft, creditCycle: plan.cycle, creditInstallments: options.creditInstallments ?? null } : { oldId, draft };
+  // A correction that moves a charge back to the current bill has no new schedule but must release the old one.
+  const rebill = Boolean(plan) || (scheduleKindOf(draft) !== null && options.creditCycle === "current");
+  const payload = plan ? { oldId, draft, creditCycle: plan.cycle, creditInstallments: options.creditInstallments ?? null }
+    : rebill ? { oldId, draft, creditCycle: "current" } : { oldId, draft };
   return withIdempotency("replace", key, payload, async (client) => {
     if (plan) await client.query("SELECT id FROM assets WHERE id=$1 FOR UPDATE", [draft.sourceAssetId]);
     await reversePosted(client, oldId, "superseded");
     const id = await insertPosted(client, draft, oldId);
     // The old schedule is cancelled first; a replacement with its own billing then gets fresh rows.
-    await releaseCreditSchedule(client, oldId, id, Boolean(plan));
+    await releaseCreditSchedule(client, oldId, id, rebill);
     if (plan) await scheduleCreditOutflow(client, id, scheduleKindOf(draft)!, draft.sourceAssetId!, plan);
     return id;
   });

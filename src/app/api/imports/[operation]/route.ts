@@ -1,3 +1,5 @@
+import { BodyTooLargeError, boundedText } from "@/lib/http/bounded-text";
+import { publicMessage } from "@/lib/http/public-error";
 import { NextRequest, NextResponse } from "next/server";
 import { assertRequestOrigin } from "@/lib/auth/http";
 import { currentOwnerSession } from "@/lib/auth/session";
@@ -8,11 +10,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function boundedImportBody(request: NextRequest, maxBytes = 8 * 1024 * 1024): Promise<string> {
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > maxBytes) throw new ImportValidationError("Ukuran permintaan impor melebihi batas 8 MB.");
-  const text = await request.text();
-  if (Buffer.byteLength(text, "utf8") > maxBytes) throw new ImportValidationError("Ukuran permintaan impor melebihi batas 8 MB.");
-  return text;
+  try { return await boundedText(request, maxBytes); }
+  catch (error) {
+    if (error instanceof BodyTooLargeError) throw new ImportValidationError("Ukuran permintaan impor melebihi batas 8 MB.");
+    throw error;
+  }
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ operation: string }> }) {
@@ -67,7 +69,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return json({ error: "Tidak tersedia." }, 404);
   } catch (error) {
     return json(
-      { error: error instanceof ImportValidationError ? error.message : (error instanceof Error ? error.message : "Permintaan impor gagal diproses.") },
+      { error: publicMessage(error, "Permintaan impor gagal diproses.") },
       400,
     );
   }

@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import type { AnalyticsGranularity } from "@/lib/analytics/periods";
 import type { AnalyticsReport } from "@/lib/analytics/types";
 import { insightsDraft, insightsQuery, periodLabel, type InsightsDraft } from "@/lib/analytics/presentation";
+import { formatMinor } from "@/lib/finance/format";
 import { useInsightsReport } from "./use-insights-report";
 import { InsightsReportView } from "./insights-report";
 import { useInsightsMonth } from "./use-insights-month";
+import { ExcelStatusBar } from "./excel-status-bar";
 
 const QUICK_PERIODS = [
   { kind: "last_7_days", label: "1 Minggu" },
@@ -28,28 +30,75 @@ const GRANULARITY_CHOICES: { value: AnalyticsGranularity; label: string }[] = [
   { value: "year", label: "Per Tahun" },
 ];
 
-export function InsightsLoadState({ loading, error, retry }: { loading: boolean; error: string; retry: () => void }) {
-  if (loading) return <div className="surface insight-state" role="status"><span className="insight-loading" aria-hidden="true" />Memuat laporan…</div>;
-  if (error) return <div className="surface insight-state" role="alert"><p>{error}</p><button className="finance-secondary" onClick={retry}>Coba lagi</button></div>;
+export function InsightsLoadState({
+  loading,
+  error,
+  retry,
+}: {
+  loading: boolean;
+  error: string;
+  retry: () => void;
+}) {
+  if (loading) {
+    return (
+      <div className="surface insight-state" role="status">
+        <span className="insight-loading" aria-hidden="true" />
+        Memuat laporan…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="surface insight-state" role="alert">
+        <p>{error}</p>
+        <button className="finance-secondary" onClick={retry}>
+          Coba lagi
+        </button>
+      </div>
+    );
+  }
   return null;
 }
 
-export function InsightsWorkspace({ initial, initialQuery, initialError, currencies }: {
-  initial: AnalyticsReport | null; initialQuery: string; initialError: string;
+export function InsightsWorkspace({
+  initial,
+  initialQuery,
+  initialError,
+  currencies,
+}: {
+  initial: AnalyticsReport | null;
+  initialQuery: string;
+  initialError: string;
   currencies: { currency: string; exponent: number }[];
 }) {
   const state = useInsightsReport(initial, initialQuery, initialError);
   const [draft, setDraft] = useState(() => insightsDraft(initialQuery));
   const [inputError, setInputError] = useState("");
   const [slide, setSlide] = useState(0);
+  const [activeTab, setActiveTab] = useState<"all" | "cashflow" | "distribution">("all");
+
   const queryParams = new URLSearchParams(state.query);
   const selected = queryParams.get("currency") ?? state.report?.summary[0]?.currency ?? "";
   const activePeriod = queryParams.get("period") ?? "current_month";
   const activeGranularity: AnalyticsGranularity =
-    (["day", "week", "month", "year"] as const).find((item) => item === queryParams.get("granularity")) ?? "auto";
-  const monthSelection = useInsightsMonth(state.report?.monthly?.filter((row) => row.currency === selected) ?? [], state.report);
-  const defaultCurrency = currencies.find((row) => row.currency === "IDR")?.currency ?? currencies[0]?.currency ?? "";
-  const choices = [...new Set([...currencies.map((row) => row.currency), ...(initial?.summary.map((row) => row.currency) ?? []), draft.currency].filter(Boolean))];
+    (["day", "week", "month", "year"] as const).find(
+      (item) => item === queryParams.get("granularity")
+    ) ?? "auto";
+  const monthSelection = useInsightsMonth(
+    state.report?.monthly?.filter((row) => row.currency === selected) ?? [],
+    state.report
+  );
+  const defaultCurrency =
+    currencies.find((row) => row.currency === "IDR")?.currency ?? currencies[0]?.currency ?? "";
+  const choices = [
+    ...new Set(
+      [
+        ...currencies.map((row) => row.currency),
+        ...(initial?.summary.map((row) => row.currency) ?? []),
+        draft.currency,
+      ].filter(Boolean)
+    ),
+  ];
   const apply = state.apply;
 
   function commitDraft(nextDraft: InsightsDraft) {
@@ -88,9 +137,42 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
 
   const isCustom = draft.kind === "custom";
   const isTrendMonths = draft.kind === "monthly_trend";
+  const summaryItem =
+    state.report?.summary.find((s) => s.currency === (selected || defaultCurrency)) ??
+    state.report?.summary[0];
 
   return (
-    <div className="insight-workspace">
+    <div className="insight-workspace" data-insight-tab={activeTab}>
+      {/* Pita Tab Fungsional Analitik */}
+      <div className="insight-view-tabs-bar">
+        <div className="page-tabs">
+          <button
+            type="button"
+            className="page-tab"
+            data-tab-active={activeTab === "all" ? "true" : "false"}
+            onClick={() => setActiveTab("all")}
+          >
+            Ringkasan &amp; Rekonsiliasi
+          </button>
+          <button
+            type="button"
+            className="page-tab"
+            data-tab-active={activeTab === "cashflow" ? "true" : "false"}
+            onClick={() => setActiveTab("cashflow")}
+          >
+            Tren Arus Kas &amp; Kewajiban
+          </button>
+          <button
+            type="button"
+            className="page-tab"
+            data-tab-active={activeTab === "distribution" ? "true" : "false"}
+            onClick={() => setActiveTab("distribution")}
+          >
+            Bedah Kategori, Akun &amp; Aset
+          </button>
+        </div>
+      </div>
+
       <section className="surface insight-toolbar" aria-label="Filter periode dan tampilan grafik">
         <div className="insight-toolbar-top">
           <div className="insight-toolbar-period">
@@ -103,7 +185,9 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
               <select
                 aria-label="Kelompok waktu"
                 value={draft.granularity ?? activeGranularity}
-                onChange={(e) => commitDraft({ ...draft, granularity: e.target.value as AnalyticsGranularity })}
+                onChange={(e) =>
+                  commitDraft({ ...draft, granularity: e.target.value as AnalyticsGranularity })
+                }
               >
                 {GRANULARITY_CHOICES.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -153,7 +237,11 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
           </div>
         </div>
 
-        <div className="insight-pill-scroller insight-period-pills-desktop" role="group" aria-label="Rentang waktu">
+        <div
+          className="insight-pill-scroller insight-period-pills-desktop"
+          role="group"
+          aria-label="Rentang waktu"
+        >
           {QUICK_PERIODS.map((preset) => (
             <button
               key={preset.kind}
@@ -206,7 +294,9 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
                 max="36"
                 step="1"
                 value={draft.months}
-                onChange={(e) => commitDraft({ ...draft, kind: "monthly_trend", months: e.target.value })}
+                onChange={(e) =>
+                  commitDraft({ ...draft, kind: "monthly_trend", months: e.target.value })
+                }
               />
             </label>
           </div>
@@ -233,6 +323,35 @@ export function InsightsWorkspace({ initial, initialQuery, initialError, currenc
           />
         )}
       </div>
+
+      <ExcelStatusBar
+        rowCount={
+          state.report
+            ? (state.report.byCategory?.length ?? 0) + (state.report.byAccount?.length ?? 0)
+            : 0
+        }
+        totalIn={
+          summaryItem?.incomeMinor !== undefined
+            ? formatMinor(summaryItem.incomeMinor, summaryItem.currency, summaryItem.exponent ?? 0)
+            : undefined
+        }
+        totalOut={
+          summaryItem?.spendingMinor !== undefined
+            ? formatMinor(
+                summaryItem.spendingMinor,
+                summaryItem.currency,
+                summaryItem.exponent ?? 0
+              )
+            : undefined
+        }
+        customNetLabel="Net Operasional"
+        customNetValue={
+          summaryItem?.netMinor !== undefined
+            ? formatMinor(summaryItem.netMinor, summaryItem.currency, summaryItem.exponent ?? 0)
+            : undefined
+        }
+        isNetNegative={summaryItem?.netMinor ? BigInt(summaryItem.netMinor) < 0n : false}
+      />
     </div>
   );
 }

@@ -16,6 +16,7 @@ test("P2 disposable PostgreSQL auth lifecycle and constraints", { skip: !enabled
   await admin.query(`CREATE SCHEMA ${schema}`);
   await admin.query(`SET search_path TO ${schema}`);
   await admin.query(await readFile(new URL("../db/migrations/003_owner_security.sql", import.meta.url), "utf8"));
+  await admin.query(await readFile(new URL("../db/migrations/022_auth_rate_limit_scope.sql", import.meta.url), "utf8"));
   target.searchParams.set("options", `-c search_path=${schema}`);
   process.env.DATABASE_URL = target.toString();
   process.env.MONETA_ORIGIN = "http://localhost:3000"; process.env.MONETA_RP_ID = "localhost";
@@ -119,10 +120,21 @@ test("P2 disposable PostgreSQL auth lifecycle and constraints", { skip: !enabled
       await service.securityAction("logout", session);
       assert.equal(await store.resolveSession(browserToken), null);
     });
-    await t.test("PostgreSQL rate limit persists and rejects over budget", async () => {
-      for (let i = 0; i < 10; i++) await store.limitAttempts("recovery");
-      await assert.rejects(store.limitAttempts("recovery"));
-      assert.equal((await admin.query("SELECT attempts FROM auth_rate_limits WHERE bucket='recovery'")).rows[0].attempts, 11);
+    await t.test("rate limit counts only failures per client bucket and keeps the active session separate", async () => {
+      const attacker = await store.clientBucket("recovery", new Headers({ "x-forwarded-for": "203.0.113.9" }));
+      const owner = await store.clientBucket("recovery", new Headers({ "x-forwarded-for": "198.51.100.4" }));
+      assert.notEqual(attacker, owner);
+      assert.match(attacker, /^recovery:[0-9a-f]{32}$/);
+      assert.equal((await admin.query("SELECT count(*)::int AS n FROM auth_rate_salts")).rows[0].n, 1);
+      for (let i = 0; i < 10; i++) { await store.assertFailureBudget(attacker, "recovery"); await store.recordFailure(attacker); }
+      await assert.rejects(store.assertFailureBudget(attacker, "recovery"));
+      await store.assertFailureBudget(owner, "recovery");
+      assert.equal((await admin.query("SELECT attempts FROM auth_rate_limits WHERE bucket=$1", [attacker])).rows[0].attempts, 10);
+      assert.equal((await admin.query("SELECT count(*)::int AS n FROM auth_rate_limits WHERE bucket LIKE '%203.0.113.9%'")).rows[0].n, 0);
+      await store.clearAttempts(attacker);
+      await store.assertFailureBudget(attacker, "recovery");
+      await store.consumeSessionBudget(session);
+      assert.match(store.sessionBucket(session), /^session:[0-9a-f]{32}$/);
     });
     await t.test("origin, cross-site, method and body-size rejection", async () => {
       assertRequestOrigin(new Request("http://localhost:3000/api/auth/logout", { method: "POST", headers: { origin: "http://localhost:3000" } }));

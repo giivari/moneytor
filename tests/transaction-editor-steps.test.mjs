@@ -23,8 +23,8 @@ test("every field sits in the step it belongs to", () => {
   const one = stepBody(1), two = stepBody(2), three = stepBody(3);
   assert.match(one, /Jenis transaksi/);
   assert.match(one, /goTo\(2\)/);
-  for (const text of [/Jumlah \(\$\{currency\}\)/, /Aset penerima/, /Aset tujuan/, /credit-payment-scheme/]) assert.match(two, text);
-  for (const text of [/Ada biaya transfer/, /InlineCatalogSelect/, /OptionalChargesEditor/, /Split Bill/, /type="datetime-local"/, /Catatan/]) assert.match(three, text);
+  for (const text of [/Jumlah \(\$\{currency\}\)/, /Aset penerima/, /Aset tujuan/, /credit-payment-scheme/, /InlineCatalogSelect/, /Catatan/]) assert.match(two, text);
+  for (const text of [/Ada biaya transfer/, /OptionalChargesEditor/, /Split Bill/, /type="datetime-local"/]) assert.match(three, text);
   assert.doesNotMatch(two, /OptionalChargesEditor|datetime-local|Ada biaya transfer/);
 });
 

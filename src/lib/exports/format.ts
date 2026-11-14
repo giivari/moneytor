@@ -44,9 +44,9 @@ export type StatementPdfInput = {
 
 function sanitizeCsvField(raw: string): string {
   let value = raw;
-  // Prevent spreadsheet formula injection on text fields starting with =, +, @, or tab/CR,
-  // while allowing negative numbers (-12345) and formatted negative currency (-Rp ...) to remain readable.
-  if (/^[=+@\t\r]/.test(value) || (/^-[^0-9R]/.test(value))) {
+  // Prevent spreadsheet formula injection on text fields starting with =, +, @, -, or tab/CR. Only a plain negative amount
+  // (-12345, -1.234,50) or formatted negative currency (-Rp 15.000) stays unquoted, so "-2+HYPERLINK(...)" is neutralised.
+  if (/^[=+@\t\r]/.test(value) || (value.startsWith("-") && !/^-(?:[A-Za-z]{1,4}\.?\s?)?\d[\d.,]*$/.test(value))) {
     value = `'${value}`;
   }
   if (/[",\r\n]/.test(value)) {

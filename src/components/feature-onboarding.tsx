@@ -40,7 +40,7 @@ export const FEATURE_TOURS: Record<string, FeatureTourDefinition> = {
         description:
           "Beranda merangkum posisi uang Anda saat ini: Kekayaan bersih, Dana siap pakai setelah cadangan dan kewajiban 30 hari, tagihan kredit terdekat, serta piutang yang belum kembali. Tab Rincian kalkulasi menunjukkan asal setiap angka.",
         tip: "Jika baru pertama kali memakai moneytor (data masih 0), mulailah dengan membuat rekening atau dompet pertama di menu Aset.",
-        targetSelector: ".home-kpis, .home-empty, .main-content",
+        targetSelector: ".home-kpi-carousel, .ui-kpis, .home-empty",
       },
       {
         badge: "Navigasi Utama",
@@ -426,10 +426,11 @@ export function FeatureOnboarding() {
       const measure = () => {
         const rect = el.getBoundingClientRect();
         const pad = 6;
-        const clampedTop = Math.max(6, rect.top - pad);
-        const clampedLeft = Math.max(6, rect.left - pad);
-        const maxWidth = Math.min(rect.width + pad * 2, window.innerWidth - clampedLeft - 6);
-        const maxHeight = Math.min(Math.min(rect.height + pad * 2, 280), window.innerHeight - clampedTop - 6);
+        const minTop = rect.top >= 48 ? 64 : 6;
+        const clampedTop = Math.max(minTop, rect.top - pad);
+        const clampedLeft = Math.max(8, rect.left - pad);
+        const maxWidth = Math.min(rect.width + pad * 2, window.innerWidth - clampedLeft - 8);
+        const maxHeight = Math.min(Math.min(rect.height + pad * 2, 220), window.innerHeight - clampedTop - 80);
         setSpotlight({
           top: Math.round(clampedTop),
           left: Math.round(clampedLeft),
@@ -550,6 +551,13 @@ export function FeatureOnboarding() {
             className="onboarding-backdrop"
             onClick={markCompleteAndClose}
             aria-hidden="true"
+            style={
+              spotlight
+                ? {
+                    clipPath: `polygon(0% 0%, 0% 100%, ${spotlight.left}px 100%, ${spotlight.left}px ${spotlight.top}px, ${spotlight.left + spotlight.width}px ${spotlight.top}px, ${spotlight.left + spotlight.width}px ${spotlight.top + spotlight.height}px, ${spotlight.left}px ${spotlight.top + spotlight.height}px, ${spotlight.left}px 100%, 100% 100%, 100% 0%)`,
+                  }
+                : undefined
+            }
           />
 
           {spotlight && (

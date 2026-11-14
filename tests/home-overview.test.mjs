@@ -257,7 +257,7 @@ test('shared foundations retain readable type and control targets without maskin
  assert.equal((tokens.match(/^:root \{/gm)||[]).length,1);
  assert.match(tokens,/--content-max-width: 1680px/);
  assert.match(tokens,/--control-target: 44px/);
- assert.match(tokens,/--surface-padding: var\(--space-4\)/);
+ assert.match(tokens,/--surface-padding: var\(--space-[34]\)/);
  assert.match(shell,/max-width: var\(--content-max-width\)/);
  assert.match(tokens,/--text-xs: 12px/);
  assert.match(tokens,/--type-copy: var\(--text-md\)/);

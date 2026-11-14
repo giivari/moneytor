@@ -10,8 +10,12 @@ import { useRef, useState } from "react";
 import { ExportMenuButton } from "./export-menu-button";
 import { SectionHeading } from "./section-heading";
 import { InlineCatalogSelect } from "./inline-catalog-select";
-import { Archive, ArrowCounterClockwise, CalendarBlank, CalendarCheck, PencilSimple, PiggyBank, Plus, ShieldCheck, Target, Wallet } from "@phosphor-icons/react";
-import { Kpi, PageHeading } from "./ui";
+import { Archive, ArrowCounterClockwise, CalendarBlank, PencilSimple, PiggyBank, Plus, ShieldCheck, Target } from "@phosphor-icons/react";
+import { Amount, Chip, PageHeading } from "./ui";
+import { PageTabs } from "./page-tabs";
+import { ExcelStatusBar } from "./excel-status-bar";
+import { useInspector, useInspectorSync, type InspectorEntry } from "./inspector";
+import { InspectorFacts } from "./inspector-facts";
 import { useFinanceDialog } from "./finance-form-hooks";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
@@ -166,7 +170,7 @@ function ConfirmAction({ item, action, onClose }: { item: PlanningItem; action: 
   const dialog = useFinanceDialog(onClose), send = usePlanningRequest();
   const { notify,refresh } = useFinanceFeedback(); const { pending,begin,finish } = useMutationPending();
   const [error,setError] = useState("");
-  const label = action === "delete" ? "Hapus permanen" : action === "archive" ? item.kind === "reserve" ? "Lepaskan cadangan" : "Arsipkan" : action === "settle" ? "Tandai selesai" : "Batalkan kewajiban";
+  const label = action === "delete" ? "Hapus" : action === "archive" ? item.kind === "reserve" ? "Lepaskan cadangan" : "Arsipkan" : action === "settle" ? "Tandai selesai" : "Batalkan kewajiban";
   async function confirm() {
     if (!begin()) return; setError("");
     try { await send({ action,kind: item.kind,id: item.id,version: item.version });
@@ -175,7 +179,7 @@ function ConfirmAction({ item, action, onClose }: { item: PlanningItem; action: 
   }
   return <dialog ref={dialog} className="security-confirm" aria-labelledby="planning-confirm-title" onCancel={(event) => { if (pending) event.preventDefault(); }}>
     <h2 id="planning-confirm-title">{label} {item.title}?</h2>
-    <p>{action === "delete" ? "Rencana ini akan dihapus secara permanen dari daftar Planning." : action === "archive" ? "Rencana tidak lagi memengaruhi ringkasan. Riwayat tetap ada dan dapat dipulihkan." : "Status Planning berubah, tetapi tidak ada transaksi atau saldo aset yang berubah. Cadangan terkait tetap disisihkan sampai dilepaskan."}</p>
+    <p>{action === "delete" ? "Rencana ini dikeluarkan dari daftar aktif dan cadangannya dilepas. Riwayatnya tetap tersimpan dan dapat dipulihkan." : action === "archive" ? "Rencana tidak lagi memengaruhi ringkasan. Riwayat tetap ada dan dapat dipulihkan." : "Status Planning berubah, tetapi tidak ada transaksi atau saldo aset yang berubah. Cadangan terkait tetap disisihkan sampai dilepaskan."}</p>
     {error && <p className="finance-error" role="alert">{error}</p>}
     <div className="security-confirm-actions"><button autoFocus type="button" className="finance-secondary" disabled={pending} onClick={() => dialog.current?.close()}>Batal</button>
       <button type="button" className={action === "settle" ? "finance-secondary planning-success" : "planning-warning"} disabled={pending} aria-busy={pending} onClick={() => void confirm()}>{pending ? <LoadingIndicator>Menyimpan...</LoadingIndicator> : label}</button></div>
@@ -208,126 +212,943 @@ function LabelManager({ data }: { data: PlanningData }) {
   </div></div></details>;
 }
 
-function PlanRow({ item, today, onEdit, onConfirm, onReactivate, busy }: {
-  item: PlanningItem; today: string; onEdit: (item: PlanningItem) => void;
-  onConfirm: (item: PlanningItem,action: "archive" | "settle" | "cancel" | "delete") => void;
-  onReactivate: (item: PlanningItem) => void; busy: string | null;
-}) {
-  const amount = item.kind === "budget" ? item.limitMinor : item.kind === "goal" ? item.targetMinor : item.amountMinor;
-  const progress = item.kind === "budget" ? percent(item.spentMinor,item.limitMinor) : item.kind === "goal" ? percent(item.progressMinor,item.targetMinor) : null;
-  const state = item.kind === "budget" && BigInt(item.spentMinor) > BigInt(item.limitMinor) ? "over"
-    : item.kind === "budget" && BigInt(item.spentMinor)*10n >= BigInt(item.limitMinor)*8n ? "near"
-    : item.kind === "obligation" && item.status === "open" && item.dueOn < today ? "over" : "normal";
-  const archived = item.kind !== "obligation" && !item.isActive;
-  const statusLabel = archived ? item.kind === "reserve" ? "Dilepaskan" : "Diarsipkan"
-    : item.kind === "obligation" && item.status !== "open" ? item.status === "settled" ? "Selesai" : "Dibatalkan" : null;
-  return <article className="planning-row" data-state={state}><div className="planning-row-main"><div className="planning-row-title"><h3>{item.title}</h3>
-      {statusLabel && <span className={`planning-status${item.kind === "obligation" && item.status === "settled" ? " planning-status-positive" : ""}`}>{statusLabel}</span>}</div>
-      {item.kind === "reserve" ? <><p>{item.obligationName ? `Untuk ${item.obligationName}` : item.goalName ? `Untuk ${item.goalName}` : purposeNames[item.purpose]}</p>
-        <details className="history-detail"><summary>Rincian cadangan</summary>{item.sourceAssetName && <p>Sumber: {item.sourceAssetName}</p>}<p>{item.labelName} · {purposeNames[item.purpose]}</p>{item.goalName && item.obligationName && <p>Target: {item.goalName}</p>}{item.note && <p>{item.note}</p>}</details></> : <>
-        <p>{item.labelName}{item.kind === "budget" ? ` · ${fmtDay(item.periodStart)} – ${fmtDay(item.periodEnd)}${item.categoryName ? ` · ${item.categoryName}` : " · Semua pengeluaran"}` :
-          item.kind === "goal" ? item.targetOn ? ` · Target ${fmtDay(item.targetOn)}` : "" : ` · Jatuh tempo ${fmtDay(item.dueOn)}`}</p>
-        {item.note && <details className="history-detail"><summary>Catatan</summary><p className="planning-note-text">{item.note}</p></details>}</>}
-      {progress && <div className="planning-progress" aria-label={`${progress.text}% tercapai`} role="img"><span style={{ width: `${progress.width}%` }} /></div>}
-      {item.kind === "budget" && <p>{progress!.text}% terpakai · sisa {formatMinor((BigInt(item.limitMinor)-BigInt(item.spentMinor)).toString(),item.currency,item.exponent)}</p>}
-      {item.kind === "goal" && <p>{progress!.text}% terkumpul</p>}
-      {item.kind === "obligation" && <p>{item.status === "open"
-        ? `Dicadangkan ${formatMinor(item.coveredMinor,item.currency,item.exponent)} · belum tercakup ${formatMinor(item.uncoveredMinor,item.currency,item.exponent)}`
-        : item.status === "settled" ? "Selesai — tidak lagi dihitung dalam kewajiban aktif."
-        : "Dibatalkan — tidak lagi dihitung dalam kewajiban aktif."}</p>}</div>
-    <div className="planning-row-end"><strong className="financial-value financial-value--entity">{formatMinor(amount,item.currency,item.exponent)}</strong>
-      <div className="planning-row-actions">{archived ? <><button type="button" className="row-action" disabled={busy !== null} aria-busy={busy === item.id} onClick={() => onReactivate(item)}>
-        {busy === item.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : <><ArrowCounterClockwise size={15} /> Pulihkan</>}</button>
-        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"delete")}>Hapus</button></> : item.kind === "obligation" ? item.status === "open" ? <>
-        <button type="button" className="row-action" onClick={() => onEdit(item)}><PencilSimple size={15} /> Ubah</button>
-        <button type="button" className="row-action" data-tone="positive" onClick={() => onConfirm(item,"settle")}>Selesai</button>
-        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"cancel")}>Batalkan</button>
-        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"delete")}>Hapus</button></> : <>
-        <button type="button" className="row-action" disabled={busy !== null} aria-busy={busy === item.id} onClick={() => onReactivate(item)}>
-          {busy === item.id ? <LoadingIndicator>Membuka...</LoadingIndicator> : <><ArrowCounterClockwise size={15} /> Buka kembali</>}</button>
-        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"delete")}>Hapus</button></> : <>
-        <button type="button" className="row-action" onClick={() => onEdit(item)}><PencilSimple size={15} /> Ubah</button>
-        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"archive")}><Archive size={15} /> {item.kind === "reserve" ? "Lepaskan" : "Arsipkan"}</button>
-        <button type="button" className="row-action" data-tone="warning" onClick={() => onConfirm(item,"delete")}>Hapus</button></>}</div></div>
-  </article>;
+function safeDailyAllowance(item: PlanningItem, today: string): string | null {
+  if (item.kind !== "budget" || !item.isActive) return null;
+  const remaining = BigInt(item.limitMinor) - BigInt(item.spentMinor);
+  if (remaining <= 0n) return formatMinor("0", item.currency, item.exponent);
+  const startMs = new Date(`${today}T00:00:00+07:00`).getTime();
+  const endMs = new Date(`${item.periodEnd}T00:00:00+07:00`).getTime();
+  const diffDays = Math.max(1, Math.ceil((endMs - startMs) / (1000 * 60 * 60 * 24)));
+  const dailyMinor = remaining / BigInt(diffDays);
+  return formatMinor(dailyMinor.toString(), item.currency, item.exponent);
 }
 
-export function PlanningManager({ data, positions, sources, throughDay, creditDebt }: {
-  data: PlanningData; positions: Position[]; sources: Source[]; throughDay: string;
+function PlanRow({
+  item,
+  today,
+  onSelect,
+  onEdit,
+}: {
+  item: PlanningItem;
+  today: string;
+  onSelect: (item: PlanningItem, trigger: HTMLElement | null) => void;
+  onEdit: (item: PlanningItem) => void;
+}) {
+  const amount =
+    item.kind === "budget"
+      ? item.limitMinor
+      : item.kind === "goal"
+      ? item.targetMinor
+      : item.amountMinor;
+  const progress =
+    item.kind === "budget"
+      ? percent(item.spentMinor, item.limitMinor)
+      : item.kind === "goal"
+      ? percent(item.progressMinor, item.targetMinor)
+      : null;
+  const state =
+    item.kind === "budget" && BigInt(item.spentMinor) > BigInt(item.limitMinor)
+      ? "over"
+      : item.kind === "budget" && BigInt(item.spentMinor) * 10n >= BigInt(item.limitMinor) * 8n
+      ? "near"
+      : item.kind === "obligation" && item.status === "open" && item.dueOn < today
+      ? "over"
+      : "normal";
+  const archived = item.kind !== "obligation" && !item.isActive;
+  const statusLabel = archived
+    ? item.kind === "reserve"
+      ? "Dilepaskan"
+      : "Diarsipkan"
+    : item.kind === "obligation" && item.status !== "open"
+    ? item.status === "settled"
+      ? "Selesai"
+      : "Dibatalkan"
+    : state === "over"
+    ? item.kind === "budget"
+      ? "Melebihi Plafon"
+      : "Lewat Jatuh Tempo"
+    : state === "near"
+    ? "Hampir Penuh"
+    : null;
+
+  const dailySafe = safeDailyAllowance(item, today);
+  const money = (v: string) => formatMinor(v, item.currency, item.exponent);
+
+  return (
+    <article
+      className="planning-row"
+      data-state={state}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest("button, a, input, select, textarea, summary")) return;
+        onSelect(item, e.currentTarget);
+      }}
+      title="Klik untuk membuka rincian dan tindakan rencana"
+    >
+      <div className="planning-row-top">
+        <div className="planning-row-title-col">
+          <button
+            type="button"
+            className="planning-row-trigger"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(item, e.currentTarget);
+            }}
+          >
+            <strong>{item.title}</strong>
+          </button>
+          <small className="planning-row-sub">
+            {item.kind === "reserve" ? (
+              <>
+                {item.sourceAssetName ? `Rekening: ${item.sourceAssetName} · ` : ""}
+                {item.obligationName
+                  ? `Untuk ${item.obligationName}`
+                  : item.goalName
+                  ? `Untuk ${item.goalName}`
+                  : purposeNames[item.purpose]}
+              </>
+            ) : (
+              <>
+                {item.labelName}
+                {item.kind === "budget"
+                  ? ` · ${fmtDay(item.periodStart)} – ${fmtDay(item.periodEnd)}${
+                      item.categoryName ? ` · ${item.categoryName}` : " · Semua pengeluaran"
+                    }`
+                  : item.kind === "goal"
+                  ? item.targetOn
+                    ? ` · Target ${fmtDay(item.targetOn)}`
+                    : ""
+                  : ` · Jatuh tempo ${fmtDay(item.dueOn)}`}
+              </>
+            )}
+          </small>
+        </div>
+        <div className="planning-row-amount-col">
+          <Amount value={money(amount)} />
+          <small>
+            {item.kind === "budget"
+              ? "Plafon Anggaran"
+              : item.kind === "goal"
+              ? "Target Tabungan"
+              : item.kind === "reserve"
+              ? "Dana Dikunci"
+              : "Nilai Tagihan"}
+          </small>
+        </div>
+      </div>
+
+      {progress && (
+        <div className="planning-row-meter">
+          <div
+            className="ui-meter"
+            data-tone={state === "over" ? "negative" : undefined}
+            aria-label={`${progress.text}% tercapai`}
+            role="img"
+          >
+            <span style={{ width: `${Math.min(100, progress.width)}%` }} />
+          </div>
+        </div>
+      )}
+
+      <div className="planning-row-bottom">
+        <span className="planning-row-progress-text">
+          {item.kind === "budget"
+            ? `Terpakai ${money(item.spentMinor)} · Sisa ${money(
+                (BigInt(item.limitMinor) - BigInt(item.spentMinor)).toString()
+              )}`
+            : item.kind === "goal"
+            ? `Terkumpul ${money(item.progressMinor)} dari ${money(item.targetMinor)}`
+            : item.kind === "obligation"
+            ? item.status === "open"
+              ? `Dicadangkan ${money(item.coveredMinor)} · Belum tercakup ${money(
+                  item.uncoveredMinor
+                )}`
+              : item.status === "settled"
+              ? "Selesai — tidak lagi dihitung dalam kewajiban aktif."
+              : "Dibatalkan — tidak lagi dihitung dalam kewajiban aktif."
+            : archived
+            ? "Cadangan sudah dilepaskan."
+            : "Dana disisihkan aktif."}
+        </span>
+        <div className="planning-row-badges">
+          {dailySafe && (
+            <span className="planning-daily-allowance">Aman harian {dailySafe}/hari</span>
+          )}
+          {progress && (
+            <Chip
+              tone={state === "over" ? "negative" : state === "near" ? "warning" : "info"}
+            >
+              {progress.text}%
+            </Chip>
+          )}
+          {statusLabel && (
+            <Chip
+              tone={
+                item.kind === "obligation" && item.status === "settled"
+                  ? "positive"
+                  : state === "over"
+                  ? "negative"
+                  : "warning"
+              }
+            >
+              {statusLabel}
+            </Chip>
+          )}
+          <div className="planning-row-desktop-actions">
+            <button
+              type="button"
+              className="row-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(item);
+              }}
+            >
+              <PencilSimple size={14} /> Ubah
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export function PlanningManager({
+  data,
+  positions,
+  sources,
+  throughDay,
+  creditDebt,
+}: {
+  data: PlanningData;
+  positions: Position[];
+  sources: Source[];
+  throughDay: string;
   /** Credit bills due inside each horizon (7/30/90 days) per currency, minor units as strings. */
   creditDebt: Record<string, Record<number, string>>;
 }) {
-  const [horizon,setHorizon] = useState<7 | 30 | 90>(30), [showArchived,setShowArchived] = useState(false);
-  const [form,setForm] = useState<{ kind: PlanKind; item?: PlanningItem } | null>(null);
-  const [confirm,setConfirm] = useState<{ item: PlanningItem; action: "archive" | "settle" | "cancel" | "delete" } | null>(null);
-  const [busy,setBusy] = useState<string | null>(null), [error,setError] = useState("");
-  const send = usePlanningRequest(), { notify,refresh } = useFinanceFeedback();
-  const today = planningToday(throughDay), end = horizonDay(today,horizon);
-  const budgetSort = useListPreference("planning.budgets.contextual",planningSortOptions.budget.map(option=>option.value),planningSortOptions.budget[0].value);
-  const goalSort = useListPreference("planning.goals.contextual",planningSortOptions.goal.map(option=>option.value),planningSortOptions.goal[0].value);
-  const reserveSort = useListPreference("planning.reserves.contextual",planningSortOptions.reserve.map(option=>option.value),planningSortOptions.reserve[0].value);
-  const obligationSort = useListPreference("planning.obligations.contextual",planningSortOptions.obligation.map(option=>option.value),planningSortOptions.obligation[0].value);
+  const { open, close } = useInspector();
+  useInspectorSync("plan:", data, (id) => [...data.budgets, ...data.goals, ...data.reserves, ...data.obligations]
+    .find((item) => `plan:${item.kind}:${item.id}` === id), (item, update) => openPlanInspector(item, null, update));
+  const [horizon, setHorizon] = useState<7 | 30 | 90>(30);
+  const [showArchived, setShowArchived] = useState(false);
+  const [form, setForm] = useState<{ kind: PlanKind; item?: PlanningItem } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    item: PlanningItem;
+    action: "archive" | "settle" | "cancel" | "delete";
+  } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const send = usePlanningRequest();
+  const { notify, refresh } = useFinanceFeedback();
+  const today = planningToday(throughDay);
+  const end = horizonDay(today, horizon);
+
+  const budgetSort = useListPreference(
+    "planning.budgets.contextual",
+    planningSortOptions.budget.map((option) => option.value),
+    planningSortOptions.budget[0].value
+  );
+  const goalSort = useListPreference(
+    "planning.goals.contextual",
+    planningSortOptions.goal.map((option) => option.value),
+    planningSortOptions.goal[0].value
+  );
+  const reserveSort = useListPreference(
+    "planning.reserves.contextual",
+    planningSortOptions.reserve.map((option) => option.value),
+    planningSortOptions.reserve[0].value
+  );
+  const obligationSort = useListPreference(
+    "planning.obligations.contextual",
+    planningSortOptions.obligation.map((option) => option.value),
+    planningSortOptions.obligation[0].value
+  );
   const obligationHistorySort = useListSort("planning.obligations.history");
-  const sorts = { budget: budgetSort, goal: goalSort, reserve: reserveSort, obligation: obligationSort };
-  const all: PlanningItem[] = [...data.budgets,...data.goals,...data.reserves,...data.obligations];
-  const empty = all.length === 0;
+  const sorts = {
+    budget: budgetSort,
+    goal: goalSort,
+    reserve: reserveSort,
+    obligation: obligationSort,
+  };
+
+  const all: PlanningItem[] = [
+    ...data.budgets,
+    ...data.goals,
+    ...data.reserves,
+    ...data.obligations,
+  ];
+
   async function reactivate(item: PlanningItem) {
-    if (busy) return; setBusy(item.id); setError("");
-    try { await send({ action: item.kind === "obligation" ? "reopen" : "restore",kind: item.kind,id: item.id,version: item.version });
-      notify(item.kind === "obligation" ? "Kewajiban dibuka kembali." : "Rencana dipulihkan."); refresh(); }
-    catch (cause) { setError(errorMessage(cause)); } finally { setBusy(null); }
+    if (busy) return;
+    setBusy(item.id);
+    setError("");
+    try {
+      await send({
+        action: item.kind === "obligation" ? "reopen" : "restore",
+        kind: item.kind,
+        id: item.id,
+        version: item.version,
+      });
+      notify(
+        item.kind === "obligation" ? "Kewajiban dibuka kembali." : "Rencana dipulihkan."
+      );
+      refresh();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
   }
-  function renderSection({ kind, name, description, icon: Icon }: typeof kinds[number]) {
-    const filteredRows: PlanningItem[] = (kind === "budget" ? data.budgets : kind === "goal" ? data.goals : kind === "reserve" ? data.reserves : data.obligations)
-      .filter((item) => item.kind === "obligation" || showArchived || item.isActive);
+
+  function openPlanInspector(item: PlanningItem, trigger: HTMLElement | null, emit: (entry: InspectorEntry, trigger?: HTMLElement | null) => void = open) {
+    const money = (v: string) => formatMinor(v, item.currency, item.exponent);
+    const amount =
+      item.kind === "budget"
+        ? item.limitMinor
+        : item.kind === "goal"
+        ? item.targetMinor
+        : item.amountMinor;
+    const archived = item.kind !== "obligation" && !item.isActive;
+    const dailySafe = safeDailyAllowance(item, today);
+    const kindMeta = kinds.find((k) => k.kind === item.kind)!;
+
+    emit(
+      {
+        id: `plan:${item.kind}:${item.id}`,
+        title: "Rincian Perencanaan",
+        subtitle: `${kindMeta.name} · ${item.labelName}`,
+        body: (
+          <div className="inspector-cards">
+            {/* Kartu 1: Ringkasan Hero Rencana */}
+            <section className="inspector-card inspector-card--hero">
+              <div className="inspector-card-top">
+                <span className="inspector-ref-badge">{item.kind.toUpperCase()}</span>
+                <Chip tone={archived ? "neutral" : "info"}>{kindMeta.name}</Chip>
+              </div>
+              <div className="inspector-hero-metric">
+                <span className="inspector-hero-caption">
+                  {item.kind === "budget"
+                    ? "Plafon Anggaran Bulanan"
+                    : item.kind === "goal"
+                    ? "Target Tabungan"
+                    : item.kind === "reserve"
+                    ? "Dana Cadangan Terkunci"
+                    : "Nominal Kewajiban"}
+                </span>
+                <div className="inspector-hero-amount">
+                  <Amount value={money(amount)} level="summary" />
+                </div>
+              </div>
+              <p className="inspector-hero-title">{item.title}</p>
+              <div className="inspector-meta-grid">
+                <div>
+                  <span className="inspector-meta-label">Kelompok / Jenis</span>
+                  <strong className="inspector-meta-value">{item.labelName}</strong>
+                </div>
+                <div>
+                  <span className="inspector-meta-label">Status</span>
+                  <strong className="inspector-meta-value">
+                    {archived
+                      ? "Diarsipkan / Dilepaskan"
+                      : item.kind === "obligation"
+                      ? item.status === "open"
+                        ? "Terbuka"
+                        : item.status === "settled"
+                        ? "Selesai"
+                        : "Dibatalkan"
+                      : "Aktif"}
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            {/* Kartu 2: Bedah Realisasi & Alokasi */}
+            <section className="inspector-card inspector-card--breakdown">
+              <h3 className="inspector-card-heading">Bedah Realisasi &amp; Ketentuan</h3>
+              <InspectorFacts
+                items={[
+                  ...(item.kind === "budget"
+                    ? [
+                        {
+                          label: "Periode anggaran",
+                          value: `${fmtDay(item.periodStart)} – ${fmtDay(item.periodEnd)}`,
+                        },
+                        {
+                          label: "Cakupan kategori",
+                          value: item.categoryName || "Semua pengeluaran",
+                        },
+                        { label: "Realisasi terpakai", value: <Amount value={money(item.spentMinor)} /> },
+                        {
+                          label: "Sisa plafon anggaran",
+                          value: (
+                            <Amount
+                              value={money(
+                                (BigInt(item.limitMinor) - BigInt(item.spentMinor)).toString()
+                              )}
+                              tone={
+                                BigInt(item.spentMinor) > BigInt(item.limitMinor)
+                                  ? "negative"
+                                  : "positive"
+                              }
+                            />
+                          ),
+                        },
+                      ]
+                    : []),
+                  ...(item.kind === "goal"
+                    ? [
+                        {
+                          label: "Terkumpul dari cadangan",
+                          value: <Amount value={money(item.progressMinor)} tone="positive" />,
+                        },
+                        {
+                          label: "Target tanggal",
+                          value: item.targetOn ? fmtDay(item.targetOn) : "Fleksibel",
+                        },
+                      ]
+                    : []),
+                  ...(item.kind === "reserve"
+                    ? [
+                        { label: "Tujuan cadangan", value: purposeNames[item.purpose] },
+                        {
+                          label: "Rekening sumber",
+                          value: item.sourceAssetName || `Pool dana ${item.currency}`,
+                        },
+                        ...(item.goalName ? [{ label: "Target terkait", value: item.goalName }] : []),
+                        ...(item.obligationName
+                          ? [{ label: "Kewajiban terkait", value: item.obligationName }]
+                          : []),
+                      ]
+                    : []),
+                  ...(item.kind === "obligation"
+                    ? [
+                        { label: "Tanggal jatuh tempo", value: fmtDay(item.dueOn) },
+                        { label: "Sudah dicadangkan", value: <Amount value={money(item.coveredMinor)} /> },
+                        {
+                          label: "Belum tercakup cadangan",
+                          value: (
+                            <Amount
+                              value={money(item.uncoveredMinor)}
+                              tone={BigInt(item.uncoveredMinor) > 0n ? "negative" : ""}
+                            />
+                          ),
+                        },
+                      ]
+                    : []),
+                  ...(item.note ? [{ label: "Catatan", value: item.note }] : []),
+                ]}
+              />
+              {dailySafe && (
+                <div className="inspector-highlight-box">
+                  <span>Batas Aman Belanja Harian</span>
+                  <strong>{dailySafe} / hari</strong>
+                </div>
+              )}
+            </section>
+
+            {/* Kartu 3: Tindakan Rencana */}
+            <section className="inspector-card inspector-card--actions">
+              <div className="planning-inspector-actions">
+                {archived ? (
+                  <>
+                    <button
+                      type="button"
+                      className="button-primary"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        close();
+                        void reactivate(item);
+                      }}
+                    >
+                      <ArrowCounterClockwise size={14} /> Pulihkan
+                    </button>
+                    <button
+                      type="button"
+                      className="finance-danger"
+                      onClick={() => {
+                        close();
+                        setConfirm({ item, action: "delete" });
+                      }}
+                    >
+                      Hapus Permanen
+                    </button>
+                  </>
+                ) : item.kind === "obligation" ? (
+                  item.status === "open" ? (
+                    <>
+                      <button
+                        type="button"
+                        className="button-primary"
+                        onClick={() => {
+                          close();
+                          setConfirm({ item, action: "settle" });
+                        }}
+                      >
+                        Tandai Selesai
+                      </button>
+                      <button
+                        type="button"
+                        className="finance-secondary"
+                        onClick={() => {
+                          close();
+                          setForm({ kind: item.kind, item });
+                        }}
+                      >
+                        <PencilSimple size={14} /> Ubah
+                      </button>
+                      <button
+                        type="button"
+                        className="finance-secondary"
+                        onClick={() => {
+                          close();
+                          setConfirm({ item, action: "cancel" });
+                        }}
+                      >
+                        Batalkan
+                      </button>
+                      <button
+                        type="button"
+                        className="finance-danger"
+                        onClick={() => {
+                          close();
+                          setConfirm({ item, action: "delete" });
+                        }}
+                      >
+                        Hapus
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="button-primary"
+                        disabled={busy !== null}
+                        onClick={() => {
+                          close();
+                          void reactivate(item);
+                        }}
+                      >
+                        <ArrowCounterClockwise size={14} /> Buka Kembali
+                      </button>
+                      <button
+                        type="button"
+                        className="finance-danger"
+                        onClick={() => {
+                          close();
+                          setConfirm({ item, action: "delete" });
+                        }}
+                      >
+                        Hapus
+                      </button>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="button-primary"
+                      onClick={() => {
+                        close();
+                        setForm({ kind: item.kind, item });
+                      }}
+                    >
+                      <PencilSimple size={14} /> Ubah Rencana
+                    </button>
+                    <button
+                      type="button"
+                      className="finance-secondary"
+                      onClick={() => {
+                        close();
+                        setConfirm({ item, action: "archive" });
+                      }}
+                    >
+                      <Archive size={14} /> {item.kind === "reserve" ? "Lepaskan Cadangan" : "Arsipkan"}
+                    </button>
+                    <button
+                      type="button"
+                      className="finance-danger"
+                      onClick={() => {
+                        close();
+                        setConfirm({ item, action: "delete" });
+                      }}
+                    >
+                      Hapus
+                    </button>
+                  </>
+                )}
+              </div>
+            </section>
+          </div>
+        ),
+      },
+      trigger
+    );
+  }
+
+  function renderSection({ kind, name, description, icon: Icon }: (typeof kinds)[number]) {
+    const filteredRows: PlanningItem[] = (
+      kind === "budget"
+        ? data.budgets
+        : kind === "goal"
+        ? data.goals
+        : kind === "reserve"
+        ? data.reserves
+        : data.obligations
+    ).filter((item) => item.kind === "obligation" || showArchived || item.isActive);
     const sort = sorts[kind];
-    const closed = showArchived ? data.obligations.filter(item => item.status !== "open") : [];
-    const rows: PlanningItem[] = kind === "obligation" ? [
-      ...orderPlanning(data.obligations.filter(item => item.status === "open"),sort.value,today),
-      ...sortTemporal(closed, obligationHistorySort.direction, item => item.settledAt ?? item.cancelledAt ?? item.updatedAt, item => item.id),
-    ] : orderPlanning(filteredRows,sort.value,today);
-    return <section className="surface planning-section" data-kind={kind} key={kind}><SectionHeading title={name} helper={description} icon={<Icon size={21} aria-hidden="true" />}
-      action={<button type="button" className="finance-secondary section-add-action" onClick={() => setForm({ kind })}><Plus size={16} /> Tambah</button>} />
-      <ListToolbar label={`Urutan ${name}`}><ListOrderControl {...sort} options={planningSortOptions[kind]} />
-        {kind === "obligation" && closed.length > 0 && <ListSortControl {...obligationHistorySort} label="Riwayat" />}</ListToolbar>
-      {!rows.length ? <p className="planning-empty">Belum ada {name.toLowerCase()} aktif.</p> : <div className="planning-rows">{rows.map((item) => <PlanRow key={item.id} item={item} today={today}
-        onEdit={(row) => setForm({ kind: row.kind,item: row })} onConfirm={(row,action) => setConfirm({ item: row,action })}
-        onReactivate={(row) => void reactivate(row)} busy={busy} />)}</div>}</section>;
+    const closed = showArchived ? data.obligations.filter((item) => item.status !== "open") : [];
+    const rows: PlanningItem[] =
+      kind === "obligation"
+        ? [
+            ...orderPlanning(
+              data.obligations.filter((item) => item.status === "open"),
+              sort.value,
+              today
+            ),
+            ...sortTemporal(
+              closed,
+              obligationHistorySort.direction,
+              (item) => item.settledAt ?? item.cancelledAt ?? item.updatedAt,
+              (item) => item.id
+            ),
+          ]
+        : orderPlanning(filteredRows, sort.value, today);
+
+    return (
+      <section className="surface planning-section" data-kind={kind} key={kind}>
+        <SectionHeading
+          title={name}
+          helper={description}
+          icon={<Icon size={20} aria-hidden="true" />}
+          action={
+            <button
+              type="button"
+              className="button-primary planning-add-btn"
+              onClick={() => setForm({ kind })}
+            >
+              <Plus size={15} weight="bold" aria-hidden="true" />
+              <span>Tambah</span>
+            </button>
+          }
+        />
+        <ListToolbar label={`Urutan ${name}`}>
+          <ListOrderControl {...sort} options={planningSortOptions[kind]} />
+          {kind === "obligation" && closed.length > 0 && (
+            <ListSortControl {...obligationHistorySort} label="Riwayat" />
+          )}
+        </ListToolbar>
+        {!rows.length ? (
+          <p className="planning-empty">Belum ada {name.toLowerCase()} aktif.</p>
+        ) : (
+          <div className="planning-rows">
+            {rows.map((item) => (
+              <PlanRow
+                key={item.id}
+                item={item}
+                today={today}
+                onSelect={openPlanInspector}
+                onEdit={(row) => setForm({ kind: row.kind, item: row })}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    );
   }
-  return <div className="page planning-page">
-    <header className="page-header"><PageHeading title="Rencana" description="Batas belanja, target, dana yang disisihkan, dan kewajiban, tanpa mengubah saldo aset."
-      actions={<><label className="planning-horizon field"><span>Jangka kewajiban</span><select value={horizon} onChange={(event) => setHorizon(Number(event.target.value) as 7 | 30 | 90)}>
-        <option value={7}>7 hari</option><option value={30}>30 hari</option><option value={90}>90 hari</option></select></label>
-        <ExportMenuButton dataset="planning" label="Ekspor Rencana" /></>} /></header>
-    <div className="planning-position-grid">{sortNamed(positions, entry => entry.currency, entry => entry.currency).map((entry) => {
-      const total = planningPosition(entry.eligibleMinor,entry.currency,data.reserves.filter((row) => row.currency === entry.currency).map((row) => ({
-        currency: row.currency,amountMinor: row.amountMinor,isActive: row.isActive,goalId: row.goalId,obligationId: row.obligationId })),
-      data.obligations.filter((row) => row.currency === entry.currency).map((row) => ({
-        id: row.id,currency: row.currency,amountMinor: row.amountMinor,dueOn: row.dueOn,status: row.status,note: row.note })),end,creditDebt[entry.currency]?.[horizon] ?? "0");
-      const money = (value: string) => formatMinor(value, entry.currency, entry.exponent);
-      const tone = (value: string) => (BigInt(value) < 0n ? "negative" : "") as "" | "negative";
-      return <div className="planning-position" key={entry.currency} data-warning={BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n}>
-        <div className="ui-kpis" aria-label={`Ringkasan rencana ${entry.currency}`}>
-          <Kpi title="Dapat digunakan" icon={Wallet} tone="info" value={money(total.spendableMinor)} valueTone={tone(total.spendableMinor)} note={<>Saldo dapat dipakai {money(entry.eligibleMinor)} − cadangan</>} />
-          <Kpi title={`Setelah kewajiban rencana ${horizon} hari`} icon={CalendarCheck} tone="warning" value={money(total.availableMinor)} valueTone={tone(total.availableMinor)} note={horizon === 30 ? "Sama dengan Dana siap pakai di Beranda" : "Termasuk tagihan kredit dalam jangka ini"} />
-          <Kpi title="Cadangan aktif" icon={ShieldCheck} tone="positive" value={money(total.reservedMinor)} note={<>Likuid {money(entry.liquidMinor)} · {entry.currency}</>} />
-          <Kpi title="Kewajiban belum tercakup" icon={CalendarBlank} tone="negative" value={money(total.uncoveredMinor)} valueTone={BigInt(total.uncoveredMinor) > 0n ? "negative" : ""} note={<>Jatuh tempo {money(total.dueMinor)}, tercakup {money(total.coveredMinor)}</>} />
+
+  const primaryPos = positions[0];
+  const primaryTotal = primaryPos
+    ? planningPosition(
+        primaryPos.eligibleMinor,
+        primaryPos.currency,
+        data.reserves
+          .filter((row) => row.currency === primaryPos.currency)
+          .map((row) => ({
+            currency: row.currency,
+            amountMinor: row.amountMinor,
+            isActive: row.isActive,
+            goalId: row.goalId,
+            obligationId: row.obligationId,
+          })),
+        data.obligations
+          .filter((row) => row.currency === primaryPos.currency)
+          .map((row) => ({
+            id: row.id,
+            currency: row.currency,
+            amountMinor: row.amountMinor,
+            dueOn: row.dueOn,
+            status: row.status,
+            note: row.note,
+          })),
+        end,
+        creditDebt[primaryPos.currency]?.[horizon] ?? "0"
+      )
+    : null;
+
+  const totalBudgetLimitBig = data.budgets
+    .filter((b) => b.isActive && b.currency === (primaryPos?.currency ?? "IDR"))
+    .reduce((sum, b) => sum + BigInt(b.limitMinor), 0n);
+  const totalBudgetSpentBig = data.budgets
+    .filter((b) => b.isActive && b.currency === (primaryPos?.currency ?? "IDR"))
+    .reduce((sum, b) => sum + BigInt(b.spentMinor), 0n);
+  const totalBudgetRemainingBig = totalBudgetLimitBig - totalBudgetSpentBig;
+  const pCurr = primaryPos?.currency ?? "IDR";
+  const pExp = primaryPos?.exponent ?? 0;
+
+  const heading = (
+    <PageHeading
+      title="Perencanaan"
+      summary={
+        <>
+          <span>
+            Plafon Anggaran:{" "}
+            <strong>{formatMinor(totalBudgetLimitBig.toString(), pCurr, pExp)}</strong>
+          </span>
+          <span aria-hidden="true">|</span>
+          <span>
+            Sisa Plafon:{" "}
+            <strong>{formatMinor(totalBudgetRemainingBig.toString(), pCurr, pExp)}</strong>
+          </span>
+        </>
+      }
+      actions={
+        <>
+          <label className="planning-horizon-inline">
+            <span>Horizon:</span>
+            <select
+              value={horizon}
+              onChange={(event) => setHorizon(Number(event.target.value) as 7 | 30 | 90)}
+              aria-label="Jangka kewajiban"
+            >
+              <option value={7}>7 Hari</option>
+              <option value={30}>30 Hari</option>
+              <option value={90}>90 Hari</option>
+            </select>
+          </label>
+          <ExportMenuButton dataset="planning" label="Ekspor Rencana" />
+        </>
+      }
+    />
+  );
+
+  const sharedSummaryStrip = (
+    <div className="planning-position-grid">
+      {sortNamed(
+        positions,
+        (entry) => entry.currency,
+        (entry) => entry.currency
+      ).map((entry) => {
+        const total = planningPosition(
+          entry.eligibleMinor,
+          entry.currency,
+          data.reserves
+            .filter((row) => row.currency === entry.currency)
+            .map((row) => ({
+              currency: row.currency,
+              amountMinor: row.amountMinor,
+              isActive: row.isActive,
+              goalId: row.goalId,
+              obligationId: row.obligationId,
+            })),
+          data.obligations
+            .filter((row) => row.currency === entry.currency)
+            .map((row) => ({
+              id: row.id,
+              currency: row.currency,
+              amountMinor: row.amountMinor,
+              dueOn: row.dueOn,
+              status: row.status,
+              note: row.note,
+            })),
+          end,
+          creditDebt[entry.currency]?.[horizon] ?? "0"
+        );
+        const money = (value: string) => formatMinor(value, entry.currency, entry.exponent);
+        const hasWarning =
+          BigInt(total.spendableMinor) < 0n || BigInt(total.availableMinor) < 0n;
+        return (
+          <div className="planning-position" key={entry.currency} data-warning={hasWarning}>
+            <section
+              className="planning-summary-strip"
+              aria-label={`Ringkasan rencana ${entry.currency}`}
+            >
+              <div className="planning-summary-cell">
+                <span className="planning-summary-label">Dapat digunakan</span>
+                <strong
+                  className={`planning-summary-val ${
+                    BigInt(total.spendableMinor) < 0n ? "pnl-negative" : ""
+                  }`}
+                >
+                  {money(total.spendableMinor)}
+                </strong>
+                <small className="planning-summary-sub">
+                  Saldo dipakai {money(entry.eligibleMinor)} − cadangan
+                </small>
+              </div>
+              <div className="planning-summary-cell">
+                <span className="planning-summary-label">
+                  Setelah kewajiban {horizon} hari
+                </span>
+                <strong
+                  className={`planning-summary-val ${
+                    BigInt(total.availableMinor) < 0n ? "pnl-negative" : ""
+                  }`}
+                >
+                  {money(total.availableMinor)}
+                </strong>
+                <small className="planning-summary-sub">
+                  {horizon === 30
+                    ? "Sama dengan Dana siap pakai Beranda"
+                    : "Termasuk tagihan kredit"}
+                </small>
+              </div>
+              <div className="planning-summary-cell">
+                <span className="planning-summary-label">Cadangan aktif</span>
+                <strong className="planning-summary-val pnl-positive">
+                  {money(total.reservedMinor)}
+                </strong>
+                <small className="planning-summary-sub">
+                  Likuid {money(entry.liquidMinor)} · {entry.currency}
+                </small>
+              </div>
+              <div className="planning-summary-cell">
+                <span className="planning-summary-label">Kewajiban belum tercakup</span>
+                <strong
+                  className={`planning-summary-val ${
+                    BigInt(total.uncoveredMinor) > 0n ? "pnl-negative" : ""
+                  }`}
+                >
+                  {money(total.uncoveredMinor)}
+                </strong>
+                <small className="planning-summary-sub">
+                  Jatuh tempo {money(total.dueMinor)} · tercakup {money(total.coveredMinor)}
+                </small>
+              </div>
+            </section>
+            {hasWarning && (
+              <p className="ui-notice" data-tone="negative">
+                Komitmen melebihi dana yang dapat digunakan.
+              </p>
+            )}
+          </div>
+        );
+      })}
+      <div className="planning-controls-row">
+        <label className="finance-history-toggle">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.target.checked)}
+          />{" "}
+          Tampilkan rencana yang diarsipkan atau dilepaskan
+        </label>
+      </div>
+    </div>
+  );
+
+  // 3 Functional Tabs (No Redundant "Semua" Tab!)
+  const tabs = [
+    {
+      id: "budgets",
+      label: "Anggaran Belanja",
+      panel: (
+        <div className="planning-sections planning-sections--single">
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "budget").map(renderSection)}
+          </div>
         </div>
-        {(BigInt(total.spendableMinor)<0n || BigInt(total.availableMinor)<0n) && <p className="ui-notice" data-tone="negative">Komitmen melebihi dana yang dapat digunakan.</p>}
-      </div>;
-    })}</div>
-    {!positions.length && <p className="planning-intro">Belum ada aset atau komitmen dalam mata uang yang tercatat.</p>}
-    <details className="context-help"><summary>Cara menghitung</summary><p className="planning-intro supporting-prose supporting-prose--section">Setiap mata uang dihitung terpisah. Hanya cadangan aktif yang mengurangi dana dapat digunakan; kewajiban terbuka yang jatuh tempo mengurangi sisanya setelah memperhitungkan cadangan terkait. Saldo aset tidak berubah.</p></details>
-    {empty ? <section className="surface planning-first-run"><h2>Belum ada perencanaan</h2><p>Pilih yang paling berguna sekarang. Perencanaan tidak wajib untuk menggunakan moneytor.</p>
-      <div className="planning-first-actions">{kinds.map((row) => <button type="button" className="finance-secondary" key={row.kind} onClick={() => setForm({ kind: row.kind })}><Plus size={16} /> {row.kind === "reserve" ? "Sisihkan dana" : row.kind === "obligation" ? "Tambah kewajiban" : `Buat ${row.name.toLowerCase()}`}</button>)}</div></section> : <>
-      <label className="finance-history-toggle planning-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan atau dilepaskan</label>
-      <div className="planning-sections">
-        <div className="planning-column">{kinds.filter(({ kind }) => kind === "budget" || kind === "reserve").map(renderSection)}</div>
-        <div className="planning-column">{kinds.filter(({ kind }) => kind === "goal" || kind === "obligation").map(renderSection)}</div>
-      </div></>}
-    {error && <p className="finance-error" role="alert">{error}</p>}
-    <LabelManager data={data} />
-    {form && <PlanningForm key={form.item?.id ?? form.kind} kind={form.kind} initial={form.item} data={data} sources={sources} positions={positions} today={today} onClose={() => setForm(null)} />}
-    {confirm && <ConfirmAction key={confirm.item.id + confirm.action} item={confirm.item} action={confirm.action} onClose={() => setConfirm(null)} />}
-  </div>;
+      ),
+    },
+    {
+      id: "reserves",
+      label: "Dana Cadangan & Target",
+      panel: (
+        <div className="planning-sections">
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "reserve").map(renderSection)}
+          </div>
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "goal").map(renderSection)}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "obligations",
+      label: "Tagihan & Kewajiban Rutin",
+      panel: (
+        <div className="planning-sections planning-sections--single">
+          <div className="planning-column">
+            {kinds.filter(({ kind }) => kind === "obligation").map(renderSection)}
+          </div>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="page planning-page">
+      <PageTabs
+        label="Lembar Kerja Perencanaan"
+        heading={heading}
+        shared={sharedSummaryStrip}
+        tabs={tabs}
+      />
+
+      {error && (
+        <p className="finance-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <LabelManager data={data} />
+
+      <ExcelStatusBar
+        rowCount={
+          all.filter((item) =>
+            item.kind === "obligation" ? item.status === "open" : item.isActive
+          ).length
+        }
+        totalIn={
+          primaryTotal && primaryPos
+            ? formatMinor(primaryTotal.reservedMinor, primaryPos.currency, primaryPos.exponent)
+            : undefined
+        }
+        totalOut={
+          primaryTotal && primaryPos
+            ? formatMinor(primaryTotal.dueMinor, primaryPos.currency, primaryPos.exponent)
+            : undefined
+        }
+        customNetLabel="Dana Siap Pakai"
+        customNetValue={
+          primaryTotal && primaryPos
+            ? formatMinor(primaryTotal.availableMinor, primaryPos.currency, primaryPos.exponent)
+            : undefined
+        }
+        isNetNegative={primaryTotal ? BigInt(primaryTotal.availableMinor) < 0n : false}
+      />
+
+      {form && (
+        <PlanningForm
+          key={form.item?.id ?? form.kind}
+          kind={form.kind}
+          initial={form.item}
+          data={data}
+          sources={sources}
+          positions={positions}
+          today={today}
+          onClose={() => setForm(null)}
+        />
+      )}
+
+      {confirm && (
+        <ConfirmAction
+          key={confirm.item.id + confirm.action}
+          item={confirm.item}
+          action={confirm.action}
+          onClose={() => setConfirm(null)}
+        />
+      )}
+    </div>
+  );
 }

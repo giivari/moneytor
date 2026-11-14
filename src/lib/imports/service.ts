@@ -319,6 +319,9 @@ async function buildStagedPreview(
   };
 }
 
+// Jenis biaya bawaan "Biaya Admin" (seed migrasi 002) untuk kolom biaya pada baris pengeluaran impor.
+const IMPORT_EXPENSE_FEE_TYPE_ID = "60000000-0000-4000-8000-000000000001";
+
 export async function previewImportFile(input: {
   fileName: string;
   contentBase64: string;
@@ -366,8 +369,13 @@ export async function commitImportBatch(input: {
       imported_count: number;
       skipped_count: number;
       created_categories_count: number;
-    }>("SELECT id, imported_count, skipped_count, created_categories_count FROM import_batches WHERE idempotency_key = $1", [idempotencyKey])).rows[0];
+      file_sha256: string;
+    }>("SELECT id, imported_count, skipped_count, created_categories_count, file_sha256 FROM import_batches WHERE idempotency_key = $1", [idempotencyKey])).rows[0];
     if (prior) {
+      // The same key must not silently return an old batch for a different file.
+      if ((await buildStagedPreview(client, input)).fileSha256 !== prior.file_sha256) {
+        throw new ImportValidationError("Kunci permintaan sudah dipakai untuk berkas lain.");
+      }
       return {
         batchId: prior.id,
         importedCount: prior.imported_count,
@@ -456,6 +464,8 @@ export async function commitImportBatch(input: {
           amountMinor: row.amountMinor!,
           sourceAssetId: row.resolvedSourceAssetId!,
           categoryId,
+          // Kolom biaya pada baris pengeluaran dibukukan sebagai charge, bukan dibuang.
+          charges: row.feeMinor && BigInt(row.feeMinor) > 0n ? [{ typeId: IMPORT_EXPENSE_FEE_TYPE_ID, amountMinor: row.feeMinor }] : undefined,
           occurredAt: row.occurredAt!,
           note: row.note || undefined,
         };

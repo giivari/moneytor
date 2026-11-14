@@ -1,3 +1,5 @@
+import { BodyTooLargeError, boundedText } from "@/lib/http/bounded-text";
+import { publicMessage } from "@/lib/http/public-error";
 import { NextRequest, NextResponse } from "next/server";
 import { assertRequestOrigin } from "@/lib/auth/http";
 import { currentOwnerSession } from "@/lib/auth/session";
@@ -61,7 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Gagal mengekspor data." }, 500);
+    return json({ error: publicMessage(error, "Gagal mengekspor data.") }, 500);
   }
 }
 
@@ -74,9 +76,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!request.headers.get("content-type")?.startsWith("application/json")) {
       return json({ error: "Format permintaan tidak valid." }, 400);
     }
-    const rawBody = await request.text();
-    if (rawBody.length > 10 * 1024 * 1024) {
-      return json({ error: "Ukuran file workbook terlalu besar." }, 413);
+    let rawBody: string;
+    try { rawBody = await boundedText(request, 10 * 1024 * 1024); }
+    catch (error) {
+      if (error instanceof BodyTooLargeError) return json({ error: "Ukuran file workbook terlalu besar." }, 413);
+      throw error;
     }
     const body = JSON.parse(rawBody) as Record<string, unknown>;
     const { operation } = await params;
@@ -106,6 +110,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return json({ error: "Operasi tidak tersedia." }, 404);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Permintaan migrasi gagal diproses." }, 400);
+    return json({ error: publicMessage(error, "Permintaan migrasi gagal diproses.") }, 400);
   }
 }

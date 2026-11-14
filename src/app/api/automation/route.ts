@@ -1,3 +1,4 @@
+import { resetReconcileThrottle } from "@/lib/automation/reconcile";
 import { assessAllocation, confirmAllocation } from "@/lib/automation/allocation-service";
 import { reconcileAllAutomation } from "@/lib/automation/reconcile";
 import { acknowledgeAutomationActivity, AutomationReviewError } from "@/lib/automation/review-service";
@@ -70,5 +71,8 @@ export async function POST(request: NextRequest) {
     return json({ ok:true });
   } catch (error) {
     return json({ error: error instanceof AutomationReviewError || error instanceof AllocationError || error instanceof AutomationError || error instanceof IncomeEventError || error instanceof ComposableError ? error.message : "Perubahan otomatisasi gagal. Periksa data dan coba lagi." },400);
+  } finally {
+    // Mutations change what automation must reconcile; the next page navigation must not be throttled away.
+    resetReconcileThrottle();
   }
 }

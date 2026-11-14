@@ -21,5 +21,7 @@ export function inputToMinor(raw: string, exponent: number): string {
 export function minorToInput(raw: string, exponent: number): string {
   const value = BigInt(raw);
   const scale = 10n ** BigInt(exponent);
-  return exponent ? `${value / scale}.${(value % scale).toString().padStart(exponent, "0")}` : value.toString();
+  if (!exponent) return value.toString();
+  const abs = value < 0n ? -value : value;
+  return `${value < 0n ? "-" : ""}${abs / scale}.${(abs % scale).toString().padStart(exponent, "0")}`;
 }

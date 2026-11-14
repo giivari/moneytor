@@ -1,3 +1,4 @@
+import { resetReconcileThrottle } from "@/lib/automation/reconcile";
 import { NextRequest, NextResponse } from "next/server";
 import { assertRequestOrigin, boundedBody } from "@/lib/auth/http";
 import { currentOwnerSession } from "@/lib/auth/session";
@@ -78,7 +79,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ]);
     return json({ assets, currencies: currencies.rows.map((row) => ({ code: row.code, exponent: row.minor_unit_exponent })),
       catalogs: { providers, paymentNetworks, assetTypes, assetGroups, transactionCategories, chargeTypes } });
-  } catch (error) { return json({ error: error instanceof OpeningCorrectionError ? error.message : "Data belum dapat dimuat" }, 500); }
+  } catch (error) {
+    if (error instanceof OpeningCorrectionError) return json({ error: error.message }, /tidak ditemukan/i.test(error.message) ? 404 : 400);
+    return json({ error: "Data belum dapat dimuat" }, 500);
+  }
 }
 export async function POST(request: NextRequest, { params }: { params: Promise<{ operation: string }> }) {
   try {
@@ -92,7 +96,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (opening < 0n) throw new Error("Negative opening");
       const fields = assetFields(body);
       const id = await insertAssetWithOpening({ ...fields, assetClass: fields.assetClass ?? "asset", currency: str(body.currency, 3),
-        openingAmountMinor: opening, openingEffectiveAt: new Date(str(body.openingEffectiveAt, 40)) });
+        openingAmountMinor: opening, openingEffectiveAt: new Date(str(body.openingEffectiveAt, 40)) },
+        body.idempotencyKey === undefined ? undefined : str(body.idempotencyKey, 36));
       return json({ id });
     }
     if (operation === "asset-update") {
@@ -147,5 +152,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     if (error instanceof LifecycleError || error instanceof OpeningCorrectionError) return json({ error: error.message }, 400);
     return json({ error: "Perubahan tidak dapat disimpan. Periksa data dan coba lagi." }, 400);
+  } finally {
+    // Mutations change what automation must reconcile; the next page navigation must not be throttled away.
+    resetReconcileThrottle();
   }
 }

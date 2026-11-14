@@ -21,7 +21,13 @@ export type CurrencyBalances = {
 
 export type InvestmentMarketTotal = Readonly<{ currency: string; exponent: number; marketMinor: string; unpricedCount: number }>;
 
-/** Credit bills of one active credit account that fall due on or before `throughDay` (current bill plus the next one when it is inside). */
+/**
+ * Credit debt of one active credit account that counts against spendable funds within a horizon (the single definition behind
+ * "Dana siap pakai" on Beranda and Rencana):
+ * - the current bill is ALWAYS counted: it is already billed and must be paid whatever the horizon is (tests/debt-activities-db.test.mjs);
+ * - the next bill is counted only when its own due date is on or before `throughDay`.
+ * `creditBillsDue` (home-briefing.ts) merely lists bills inside the horizon for display; it never feeds the funds formula.
+ */
 export function creditDebtDue(asset: FinanceAsset, throughDay: string, now: Date = new Date()): bigint {
   if (!asset.isActive || !isCreditAsset(asset)) return 0n;
   const bills = computeCreditBills(asset, now);

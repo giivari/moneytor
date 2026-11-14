@@ -53,11 +53,32 @@ async function activeReference(client: PoolClient, table: string, id: string): P
 }
 
 /** Original opening is immutable; corrections have their own append-only history. */
-export async function insertAssetWithOpening(input: NewAsset): Promise<string> {
+/**
+ * With `idempotencyKey` a repeated request returns the asset created the first time (same payload) instead of a second asset with
+ * a second opening balance; the same key with a different payload is rejected.
+ */
+export async function insertAssetWithOpening(input: NewAsset, idempotencyKey?: string): Promise<string> {
   await requireOwnerSession();
-  const id = await inDatabaseTransaction((client) => insertAssetOnClient(client, input));
+  if (idempotencyKey !== undefined) assertUuid(idempotencyKey);
+  let replayed = false;
+  const id = await inDatabaseTransaction(async (client) => {
+    if (idempotencyKey === undefined) return insertAssetOnClient(client, input);
+    const requestHash = createHash("sha256").update(JSON.stringify({ ...input, openingAmountMinor: input.openingAmountMinor.toString(),
+      openingEffectiveAt: input.openingEffectiveAt.toISOString() })).digest("hex");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [idempotencyKey]);
+    const prior = await client.query<{ request_hash: string; asset_id: string }>(
+      "SELECT request_hash, asset_id FROM asset_create_requests WHERE idempotency_key=$1", [idempotencyKey]);
+    if (prior.rows[0]) {
+      if (prior.rows[0].request_hash !== requestHash) throw new Error("Kunci permintaan sudah digunakan untuk aset lain");
+      replayed = true;
+      return prior.rows[0].asset_id;
+    }
+    const created = await insertAssetOnClient(client, input);
+    await client.query("INSERT INTO asset_create_requests(idempotency_key, request_hash, asset_id) VALUES($1,$2,$3)", [idempotencyKey, requestHash, created]);
+    return created;
+  });
   const terms = parseAssetTerms(input.note);
-  if (terms.autoPostAdminFee || terms.adminRuleId) {
+  if (!replayed && (terms.autoPostAdminFee || terms.adminRuleId)) {
     await syncAssetAdminAutomation(id, null);
   }
   return id;
@@ -224,12 +245,18 @@ export async function updateAsset(id: string, input: Omit<NewAsset, "currency" |
 export async function archiveAsset(id: string): Promise<void> {
   await requireOwnerSession();
   assertUuid(id);
-  const result = await database().query<{ id: string; note: string | null }>(
-    "UPDATE assets SET is_active=false WHERE id=$1 AND is_active RETURNING id, note",
-    [id],
-  );
-  if (!result.rowCount) throw new Error("Aset aktif tidak ditemukan");
-  const terms = parseAssetTerms(result.rows[0]?.note);
+  const note = await inDatabaseTransaction(async (client) => {
+    const locked = await client.query<{ note: string | null }>("SELECT note FROM assets WHERE id=$1 AND is_active FOR UPDATE", [id]);
+    if (!locked.rowCount) throw new Error("Aset aktif tidak ditemukan");
+    // An account that still carries scheduled bills or backs an active planning reserve must not silently disappear.
+    const scheduled = await client.query("SELECT 1 FROM credit_installments WHERE asset_id=$1 AND status='scheduled' LIMIT 1", [id]);
+    if (scheduled.rowCount) throw new Error("Akun masih memiliki cicilan terjadwal. Selesaikan atau batalkan dulu sebelum mengarsipkan.");
+    const reserved = await client.query("SELECT 1 FROM planning_reserves WHERE source_asset_id=$1 AND is_active LIMIT 1", [id]);
+    if (reserved.rowCount) throw new Error("Akun masih menjadi sumber cadangan Perencanaan aktif. Lepaskan cadangannya dulu.");
+    await client.query("UPDATE assets SET is_active=false WHERE id=$1", [id]);
+    return locked.rows[0].note;
+  });
+  const terms = parseAssetTerms(note);
   if (terms.adminRuleId) {
     await pauseAdminRuleIfPresent(terms.adminRuleId);
   }
@@ -325,35 +352,14 @@ async function pauseAdminRuleIfPresent(ruleId: string): Promise<void> {
   }
 }
 
-async function ensureAdminExpenseCategoryId(): Promise<string | undefined> {
-  const existing = await database().query<{ id: string }>(
+/** Kategori biaya admin = entri bawaan hasil seed migrasi 019 (system_key); tidak pernah mengambil alih kategori milik pemilik. */
+async function adminExpenseCategoryId(): Promise<string | undefined> {
+  const found = await database().query<{ id: string }>(
     `SELECT id FROM transaction_categories
-     WHERE applies_to = 'expense' AND is_active
-       AND (system_key = 'bank_admin_fee' OR display_name ~* '^(biaya\\s*admin|biaya\\s*admin\\s*rekening|biaya\\s*bank)$')
-     ORDER BY is_builtin DESC, created_at ASC LIMIT 1`,
+     WHERE applies_to = 'expense' AND is_active AND system_key IN ('fees_bank_admin', 'bank_admin_fee')
+     ORDER BY (system_key = 'fees_bank_admin') DESC, created_at ASC, id ASC LIMIT 1`,
   );
-  if (existing.rows[0]?.id) {
-    await database().query(
-      "UPDATE transaction_categories SET system_key = 'bank_admin_fee', is_builtin = true WHERE id = $1 AND (system_key IS NULL OR system_key = '')",
-      [existing.rows[0].id],
-    );
-    return existing.rows[0].id;
-  }
-  const createdId = randomUUID();
-  const inserted = await database().query<{ id: string }>(
-    `INSERT INTO transaction_categories (id, display_name, applies_to, is_builtin, system_key)
-     VALUES ($1, 'Biaya Admin Rekening', 'expense', true, 'bank_admin_fee')
-     ON CONFLICT DO NOTHING
-     RETURNING id`,
-    [createdId],
-  );
-  if (inserted.rows[0]?.id) return inserted.rows[0].id;
-  const fallback = await database().query<{ id: string }>(
-    `SELECT id FROM transaction_categories
-     WHERE applies_to = 'expense' AND is_active
-     ORDER BY created_at ASC LIMIT 1`,
-  );
-  return fallback.rows[0]?.id;
+  return found.rows[0]?.id;
 }
 
 export async function syncAssetAdminAutomation(
@@ -404,7 +410,7 @@ export async function syncAssetAdminAutomation(
         ? addDays(today, 1)
         : today;
 
-    const categoryId = await ensureAdminExpenseCategoryId();
+    const categoryId = await adminExpenseCategoryId();
     const ruleInput = {
       title: `Biaya admin ${assetRow.display_name}`.slice(0, 120),
       kind: "expense" as const,

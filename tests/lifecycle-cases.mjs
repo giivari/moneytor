@@ -49,8 +49,16 @@ export async function lifecycleCases(t, { admin, pool, service: s, snapshot, sou
       const builtin = (await catalogs.listCatalog(catalog)).find((r) => r.isBuiltIn);
       assert.ok(builtin);
       await assert.rejects(catalogs.deleteCustomCatalogItem(catalog, builtin.id), /bawaan/);
-      await assert.rejects(catalogs.archiveCustomCatalogItem(catalog, builtin.id));
-      await assert.rejects(catalogs.restoreCustomCatalogItem(catalog, builtin.id));
+      if (catalog === "transactionCategories") {
+        // Built-in categories may be deactivated and restored by the owner (docs/CATALOG.md), but never deleted.
+        await catalogs.archiveCustomCatalogItem(catalog, builtin.id);
+        assert.equal((await catalogs.listCatalog(catalog, true)).find((r) => r.id === builtin.id).isActive, false);
+        await catalogs.restoreCustomCatalogItem(catalog, builtin.id);
+        assert.equal((await catalogs.listCatalog(catalog, true)).find((r) => r.id === builtin.id).isActive, true);
+      } else {
+        await assert.rejects(catalogs.archiveCustomCatalogItem(catalog, builtin.id));
+        await assert.rejects(catalogs.restoreCustomCatalogItem(catalog, builtin.id));
+      }
     });
   }
   await t.test("all referenced catalogs resist deletion, including voided history and portfolio-only providers", async () => {

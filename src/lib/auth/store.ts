@@ -1,5 +1,5 @@
 import "server-only";
-import { randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import { database, inDatabaseTransaction } from "../db/pool.ts";
 import { hashToken, validToken, sessionIsValid, randomToken, recoveryCodes, recoveryHash, SESSION_SECONDS } from "./primitives.ts";
@@ -32,7 +32,11 @@ export async function resolveSession(token: string | undefined): Promise<OwnerSe
       WHERE s.token_hash=$1 AND EXISTS (SELECT 1 FROM app_owner_state WHERE initialized_at IS NOT NULL)`, [tokenHash]);
   const row = result.rows[0];
   if (!row || !sessionIsValid(row)) return null;
-  // No cookie extension: idle time slides, absolute seven-day expiry never does.
+  // Avoid disk write on every page navigation if last_seen_at was updated within the last 5 minutes.
+  const ageMs = Date.now() - new Date(row.last_seen_at).getTime();
+  if (ageMs < 5 * 60 * 1000) {
+    return { tokenHash, credentialId: row.credential_id, createdAt: row.created_at };
+  }
   const touched = await database().query(`UPDATE owner_sessions SET last_seen_at=now()
     WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>now()
     AND last_seen_at>now()-interval '24 hours'
@@ -61,19 +65,58 @@ export async function replaceRecoveryCodes(client: PoolClient): Promise<string[]
 export async function event(client: PoolClient, name: string) {
   await client.query("INSERT INTO security_events(event) VALUES($1)", [name]);
 }
-export async function limitAttempts(bucket: "bootstrap" | "login" | "recovery" | "security") {
-  const limit = { bootstrap: 10, login: 60, recovery: 10, security: 60 }[bucket];
+export type RateKind = "bootstrap" | "login" | "recovery" | "security";
+const WINDOW = "interval '15 minutes'";
+// Batas kegagalan per klien dalam 15 menit; sesi aktif dihitung semua permintaannya di bucket terpisah.
+const FAILURE_LIMIT: Record<RateKind, number> = { bootstrap: 10, login: 20, recovery: 10, security: 20 };
+const SESSION_LIMIT = 120;
+
+async function dailySalt(): Promise<Buffer> {
+  await database().query("INSERT INTO auth_rate_salts(day,salt) VALUES((now() AT TIME ZONE 'UTC')::date,$1) ON CONFLICT DO NOTHING", [randomBytes(32)]);
+  const result = await database().query<{ salt: Buffer }>("SELECT salt FROM auth_rate_salts WHERE day=(now() AT TIME ZONE 'UTC')::date");
+  return result.rows[0].salt;
+}
+function clientAddress(headers: Headers): string {
+  return headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip")?.trim() || "unknown";
+}
+/** Bucket klien: HMAC(IP) dengan garam harian; IP mentah tidak pernah disimpan atau di-log. */
+export async function clientBucket(kind: RateKind, headers: Headers): Promise<string> {
+  const digest = createHmac("sha256", await dailySalt()).update(clientAddress(headers)).digest("hex").slice(0, 32);
+  return `${kind}:${digest}`;
+}
+export function sessionBucket(session: OwnerSession): string {
+  return `session:${createHash("sha256").update(session.tokenHash).digest("hex").slice(0, 32)}`;
+}
+async function currentAttempts(bucket: string): Promise<number> {
+  const result = await database().query<{ attempts: number }>(`SELECT attempts FROM auth_rate_limits WHERE bucket=$1 AND window_start>=now()-${WINDOW}`, [bucket]);
+  return result.rows[0]?.attempts ?? 0;
+}
+async function addAttempt(bucket: string): Promise<number> {
   const result = await database().query<{ attempts: number }>(`INSERT INTO auth_rate_limits(bucket,window_start,attempts) VALUES($1,now(),1)
     ON CONFLICT(bucket) DO UPDATE SET
-    attempts=CASE WHEN auth_rate_limits.window_start<now()-interval '15 minutes' THEN 1 ELSE auth_rate_limits.attempts+1 END,
-    window_start=CASE WHEN auth_rate_limits.window_start<now()-interval '15 minutes' THEN now() ELSE auth_rate_limits.window_start END
+    attempts=CASE WHEN auth_rate_limits.window_start<now()-${WINDOW} THEN 1 ELSE auth_rate_limits.attempts+1 END,
+    window_start=CASE WHEN auth_rate_limits.window_start<now()-${WINDOW} THEN now() ELSE auth_rate_limits.window_start END
     RETURNING attempts`, [bucket]);
-  if (result.rows[0].attempts > limit) deny();
-  // Bounded retention, no IP identifiers or request payload logging.
+  return result.rows[0].attempts;
+}
+/** Menolak bila bucket klien sudah melewati batas kegagalan; tidak menambah hitungan. */
+export async function assertFailureBudget(bucket: string, kind: RateKind) {
+  if (await currentAttempts(bucket) >= FAILURE_LIMIT[kind]) deny();
+}
+export async function recordFailure(bucket: string) { await addAttempt(bucket); }
+export async function clearAttempts(bucket: string) { await database().query("DELETE FROM auth_rate_limits WHERE bucket=$1", [bucket]); }
+/** Sesi aktif: setiap permintaan dihitung di bucket sesi, terpisah dari bucket klien tak terautentikasi. */
+export async function consumeSessionBudget(session: OwnerSession) {
+  if (await addAttempt(sessionBucket(session)) > SESSION_LIMIT) deny();
+}
+/** Retensi berbatas; dipanggil pada login/pemulihan yang berhasil, bukan di setiap percobaan. */
+export async function pruneAuthData() {
   await database().query("DELETE FROM auth_challenges WHERE expires_at<now()");
   await database().query("DELETE FROM recovery_grants WHERE expires_at<now()");
   await database().query("DELETE FROM owner_sessions WHERE expires_at<now()-interval '7 days'");
   await database().query("DELETE FROM security_events WHERE created_at<now()-interval '90 days'");
+  await database().query(`DELETE FROM auth_rate_limits WHERE window_start<now()-interval '1 day'`);
+  await database().query("DELETE FROM auth_rate_salts WHERE day<(now() AT TIME ZONE 'UTC')::date - 1");
 }
 export async function consumeChallenge(binding: string | undefined, purpose: string) {
   if (!validToken(binding)) deny();

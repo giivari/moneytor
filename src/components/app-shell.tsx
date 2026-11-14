@@ -7,7 +7,9 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import { CalendarCheck, ChartBar, CreditCard, DotsThree, GearSix, House, Rows, TrendUp, Wallet, type IconProps } from "@phosphor-icons/react";
 import { BrandIdentity } from "./brand-identity";
 import { FeatureOnboarding } from "./feature-onboarding";
+import { GlobalSearch } from "./global-search";
 import { PrivacyAmountToggle } from "./privacy-toggle";
+import { ThemeToggle } from "./theme-toggle";
 import { QuickAdd } from "@/components/quick-add";
 import { LoadingIndicator } from "./loading-indicator";
 import { useFinanceFeedback } from "./finance-feedback";
@@ -69,13 +71,14 @@ function MoreMenu({ current }: { current: ModuleArea | null }) {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  const { refreshing, navigating, routeSkeleton, loading } = useFinanceFeedback();
+  const { refreshing, navigating, loading } = useFinanceFeedback();
   const { entry } = useInspector();
   const current = activeArea(usePathname());
   return <div className="app-shell" data-inspector={entry ? "open" : "closed"}>
     <header className="app-header" data-loading={loading}>
       <Link href="/" className="brand" aria-label="moneytor, ke Beranda"><BrandIdentity /></Link>
-      <div className="header-actions"><PrivacyAmountToggle /><FeatureOnboarding /><QuickAdd /></div>
+      <GlobalSearch />
+      <div className="header-actions"><PrivacyAmountToggle /><ThemeToggle /><FeatureOnboarding /><QuickAdd /></div>
     </header>
 
     <nav className="app-rail" aria-label="Navigasi utama">
@@ -84,14 +87,6 @@ function Shell({ children }: { children: React.ReactNode }) {
     </nav>
 
     <main id="main-content" className="main-content" aria-busy={refreshing || navigating}>
-      {(refreshing || (navigating && !routeSkeleton)) && (
-        <div className="page finance-status-shell">
-          <div className="route-loading-status finance-refresh-status" role="status">
-            <LoadingIndicator>{refreshing ? "Memperbarui data…" : "Menyiapkan halaman…"}</LoadingIndicator>
-            <span>{refreshing ? "Konten sedang diperbarui." : "Konten sedang dimuat."}</span>
-          </div>
-        </div>
-      )}
       {children}
     </main>
 

@@ -39,6 +39,11 @@ export type CreditNoteState = Readonly<{
 /** Prefix of planning reminders whose amounts are already inside a credit account's bills. */
 export const CREDIT_REMINDER_NOTE_PREFIX = "Pengingat tagihan kredit:";
 
+/** Single default for a missing statement cutoff, shared by parsing and encoding. */
+function defaultCutoffFor(dueDay: number): number {
+  return dueDay <= 10 ? 20 : Math.max(1, dueDay - 10);
+}
+
 function clampDay(n: number, fallback: number): number {
   return Number.isInteger(n) && n >= 1 && n <= 31 ? n : fallback;
 }
@@ -86,7 +91,7 @@ export function autoCreditPeriodFor(occurredAtIso: string, dueDay: number, cutof
   const base = periodIndex(date);
   for (let offset = -1; offset <= 3; offset++) {
     const dueIso = dueIsoInPeriod(base + offset, dueDay);
-    if (date <= closingCutoffIsoForDue(dueIso, cutoffDay) && date <= dueIso) return periodFromIndex(base + offset);
+    if (date <= closingCutoffIsoForDue(dueIso, cutoffDay, dueDay) && date <= dueIso) return periodFromIndex(base + offset);
   }
   return periodFromIndex(base + 1);
 }
@@ -169,7 +174,7 @@ export function parseCreditMeta(note?: string | null, now: Date = new Date()): C
   }
 
   const dueDay = clampDay(Number(params.get("due")), 1);
-  const defaultCutoff = dueDay <= 10 ? 20 : Math.max(1, dueDay - 10);
+  const defaultCutoff = defaultCutoffFor(dueDay);
   const cutoffDay = clampDay(Number(params.get("cutoff")), defaultCutoff);
   const limitMinor = parseBigIntSafe(params.get("limit"));
   let carryCurrentMinor = parseBigIntSafe(params.get("cur"));
@@ -222,7 +227,7 @@ export function encodeCreditNote(
     return stripped || undefined;
   }
   const due = clampDay(Number(options?.dueDay ?? 1), 1);
-  const cutoff = clampDay(Number(options?.cutoffDay ?? 20), 20);
+  const cutoff = clampDay(Number(options?.cutoffDay ?? defaultCutoffFor(due)), defaultCutoffFor(due));
   const lim = options?.limitMinor && options.limitMinor > 0n ? options.limitMinor : 0n;
   const cur = options?.carryCurrentMinor ?? 0n;
   const sch = encodeSchedule(options?.schedule ?? []);
@@ -565,12 +570,16 @@ export function creditBillMinor(balanceMinor: string, note?: string | null): big
   return computeCreditBills({ balanceMinor, note: note ?? null }).totalUnpaidMinor;
 }
 
-export function closingCutoffIsoForDue(dueIso: string, cutoffDay: number): string {
+/**
+ * Statement closing date for a due date. `configuredDueDay` is the owner-set due day (before month-end clamping); the cutoff falls in the
+ * previous month when it is on/after that day, so short months (Feb) never flip the rule.
+ */
+export function closingCutoffIsoForDue(dueIso: string, cutoffDay: number, configuredDueDay?: number): string {
   const safeCutoff = clampDay(cutoffDay, 20);
   const [yearStr, monthStr, dayStr] = dueIso.split("-");
   const dueYear = Number(yearStr);
   const dueMonth = Number(monthStr);
-  const dueDay = Number(dayStr);
+  const dueDay = configuredDueDay === undefined ? Number(dayStr) : clampDay(configuredDueDay, Number(dayStr));
 
   let targetYear = dueYear;
   let targetMonth = dueMonth;
@@ -604,7 +613,7 @@ export function isAfterCutoffDay(occurredAtIso: string, cutoffDay: number, dueDa
     const dayStr = parts.find((p) => p.type === "day")?.value ?? "01";
     const occurredDateIso = `${year}-${month}-${dayStr}`;
     const currentDueIso = nextMonthlyDueDayIso(dueDay, 0, now);
-    const closingCutoffIso = closingCutoffIsoForDue(currentDueIso, cutoffDay);
+    const closingCutoffIso = closingCutoffIsoForDue(currentDueIso, cutoffDay, dueDay);
     return occurredDateIso > closingCutoffIso;
   }
 

@@ -53,7 +53,9 @@ function plainDecimalString(raw: unknown): string {
   if (typeof raw === "string") return raw.trim();
   if (typeof raw === "number") {
     if (!Number.isFinite(raw) || raw <= 0) throw new InvestmentError("Harga dari penyedia tidak valid.");
-    const fixed = raw.toFixed(18).replace(/\.?0+$/, "");
+    // Shortest round-trip form ("0.1"), not the binary expansion toFixed(18) would store; exponent forms are expanded.
+    const plain = String(raw);
+    const fixed = /e/i.test(plain) ? raw.toFixed(18).replace(/\.?0+$/, "") : plain;
     return fixed || "0";
   }
   throw new InvestmentError("Harga dari penyedia tidak tersedia.");

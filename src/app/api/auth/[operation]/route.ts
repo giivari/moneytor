@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { authConfig, cookieName, cookieOptions } from "@/lib/auth/config";
 import { assertRequestOrigin, boundedBody } from "@/lib/auth/http";
-import { limitAttempts, deny, discardChallenge } from "@/lib/auth/store";
+import { assertFailureBudget, clearAttempts, clientBucket, consumeSessionBudget, deny, discardChallenge, pruneAuthData, recordFailure, type RateKind } from "@/lib/auth/store";
 import { currentOwnerSession } from "@/lib/auth/session";
 import { authenticate, authenticationOptions, bootstrap, recover, registrationOptions, finishRegistration, securityAction, securityOverview } from "@/lib/auth/service";
 import { CHALLENGE_SECONDS, RECOVERY_SECONDS, SESSION_SECONDS } from "@/lib/auth/primitives";
@@ -15,30 +15,26 @@ function setCookie(response: NextResponse, kind: "session" | "ceremony" | "recov
   response.cookies.set(cookieName(kind), token, cookieOptions(duration));
 }
 
-function syncVercelOriginIfNeeded(request: NextRequest) {
-  if (!process.env.VERCEL) return;
-  const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "").trim();
-  const originHeader = (request.headers.get("origin") || "").trim();
-  if (host && originHeader === `https://${host}`) {
-    process.env.MONETA_ORIGIN = `https://${host}`;
-    process.env.MONETA_RP_ID = host.split(":")[0];
-  }
-}
-
 export async function POST(request: NextRequest, { params }: { params: Promise<{ operation: string }> }) {
   let isBootstrap = false;
+  let bucket: string | null = null;
   try {
     const { operation } = await params;
     if (!operations.has(operation)) deny();
     isBootstrap = operation === "bootstrap";
-    syncVercelOriginIfNeeded(request);
     assertRequestOrigin(request);
-    await limitAttempts(isBootstrap ? "bootstrap" : operation === "recover" ? "recovery" : operation.startsWith("login") ? "login" : "security");
+    const kind: RateKind = isBootstrap ? "bootstrap" : operation === "recover" ? "recovery" : operation.startsWith("login") ? "login" : "security";
+    // Hanya kegagalan yang dihitung, per klien (HMAC IP berganti harian); sesi aktif punya bucket sendiri.
+    const session = isBootstrap ? null : await currentOwnerSession();
+    if (session) await consumeSessionBudget(session);
+    else { bucket = await clientBucket(kind, request.headers); await assertFailureBudget(bucket, kind); }
+    const succeeded = async () => { if (bucket) await clearAttempts(bucket); await pruneAuthData(); };
     const raw = await boundedBody(request);
     if (isBootstrap) {
       if (!request.headers.get("content-type")?.startsWith("application/x-www-form-urlencoded")) deny();
       const secret = new URLSearchParams(raw).get("secret") ?? "";
       const token = await bootstrap(secret);
+      await succeeded();
       const response = NextResponse.redirect(new URL("/enroll", authConfig().origin), 303);
       response.headers.set("Cache-Control", "no-store");
       setCookie(response, "recovery", token, RECOVERY_SECONDS);
@@ -47,7 +43,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!request.headers.get("content-type")?.startsWith("application/json")) deny();
     const body = JSON.parse(raw);
     if (!body || typeof body !== "object" || Array.isArray(body)) deny();
-    const session = await currentOwnerSession();
     const binding = request.cookies.get(cookieName("ceremony"))?.value;
     const grantToken = request.cookies.get(cookieName("recovery"))?.value;
     if (operation === "cancel") {
@@ -58,6 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (operation === "recover") {
       if (typeof body.code !== "string") deny();
       const token = await recover(body.code);
+      await succeeded();
       const response = json({ ok: true }); setCookie(response, "recovery", token, RECOVERY_SECONDS);
       setCookie(response, "session", "", 0); setCookie(response, "ceremony", "", 0); return response;
     }
@@ -67,6 +63,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (operation === "login-finish") {
       const token = await authenticate(body.response as AuthenticationResponseJSON, binding, session);
+      await succeeded();
       const response = json({ ok: true }); setCookie(response, "session", token, SESSION_SECONDS);
       setCookie(response, "ceremony", "", 0); setCookie(response, "recovery", "", 0); return response;
     }
@@ -79,6 +76,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!["register", "bootstrap", "recover"].includes(body.purpose)) deny();
       const result = await finishRegistration({ response: body.response as RegistrationResponseJSON, label: body.label,
         purpose: body.purpose, binding, session, grantToken });
+      await succeeded();
       const response = json({ ok: true, codes: result.codes }); setCookie(response, "session", result.token, SESSION_SECONDS);
       setCookie(response, "ceremony", "", 0); setCookie(response, "recovery", "", 0); return response;
     }
@@ -95,6 +93,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return response;
   } catch {
     // Deliberately exclude request bodies, credentials, tokens, and internal errors from logs.
+    if (bucket) await recordFailure(bucket).catch(() => undefined);
     if (isBootstrap) {
       const fallbackOrigin = (() => {
         try { return authConfig().origin; } catch { return new URL(request.url).origin; }

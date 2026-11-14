@@ -18,7 +18,6 @@
 .automation-condition-amount { display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1fr); gap: var(--space-xs); min-width: 0; }
 .automation-asset-reference { display: grid; gap: var(--space-sm); align-content: start; min-width: 0; }
 .automation-category-row { padding-block: var(--space-sm); border-top: 1px solid var(--line); }
-dialog.automation-dialog::backdrop { background: var(--scrim); }
 .automation-content { display: grid; gap: var(--space-lg); min-width: 0; }
 .automation-rules { min-width: 0; }
 .automation-rules .finance-history-toggle { margin: 0; }
@@ -28,16 +27,13 @@ dialog.automation-dialog::backdrop { background: var(--scrim); }
 .automation-rule-list { display: grid; grid-template-columns: minmax(0,1fr); align-items: start; gap: var(--space-md); }
 .automation-rule { display: grid; align-content: start; gap: var(--space-xs); min-width: 0; padding: var(--space-md); }
 .automation-rule h3 { margin: 0 0 4px; }
-.automation-rule p, .automation-rule-meta { margin: 0; color: var(--text-muted, var(--muted)); line-height: 1.5; overflow-wrap: anywhere; }
-.automation-rule-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); }
-.automation-rule-meta strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.automation-rule p { margin: 0; color: var(--text-muted, var(--muted)); line-height: 1.5; overflow-wrap: anywhere; }
 .automation-status { flex: none; display: inline-flex; align-items: center; border-radius: var(--radius-md); padding: 4px 8px; background: var(--surface-sunken); color: var(--ink-soft); }
 .automation-status.active, .automation-status.posted { color: var(--positive); background: var(--positive-light); }
 .automation-status.pending_confirmation, .automation-status.awaiting_confirmation, .automation-status.due, .automation-status.failed, .automation-status.review_required { color: var(--warning); background: var(--warning-light); }
 .automation-status.archived, .automation-status.skipped, .automation-status.voided, .automation-status.superseded { color: var(--muted); background: var(--line-soft); }
 .automation-status[data-financial-state="source_voided"] { color: var(--negative); background: var(--negative-light); }
 .automation-occurrences { margin: 0; min-width: 0; }
-.automation-occurrence-list { display: grid; margin-top: 12px; }
 .automation-occurrence { min-width: 0; padding: 10px 0; border-top: 1px solid var(--line); }
 .automation-timeline { display:grid; gap:14px; margin:10px 0; padding-left:22px; }
 .automation-timeline li { min-width:0; padding-left:4px; }
@@ -45,17 +41,9 @@ dialog.automation-dialog::backdrop { background: var(--scrim); }
 .automation-timeline time, .automation-timeline small { color:var(--muted); font-size:var(--type-meta); }
 .automation-timeline p { margin:4px 0 0; font-size:var(--type-helper); }
 .automation-occurrence:has(> .compact-financial-row--confirmation) { padding-block: var(--space-sm); }
-.automation-dialog { width: min(600px, calc(100vw - 28px)); overflow-y: auto; }
-.automation-options-state { min-height: 48px; display: flex; align-items: center; gap: 10px; }
 .automation-form { display: grid; gap: 14px; margin-top: 16px; }
 .automation-form .field { margin: 0; }
-.automation-amount-field small, .automation-field-hint { color: var(--muted); line-height: 1.4; }
 .automation-form-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
-.automation-schedule-section { display: grid; gap: 14px; margin-top: 4px; padding-top: 15px; border-top: 1px solid var(--line); }
-.automation-schedule-section h3 { margin: 0; color: var(--ink-soft); }
-.automation-preview { border-top: 1px solid var(--line); padding-top: 13px; color: var(--ink-soft); }
-.automation-preview ul { margin: 7px 0 0; padding-left: 18px; line-height: 1.6; }
-.automation-preview p { margin: 7px 0 0; }
 .finance-warning { display: inline-flex; align-items: center; justify-content: center; min-height: 39px; border: 1px solid var(--warning-light); border-radius: var(--radius-md); padding: 8px 13px; background: var(--data-amber-soft); color: var(--warning); font-family: inherit; cursor: pointer; }
 .finance-warning:hover { background: var(--warning-light); }
 .finance-warning:focus-visible { outline: 2px solid var(--data-amber); outline-offset: 2px; }
@@ -77,7 +65,6 @@ dialog.automation-dialog::backdrop { background: var(--scrim); }
   .automation-occurrence .compact-financial-row__status > .finance-hint { margin:0; font-size:var(--type-meta); }
   .automation-occurrences > .context-help { margin-block:var(--space-sm) 0; }
   .automation-form-pair { grid-template-columns: 1fr; }
-  .automation-dialog { max-height: calc(100dvh - 28px); }
   .compact-form-section .disclosure-toggle { min-height: 44px; }
 }
 
@@ -144,7 +131,6 @@ dialog.automation-dialog::backdrop { background: var(--scrim); }
   .automation-content { align-items: start; }
   .automation-occurrences { align-self: start; }
   .automation-occurrences > .filter-row { padding-bottom: 0; }
-  .automation-occurrences > .automation-occurrence-list { margin-top: var(--space-sm); }
   .automation-occurrences > .context-help { margin-block: var(--space-sm) 0; }
   .automation-workspace-filters .field { flex: 0 1 24ch; inline-size: 24ch; max-inline-size: 100%; }
 }

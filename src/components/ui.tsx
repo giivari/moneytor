@@ -44,7 +44,7 @@ export function Kpi({ title, icon: Icon, tone, value, valueTone = "", note, acti
 export type BreakdownRow = { label: string; value: string; sign?: "minus"; hint?: string };
 
 export function Breakdown({ title, rows, total }: { title: string; rows: BreakdownRow[]; total: { label: string; value: string; tone: Tone } }) {
-  return <Card className="ui-breakdown-card" title={title}>
+  return <Card className="ui-breakdown-card" title={title} figures={<Amount value={total.value} level="entity" tone={total.tone} />}>
     <dl className="ui-breakdown">
       {rows.map((row) => <div key={row.label} data-sign={row.sign}>
         <dt>{row.sign === "minus" ? "Dikurangi: " : ""}{row.label}{row.hint && <small>{row.hint}</small>}</dt>
@@ -60,6 +60,27 @@ export function Chip({ tone, children }: { tone?: "negative" | "warning" | "posi
 }
 
 /** Page title row; pass to PageTabs `heading` or wrap in <header className="page-header"> when the page has no tabs. */
-export function PageHeading({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
-  return <div className="page-heading-row"><div><h1>{title}</h1>{description && <p>{description}</p>}</div>{actions && <div className="page-heading-actions">{actions}</div>}</div>;
+export function PageHeading({
+  title,
+  description,
+  summary,
+  actions,
+}: {
+  title: string;
+  description?: ReactNode;
+  summary?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="page-heading-row">
+      <div className="page-heading-main">
+        <div className="page-heading-title-group">
+          <h1>{title}</h1>
+          {summary && <div className="page-heading-summary">{summary}</div>}
+        </div>
+        {description && <p>{description}</p>}
+      </div>
+      {actions && <div className="page-heading-actions">{actions}</div>}
+    </div>
+  );
 }

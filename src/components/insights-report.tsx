@@ -1,5 +1,5 @@
 import type { AnalyticsGranularity } from "@/lib/analytics/periods";
-import type { AnalyticsReport, DimensionRow } from "@/lib/analytics/types";
+import type { AnalyticsReport, DimensionRow, FinancialMeasures, InvestmentFlows } from "@/lib/analytics/types";
 import { dayLabel, insightsCurrency, originLabel, percentageLabel, periodLabel, signedMoney } from "@/lib/analytics/presentation";
 import { formatMinor } from "@/lib/finance/format";
 import type { InsightsMonthSelection } from "./use-insights-month";
@@ -160,6 +160,192 @@ function AccountMutationTable({ rows }: { rows: DimensionRow[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function InsightsReconciliationBridge({
+  summary,
+  flows,
+  currency,
+  exponent,
+}: {
+  summary: FinancialMeasures;
+  flows?: InvestmentFlows;
+  currency: string;
+  exponent: number;
+}) {
+  const money = (val: string | bigint) => formatMinor(val, currency, exponent);
+
+  // Sisi 1 — Ekonomi Murni Saya (Mengubah Kekayaan Bersih)
+  const incomeMinor = BigInt(summary.incomeMinor);
+  const spendingMinor = BigInt(summary.spendingMinor);
+  const netMinor = BigInt(summary.netMinor);
+
+  // Sisi 2 — Seluruh Arus Kas yang Lewat Rekening (Termasuk Talangan, Transfer, Utang & Investasi)
+  const transferPrincipal = BigInt(summary.transferPrincipalMinor);
+  const debtBorrowed = BigInt(summary.debtBorrowedMinor ?? "0");
+  const debtRepaid = BigInt(summary.debtRepaidMinor ?? "0");
+  const invBuy = BigInt(flows?.purchasePrincipalMinor ?? "0");
+  const invSell = BigInt(flows?.saleProceedsMinor ?? "0");
+  const invFees = BigInt(flows?.feesMinor ?? "0");
+
+  const totalKasKeluarBruto = spendingMinor + transferPrincipal + debtRepaid + invBuy + invFees;
+  const totalKasMasukBruto = incomeMinor + transferPrincipal + debtBorrowed + invSell;
+  const selisihKasRekening = totalKasMasukBruto - totalKasKeluarBruto;
+
+  return (
+    <section className="surface insight-panel insight-reconciliation" aria-label="Dua Sisi Aliran Uang (Ekonomi Murni vs Arus Kas Rekening)">
+      <div className="insight-reconciliation-header">
+        <span className="eyebrow">JEMBATAN REKONSILIASI</span>
+        <h3>Dua Sisi Aliran Uang (Ekonomi Murni vs Arus Kas Rekening)</h3>
+        <p className="insight-reconciliation-intro">
+          Memisahkan uang yang <strong>benar-benar Anda konsumsi</strong> (mengubah kekayaan bersih) dari uang yang <strong>hanya numpang lewat / berpindah kantong</strong> (talangan teman, top-up/transfer antar rekening, pelunasan pokok utang, dan investasi).
+        </p>
+      </div>
+
+      <div className="insight-reconciliation-grid">
+        {/* Sisi 1 */}
+        <div className="insight-reconciliation-card insight-reconciliation-side1">
+          <div className="insight-reconciliation-card-head">
+            <span className="u-pill" data-tone="positive">Sisi 1</span>
+            <h4>Ekonomi Murni Saya</h4>
+            <small>Arus riil yang mengubah kekayaan bersih Anda</small>
+          </div>
+          <table className="u-table" aria-label="Tabel Ekonomi Murni Saya">
+            <tbody>
+              <tr>
+                <th scope="row">
+                  <strong>Pemasukan Murni</strong>
+                  <small className="u-cell-sub">Gaji, dividen, bonus, penerimaan riil</small>
+                </th>
+                <td className="insight-positive">
+                  <FinancialAmount as="span" value={`+${money(incomeMinor)}`} />
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <strong>Pengeluaran Konsumsi &amp; Biaya Murni</strong>
+                  <small className="u-cell-sub">Pokok belanja + biaya admin/pajak (setelah refund)</small>
+                </th>
+                <td className="insight-negative">
+                  <FinancialAmount as="span" value={`−${money(spendingMinor)}`} />
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">
+                  <strong>Surplus / Defisit Ekonomi Murni</strong>
+                  <small className="u-cell-sub">Net perubahan kekayaan operasional</small>
+                </th>
+                <td className={netMinor < 0n ? "insight-negative" : "insight-positive"}>
+                  <FinancialAmount as="span" value={signedMoney(netMinor.toString(), currency, exponent)} />
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* Sisi 2 */}
+        <div className="insight-reconciliation-card insight-reconciliation-side2">
+          <div className="insight-reconciliation-card-head">
+            <span className="u-pill" data-tone="info">Sisi 2</span>
+            <h4>Arus Kas Rekening &amp; Jembatan Selisih</h4>
+            <small>Seluruh mutasi lewat rekening (termasuk talangan &amp; mutasi)</small>
+          </div>
+          <table className="u-table" aria-label="Tabel Arus Kas Rekening dan Jembatan Selisih">
+            <tbody>
+              <tr>
+                <th scope="row">
+                  <strong>Mutasi Transfer &amp; Talangan (Pokok)</strong>
+                  <small className="u-cell-sub">Talangan teman / pindah buku antar rekening</small>
+                </th>
+                <td>
+                  <FinancialAmount as="span" value={money(transferPrincipal)} />
+                </td>
+              </tr>
+              {debtBorrowed > 0n && (
+                <tr>
+                  <th scope="row">
+                    <strong>Pencairan Pinjaman (Borrow)</strong>
+                    <small className="u-cell-sub">Kas masuk pinjaman · Bukan pemasukan</small>
+                  </th>
+                  <td className="insight-positive">
+                    <FinancialAmount as="span" value={`+${money(debtBorrowed)}`} />
+                  </td>
+                </tr>
+              )}
+              {debtRepaid > 0n && (
+                <tr>
+                  <th scope="row">
+                    <strong>Pelunasan Pokok Utang (Repay)</strong>
+                    <small className="u-cell-sub">Bayar pokok kewajiban (bunga masuk biaya)</small>
+                  </th>
+                  <td className="insight-negative">
+                    <FinancialAmount as="span" value={`−${money(debtRepaid)}`} />
+                  </td>
+                </tr>
+              )}
+              {(invBuy > 0n || invSell > 0n) && (
+                <>
+                  {invBuy > 0n && (
+                    <tr>
+                      <th scope="row">
+                        <strong>Pembelian Investasi (Pokok)</strong>
+                        <small className="u-cell-sub">Kas berpindah menjadi aset investasi</small>
+                      </th>
+                      <td className="insight-negative">
+                        <FinancialAmount as="span" value={`−${money(invBuy)}`} />
+                      </td>
+                    </tr>
+                  )}
+                  {invSell > 0n && (
+                    <tr>
+                      <th scope="row">
+                        <strong>Penjualan Investasi (Pokok)</strong>
+                        <small className="u-cell-sub">Pencairan unit investasi kembali ke kas</small>
+                      </th>
+                      <td className="insight-positive">
+                        <FinancialAmount as="span" value={`+${money(invSell)}`} />
+                      </td>
+                    </tr>
+                  )}
+                </>
+              )}
+              <tr className="insight-bridge-subtotal">
+                <th scope="row">
+                  <strong>Total Kas Masuk Bruto</strong>
+                  <small className="u-cell-sub">Pemasukan + transfer masuk + pinjaman + jual invest</small>
+                </th>
+                <td className="insight-positive">
+                  <FinancialAmount as="span" value={`+${money(totalKasMasukBruto)}`} />
+                </td>
+              </tr>
+              <tr className="insight-bridge-subtotal">
+                <th scope="row">
+                  <strong>Total Kas Keluar Bruto</strong>
+                  <small className="u-cell-sub">Konsumsi + transfer keluar + lunas pokok + beli invest</small>
+                </th>
+                <td className="insight-negative">
+                  <FinancialAmount as="span" value={`−${money(totalKasKeluarBruto)}`} />
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">
+                  <strong>Net Perubahan Kas Rekening</strong>
+                  <small className="u-cell-sub">Total kas masuk bruto − total kas keluar bruto</small>
+                </th>
+                <td className={selisihKasRekening < 0n ? "insight-negative" : "insight-positive"}>
+                  <FinancialAmount as="span" value={signedMoney(selisihKasRekening.toString(), currency, exponent)} />
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -652,6 +838,13 @@ export function InsightsReportView({
           </p>
         )}
       </section>
+
+      <InsightsReconciliationBridge
+        summary={summary}
+        flows={data.flows}
+        currency={currency}
+        exponent={summary.exponent}
+      />
 
       <InsightsPrimary
         report={report}

@@ -71,27 +71,42 @@
 .automation-occurrences .record-decisions > .row-action { white-space:nowrap; }
 .automation-occurrences .record-decisions > .finance-error { grid-column:1 / -1; }
 .financial-record-list { min-width:0; }
-.financial-record-list > .transaction-button { width:100%; border-bottom:1px solid var(--line); }
-.financial-record-list > .transaction-button:last-child { border-bottom:0; }
-.transaction-button:focus-visible { outline:2px solid var(--data-blue); outline-offset:2px; }
 .investment-holding { padding:18px; margin-block:12px; border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--surface); }
-.investment-key-metrics { display:flex; flex-wrap:wrap; gap:12px 24px; margin:16px 0 12px; }
-.investment-key-metrics > div { flex:1 1 13ch; min-width:max-content; }
-.investment-key-metrics dt { max-width:24ch; }
-.investment-key-metrics dd { white-space:nowrap; overflow-wrap:normal; }
-.investment-position-controls { margin-top:10px; }
 @media (min-width: 1024px) and (max-width: 1279px) {
   .financial-data-table [data-secondary="true"] { display:none; }
   .financial-data-table th, .financial-data-table td { padding-inline:7px; }
 }
 @media (max-width: 767px) {
-  .list-toolbar { gap:6px 12px; margin-block:10px; }
-  .list-toolbar > .filter-row { flex:0 1 auto; gap:6px; }
-  .list-toolbar > .finance-history-toggle { min-height:44px; }
-  .list-toolbar-options[data-expanded="true"] { flex-basis:100%; }
-  .list-toolbar-options > .disclosure-toggle { padding-block:4px; min-height:44px; }
-  .list-toolbar .list-sort-control { flex-shrink:1; min-width:0; }
-  .list-toolbar .list-sort-control select { min-height:44px; }
+  .list-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-block: var(--space-2);
+  }
+  .list-toolbar > .filter-row { flex: 0 1 auto; gap: var(--space-1); }
+  .list-toolbar > .list-sort-control { order: 1; flex: 0 1 auto; min-width: 0; }
+  .list-toolbar > .export-dropdown { order: 2; margin-left: auto; }
+  .list-toolbar > .finance-history-toggle {
+    order: 3;
+    flex: 1 1 100%;
+    min-height: var(--control-sm);
+    margin: 0;
+    padding-top: var(--space-1);
+    border-top: 1px solid var(--line-soft);
+    font-size: var(--text-xs);
+  }
+  .list-toolbar-options { order: 4; flex: 1 1 100%; }
+  .list-toolbar-options[data-expanded="true"] { flex-basis: 100%; }
+  .list-toolbar-options > .disclosure-toggle { padding-block: var(--space-1); min-height: var(--control-md); font-size: var(--text-xs); }
+  .list-toolbar .list-sort-control select,
+  .list-toolbar .export-trigger-button {
+    min-height: var(--control-md);
+    padding-block: 0;
+    padding-inline: var(--space-2);
+    font-size: var(--text-xs);
+  }
   .list-filter-control > span { position:absolute; inline-size:1px; block-size:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
   .list-filter-disclosure > .disclosure-toggle { min-height:44px; padding-block:4px; }
   .list-filter-disclosure { margin-bottom:12px; }
@@ -100,22 +115,6 @@
   .compact-financial-row--record .financial-value--row { font-size:var(--type-value-entity); }
   .compact-financial-row--record[data-wide-value="true"] .financial-value--row { font-size:var(--type-amount-supporting); }
   .investment-holding { padding:14px; margin-block:10px; }
-  .investment-key-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 12px; margin-block:12px 8px; }
-  .investment-key-metrics[data-priced="false"] { grid-template-columns:minmax(0,1fr); }
-  .investment-key-metrics > div { min-width:0; display:grid; align-content:start; justify-content:stretch; justify-items:start; text-align:left; gap:4px; }
-  .investment-key-metrics > div[data-wide="true"] { grid-column:1 / -1; }
-  .investment-key-metrics dd { margin:0; }
-  .investment-key-metrics dd > small { display:block; line-height:1.4; }
-  .investment-key-metrics dt { margin:0; }
-  .investment-position-controls { margin-top:0; }
-  .investment-price-action { display:flex; }
-  .investment-price-action > .row-action { min-height:44px; }
-  .investment-holding-heading > div { min-width:0; }
-  .investment-holding-heading strong { overflow-wrap:anywhere; }
-  .investment-holding-heading { flex-wrap:wrap; }
-  .investment-units { max-width:100%; white-space:normal; overflow-wrap:normal; word-break:normal; }
-  .investment-detail-metrics { grid-template-columns:repeat(auto-fit,minmax(min(100%,18ch),1fr)); }
-  .investment-history-row .history-detail { margin-block:4px 0; }
 }
 .record-decisions .finance-error { flex-basis:100%; max-inline-size:32ch; margin:4px 0; }
 .record-secondary-context { display:none; }

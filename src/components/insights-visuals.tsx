@@ -270,14 +270,14 @@ function renderTrendSummary(model: VisualTrendModel, inlineDetails: boolean, das
               </dd>
             </div>
             <div>
-              <dt>Belanja</dt>
+              <dt>Belanja bulan ini</dt>
               <dd>
                 <FinancialAmount value={money(clampSpendingMinor(active.spendingMinor))} as="span" className="insight-negative" />
                 {BigInt(active.spendingMinor) < 0n && <small className="u-cell-sub"> (Refund · bersih {money(active.spendingMinor)})</small>}
               </dd>
             </div>
             <div>
-              <dt>Net operasional</dt>
+              <dt>Selisih dengan pemasukan</dt>
               <dd>
                 <FinancialAmount
                   value={money(active.netMinor)}

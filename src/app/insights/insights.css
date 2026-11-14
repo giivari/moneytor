@@ -344,3 +344,55 @@
   .insights-page .insight-credit-ratios-strip { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .insights-page .insight-asset-snapshot-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Reconciliation Bridge: Pure Economics vs Account Cashflow */
+.insights-page .insight-reconciliation { margin-block: var(--space-4); }
+.insights-page .insight-reconciliation-header { margin-bottom: var(--space-3); }
+.insights-page .insight-reconciliation-header h3 { margin: var(--space-1) 0 var(--space-2); font-size: var(--text-lg); font-weight: var(--weight-strong); }
+.insights-page .insight-reconciliation-intro { margin: 0; font-size: var(--text-sm); color: var(--ink-soft); line-height: var(--leading-relaxed); }
+.insights-page .insight-reconciliation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: stretch; margin-top: var(--space-3); }
+.insights-page .insight-reconciliation-card { display: flex; flex-direction: column; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-sunken); min-width: 0; }
+.insights-page .insight-reconciliation-card-head { margin-bottom: var(--space-2); }
+.insights-page .insight-reconciliation-card-head h4 { margin: var(--space-1) 0 2px; font-size: var(--text-md); font-weight: var(--weight-strong); }
+.insights-page .insight-reconciliation-card-head small { display: block; font-size: var(--text-xs); color: var(--muted); }
+.insights-page .insight-reconciliation-card .u-table { margin: 0; flex: 1 1 auto; }
+.insights-page .insight-bridge-subtotal { border-top: 1px dashed var(--line); }
+@media (max-width: 767px) {
+  .insights-page .insight-reconciliation-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+}
+
+
+/* Functional Tab Bar for Insights Workspace */
+.insights-page .insight-view-tabs-bar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-3);
+  box-shadow: var(--shadow-1);
+}
+
+.insights-page .page-tab[data-tab-active="true"] {
+  color: var(--primary);
+  font-weight: var(--weight-semibold);
+}
+
+.insights-page .page-tab[data-tab-active="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto var(--space-2) 0;
+  height: 2.5px;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+}
+
+/* Tab 2 (Tren Arus Kas & Kewajiban): focus on cashflow suite & mid-grid */
+.insights-page .insight-workspace[data-insight-tab="cashflow"] .insight-secondary-grid,
+.insights-page .insight-workspace[data-insight-tab="cashflow"] .insight-disclosure {
+  display: none;
+}
+
+/* Tab 3 (Bedah Kategori, Akun & Aset): focus on category/account/asset breakdowns */
+.insights-page .insight-workspace[data-insight-tab="distribution"] .insight-suite {
+  display: none;
+}

@@ -1,12 +1,19 @@
 "use client";
 
+import "../app/assets/assets.css";
 import { sortTemporal } from "@/lib/list-order";
 import { useListSort } from "./use-list-sort";
 import { ListSortControl } from "./list-sort-control";
+import { PageTabs } from "./page-tabs";
+import { TransactionEditor } from "./transaction-editor";
+import { ExcelStatusBar } from "./excel-status-bar";
+import { useInspector, useInspectorSync, type InspectorEntry } from "./inspector";
+import { InspectorFacts } from "./inspector-facts";
+import type { TransactionPreset } from "@/lib/domain/transaction-preset";
 
 import { useEffect, useRef, useState } from "react";
-import { Bank, CheckCircle, CreditCard, Drop, PencilSimple, Plus, Wallet, X } from "@phosphor-icons/react";
-import { Kpi, monthLabel, PageHeading } from "./ui";
+import { CaretDown, CaretRight, PencilSimple, Plus, X } from "@phosphor-icons/react";
+import { Amount, Chip, monthLabel, PageHeading } from "./ui";
 import { resolveProviderMark } from "@/lib/domain/provider-marks";
 import {
   bpsToInput,
@@ -24,13 +31,9 @@ import {
   computeCreditBills,
   CREDIT_STATUS_LABEL,
   creditAccountStatus,
-  creditStateForDesiredBills,
-  encodeCreditNote,
   formatShortDueIso,
   isCreditAsset,
   isReceivableAsset,
-  nextMonthlyDueDayIso,
-  parseCreditMeta,
 } from "@/lib/domain/credit";
 import { installmentContracts } from "@/lib/domain/credit-overview";
 import { ProviderBrandMark } from "./provider-brand-mark";
@@ -47,8 +50,6 @@ import type { InvestmentTotal } from "@/lib/investments/types";
 import { AppLink } from "./app-link";
 import { FinancialAmount } from "./financial-amount";
 import { SectionHeading } from "./section-heading";
-import { InvestmentSummary } from "./investment-summary";
-import { useMobileViewport } from "./use-mobile-viewport";
 
 const ADMIN_DAY_CHOICES = [
   { value: "0", label: "Akhir bulan" },
@@ -122,12 +123,31 @@ function recentActivityKindLabel(
   }
 }
 
-function AssetForm({
+export function isTopUpAccount(asset: FinanceAsset): boolean {
+  const text = `${asset.assetTypeName} ${asset.providerName ?? ""} ${asset.assetGroupName ?? ""} ${asset.displayName}`.toLowerCase();
+  return /e-money|emoney|flazz|tapcash|brizzi|uang elektronik|dompet digital|e-wallet|ewallet|gopay|shopeepay|ovo|dana|linkaja/i.test(text);
+}
+
+export function classifyRegularAsset(asset: FinanceAsset): "emoney" | "tabungan" | "kas_bank" {
+  if (isTopUpAccount(asset)) return "emoney";
+  if (
+    !asset.normallySpendable ||
+    parseAssetTerms(asset.note).interestRateBps > 0 ||
+    /deposito|tabungan berjangka|simpanan/i.test(`${asset.assetTypeName} ${asset.displayName}`)
+  ) {
+    return "tabungan";
+  }
+  return "kas_bank";
+}
+
+export function AssetForm({
   initial,
   onClose,
+  defaultAssetClass,
 }: {
   initial?: FinanceAsset;
   onClose: () => void;
+  defaultAssetClass?: AssetClass;
 }) {
   const { refresh, notify } = useFinanceFeedback();
   const dialog = useFinanceDialog(onClose);
@@ -137,36 +157,12 @@ function AssetForm({
   const [operation, setOperation] = useState<"save" | "archive">("save");
   const [confirmArchive, setConfirmArchive] = useState(false);
   const classReplay = useRef<{ payload: string; key: string } | null>(null);
+  // One key and one opening time per payload: a resend after a lost response returns the same asset instead of a second opening balance.
+  const createReplay = useRef<{ payload: string; key: string; at: string } | null>(null);
 
-  const initialMeta = parseCreditMeta(initial?.note);
   const initialTerms = parseAssetTerms(initial?.note);
-  const initialBills = initial ? computeCreditBills(initial) : null;
-  const [assetClass, setAssetClass] = useState<AssetClass | "">(initial?.assetClass ?? "");
-  const isCredit = assetClass === "liability";
-  const hasScheduledInstallments = Boolean(
-    initial?.creditInstallments?.some((row) => row.status === "scheduled"),
-  );
-  const [dueDay, setDueDay] = useState<string>(
-    initial ? String(initialMeta.dueDay) : "1",
-  );
-  const [cutoffDay, setCutoffDay] = useState<string>(
-    initial ? String(initialMeta.cutoffDay) : "20",
-  );
-  const [creditLimit, setCreditLimit] = useState<string>(
-    initial && initialMeta.limitMinor > 0n
-      ? minorToInput(initialMeta.limitMinor.toString(), initial.exponent)
-      : "",
-  );
-  const [currentBillInput, setCurrentBillInput] = useState<string>(
-    initialBills && initialBills.currentBillMinor > 0n
-      ? minorToInput(initialBills.currentBillMinor.toString(), initial!.exponent)
-      : "",
-  );
-  const [nextBillInput, setNextBillInput] = useState<string>(
-    initialBills && initialBills.nextBillMinor > 0n
-      ? minorToInput(initialBills.nextBillMinor.toString(), initial!.exponent)
-      : "",
-  );
+  const [rawAssetClass] = useState<AssetClass | "">(initial?.assetClass ?? "");
+  const assetClass: AssetClass | "" = rawAssetClass || defaultAssetClass || "asset";
 
   // Regular account fee & deposit/savings interest terms
   const [adminFee, setAdminFee] = useState<string>(
@@ -194,11 +190,9 @@ function AssetForm({
   const [spendable, setSpendable] = useState(initial?.normallySpendable ?? true);
   const [suffix, setSuffix] = useState(initial?.safeSuffix ?? "");
   const [note, setNote] = useState(stripAssetMetaTags(initial?.note));
+  const [advancedOpen, setAdvancedOpen] = useState(Boolean(initial));
   const exponent = options?.currencies.find((item) => item.code === currency)?.exponent ?? 0;
-
-  const parsedDueNum = Number(dueDay) >= 1 && Number(dueDay) <= 31 ? Number(dueDay) : 1;
-  const previewCurrentDue = formatShortDueIso(nextMonthlyDueDayIso(parsedDueNum, 0));
-  const previewNextDue = formatShortDueIso(nextMonthlyDueDayIso(parsedDueNum, 1));
+  const availableAssetTypes = options?.catalogs.assetTypes ?? [];
 
   let previewAdminMinor = 0n;
   try {
@@ -247,57 +241,30 @@ function AssetForm({
     setError("");
     setOperation("save");
     try {
-      let encodedNote: string | undefined;
-
-      if (isCredit) {
-        const parsedDue = dueDay.trim() ? Number(dueDay.trim()) : 1;
-        const parsedCutoff = cutoffDay.trim() ? Number(cutoffDay.trim()) : 20;
-        const limitMinor = creditLimit.trim()
-          ? BigInt(inputToMinor(creditLimit.trim(), exponent))
-          : 0n;
-        const desiredCurrentMinor = currentBillInput.trim()
-          ? BigInt(inputToMinor(currentBillInput.trim(), exponent))
-          : 0n;
-        const desiredNextMinor = nextBillInput.trim()
-          ? BigInt(inputToMinor(nextBillInput.trim(), exponent))
-          : 0n;
-        // carryCurrent absorbs the ledger balance so the saved bills equal what the owner typed.
-        encodedNote = encodeCreditNote(note, true, creditStateForDesiredBills({
-          balanceMinor: initial ? BigInt(initial.balanceMinor) : 0n,
-          desiredCurrentMinor,
-          desiredNextMinor,
-          dueDay: parsedDue,
-          cutoffDay: parsedCutoff,
-          limitMinor,
-          // Installments due after the next bill are not on the form; keep them.
-          existing: initial ? initialMeta : undefined,
-        }));
-      } else {
-        const parsedAdminMinor = adminFee.trim()
-          ? BigInt(inputToMinor(adminFee.trim(), exponent))
-          : 0n;
-        if (parsedAdminMinor < 0n) {
-          throw new Error("Biaya admin bulanan tidak boleh negatif.");
-        }
-        const parsedRate = interestRate.trim() ? parseBpsInput(interestRate, 100) : 0;
-        const parsedTax =
-          parsedRate > 0
-            ? interestTax.trim()
-              ? parseBpsInput(interestTax, 100)
-              : 2000
-            : 2000;
-        const parsedAdminDay = Number(adminDay);
-        encodedNote = encodeAssetTermsNote(note, {
-          adminFeeMinor: parsedAdminMinor,
-          adminDay: parsedAdminDay,
-          autoPostAdminFee: parsedAdminMinor > 0n && autoPostAdmin,
-          interestRateBps: parsedRate,
-          interestTaxBps: parsedTax,
-          interestCycle,
-          interestDay: Number(interestDay),
-          adminRuleId: initialTerms.adminRuleId,
-        });
+      const parsedAdminMinor = adminFee.trim()
+        ? BigInt(inputToMinor(adminFee.trim(), exponent))
+        : 0n;
+      if (parsedAdminMinor < 0n) {
+        throw new Error("Biaya admin bulanan tidak boleh negatif.");
       }
+      const parsedRate = interestRate.trim() ? parseBpsInput(interestRate, 100) : 0;
+      const parsedTax =
+        parsedRate > 0
+          ? interestTax.trim()
+            ? parseBpsInput(interestTax, 100)
+            : 2000
+          : 2000;
+      const parsedAdminDay = Number(adminDay);
+      const encodedNote = encodeAssetTermsNote(note, {
+        adminFeeMinor: parsedAdminMinor,
+        adminDay: parsedAdminDay,
+        autoPostAdminFee: parsedAdminMinor > 0n && autoPostAdmin,
+        interestRateBps: parsedRate,
+        interestTaxBps: parsedTax,
+        interestCycle,
+        interestDay: Number(interestDay),
+        adminRuleId: initialTerms.adminRuleId,
+      });
 
       if (encodedNote && encodedNote.length > 1000) {
         throw new Error("Catatan terlalu panjang.");
@@ -305,9 +272,7 @@ function AssetForm({
 
       const openingMinorStr = initial
         ? undefined
-        : isCredit
-          ? "0"
-          : inputToMinor(opening.trim() || "0", exponent);
+        : inputToMinor(opening.trim() || "0", exponent);
 
       const body = {
         id: initial?.id,
@@ -315,12 +280,12 @@ function AssetForm({
         currency,
         openingAmountMinor: openingMinorStr,
         openingEffectiveAt: new Date().toISOString(),
-        assetTypeId: typeId || options?.catalogs.assetTypes[0]?.id,
+        assetTypeId: typeId || availableAssetTypes[0]?.id,
         assetGroupId: groupId || undefined,
         providerId: providerId || undefined,
         paymentNetworkId: networkId || undefined,
-        normallyLiquid: isCredit || assetClass === "receivable" ? false : liquid,
-        normallySpendable: isCredit || assetClass === "receivable" ? false : spendable,
+        normallyLiquid: assetClass === "receivable" ? false : liquid,
+        normallySpendable: assetClass === "receivable" ? false : spendable,
         safeSuffix: suffix || undefined,
         note: encodedNote,
         assetClass,
@@ -336,15 +301,16 @@ function AssetForm({
           idempotencyKey: classReplay.current.key,
         });
       }
-      await financeRequest(initial ? "asset-update" : "asset-create", body);
+      if (initial) await financeRequest("asset-update", body);
+      else {
+        const createPayload = JSON.stringify({ ...body, openingEffectiveAt: undefined });
+        if (createReplay.current?.payload !== createPayload) {
+          createReplay.current = { payload: createPayload, key: crypto.randomUUID(), at: new Date().toISOString() };
+        }
+        await financeRequest("asset-create", { ...body, openingEffectiveAt: createReplay.current.at, idempotencyKey: createReplay.current.key });
+      }
       refresh();
-      notify(
-        initial
-          ? "Data berhasil diperbarui."
-          : isCredit
-            ? "Akun Kredit / PayLater berhasil ditambahkan."
-            : "Aset berhasil ditambahkan.",
-      );
+      notify(initial ? "Data berhasil diperbarui." : "Aset berhasil ditambahkan.");
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Data gagal disimpan.");
@@ -380,16 +346,8 @@ function AssetForm({
     >
       <div className="dialog-heading">
         <div>
-          <span className="eyebrow">{isCredit ? "FASILITAS KREDIT" : "ASET TERCATAT"}</span>
-          <h2 id="asset-form-title">
-            {initial
-              ? isCredit
-                ? "Ubah Fasilitas Kredit"
-                : "Ubah aset"
-              : isCredit
-                ? "Tambah Fasilitas Kredit"
-                : "Aset baru"}
-          </h2>
+          <span className="eyebrow">ASET TERCATAT</span>
+          <h2 id="asset-form-title">{initial ? "Ubah aset" : "Aset baru"}</h2>
         </div>
         <button
           type="button"
@@ -406,68 +364,18 @@ function AssetForm({
       ) : (
         <form onSubmit={save} aria-busy={pending}>
           <fieldset className="finance-fieldset" disabled={pending}>
-            <div className="field">
-              <span>Kelas akun (wajib dipilih)</span>
-              <div className="segmented" role="group" aria-label="Kelas akun">
-                <button
-                  type="button"
-                  className={assetClass === "asset" ? "selected" : ""}
-                  aria-pressed={assetClass === "asset"}
-                  onClick={() => {
-                    setAssetClass("asset");
-                    if (error) setError("");
-                  }}
-                >
-                  Aset (Rekening / Kas)
-                </button>
-                <button
-                  type="button"
-                  className={assetClass === "liability" ? "selected" : ""}
-                  aria-pressed={assetClass === "liability"}
-                  onClick={() => {
-                    setAssetClass("liability");
-                    setLiquid(false);
-                    setSpendable(false);
-                    if (error) setError("");
-                  }}
-                >
-                  Kewajiban (Kredit)
-                </button>
-                <button
-                  type="button"
-                  className={assetClass === "receivable" ? "selected" : ""}
-                  aria-pressed={assetClass === "receivable"}
-                  onClick={() => {
-                    setAssetClass("receivable");
-                    setLiquid(false);
-                    setSpendable(false);
-                    if (error) setError("");
-                  }}
-                >
-                  Piutang (Talangan)
-                </button>
-              </div>
-              <small>
-                {!assetClass
-                  ? "Pilih kelas akun terlebih dahulu: Aset, Kewajiban, atau Piutang."
-                  : hasScheduledInstallments && initial && assetClass !== initial.assetClass
-                    ? "Perhatian: kelas akun tidak dapat diubah selama masih ada jadwal cicilan terjadwal."
-                    : `Kelas dipilih: ${ASSET_CLASS_LABEL[assetClass]}`}
-              </small>
-            </div>
-
             <label className="field">
-              <span>{isCredit ? "Nama fasilitas kredit" : "Nama aset"}</span>
+              <span>Nama rekening / aset</span>
               <input
                 required
                 maxLength={120}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder={isCredit ? "Mis. Kartu Kredit BCA, SPayLater, Kredivo, KTA" : "Mis. BNI Taplus Muda"}
+                placeholder="Mis. BNI Taplus Muda, BCA, GoPay, Kas Tunai"
               />
             </label>
 
-            {!isCredit && !initial && (
+            {!initial && (
               <div className="field-grid">
                 <label className="field">
                   <span>Mata uang</span>
@@ -491,123 +399,25 @@ function AssetForm({
               </div>
             )}
 
-            {isCredit && (
-              <>
-                <div className="field-grid">
-                  {!initial && (
-                    <label className="field">
-                      <span>Mata uang</span>
-                      <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
-                        {options.currencies.map((item) => (
-                          <option key={item.code} value={item.code}>
-                            {item.code}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  <label className="field">
-                    <span>Limit kredit ({currency})</span>
-                    <input
-                      inputMode="decimal"
-                      value={creditLimit}
-                      onChange={(event) => setCreditLimit(event.target.value)}
-                      placeholder="0"
-                    />
-                    <small>Opsional. Untuk memantau sisa limit yang masih tersedia.</small>
-                  </label>
-                </div>
-
-                <div className="field-grid">
-                  <label className="field">
-                    <span>Batas tgl transaksi / Cutoff (1–31)</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={31}
-                      value={cutoffDay}
-                      onChange={(event) => setCutoffDay(event.target.value)}
-                      placeholder="20"
-                    />
-                    <small>Transaksi di atas tgl ini otomatis masuk ke tagihan bulan berikutnya.</small>
-                  </label>
-                  <label className="field">
-                    <span>Tanggal jatuh tempo bulanan (1–31)</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={31}
-                      value={dueDay}
-                      onChange={(event) => setDueDay(event.target.value)}
-                      placeholder="1"
-                    />
-                    <small>Mis. tgl 1 awal bulan atau tgl 25 akhir bulan.</small>
-                  </label>
-                </div>
-
-                <div className="field-grid">
-                  <label className="field">
-                    <span>Tagihan jatuh tempo terdekat ({previewCurrentDue})</span>
-                    <input
-                      inputMode="decimal"
-                      value={currentBillInput}
-                      onChange={(event) => setCurrentBillInput(event.target.value)}
-                      placeholder="0"
-                    />
-                    <small>Isi jika sudah ada tagihan berjalan yang jatuh tempo pada {previewCurrentDue}.</small>
-                  </label>
-                  <label className="field">
-                    <span>Tagihan periode berikutnya ({previewNextDue})</span>
-                    <input
-                      inputMode="decimal"
-                      value={nextBillInput}
-                      onChange={(event) => setNextBillInput(event.target.value)}
-                      placeholder="0"
-                    />
-                    <small>Isi jika sudah ada tagihan untuk periode bulan depan ({previewNextDue}).</small>
-                  </label>
-                </div>
-              </>
-            )}
-
             <div className="field-grid">
               <InlineCatalogSelect
                 label="Jenis aset"
                 catalog="assetTypes"
                 createLabel="jenis aset"
                 required
-                value={typeId || options.catalogs.assetTypes[0]?.id || ""}
-                items={options.catalogs.assetTypes}
+                value={typeId || availableAssetTypes[0]?.id || ""}
+                items={availableAssetTypes}
                 extraOptions={
                   initial?.assetTypeId &&
-                  !options.catalogs.assetTypes.some((item) => item.id === initial.assetTypeId) ? (
-                    <option value={initial.assetTypeId}>{initial.assetTypeName} (diarsipkan)</option>
+                  !availableAssetTypes.some((item) => item.id === initial.assetTypeId) ? (
+                    <option value={initial.assetTypeId}>{initial.assetTypeName}</option>
                   ) : undefined
                 }
                 onCreated={() => void reload()}
                 onChange={setTypeId}
               />
               <InlineCatalogSelect
-                label="Grup aset"
-                catalog="assetGroups"
-                createLabel="grup aset"
-                value={groupId}
-                emptyLabel="Tanpa grup"
-                items={options.catalogs.assetGroups}
-                extraOptions={
-                  initial?.assetGroupId &&
-                  !options.catalogs.assetGroups.some((item) => item.id === initial.assetGroupId) ? (
-                    <option value={initial.assetGroupId}>{initial.assetGroupName} (diarsipkan)</option>
-                  ) : undefined
-                }
-                onCreated={() => void reload()}
-                onChange={setGroupId}
-              />
-            </div>
-
-            <div className="field-grid">
-              <InlineCatalogSelect
-                label="Penyedia"
+                label="Penyedia / Bank"
                 catalog="providers"
                 createLabel="penyedia"
                 value={providerId}
@@ -622,188 +432,202 @@ function AssetForm({
                 onCreated={() => void reload()}
                 onChange={setProviderId}
               />
-              <InlineCatalogSelect
-                label="Jaringan kartu"
-                catalog="paymentNetworks"
-                createLabel="jaringan kartu"
-                value={networkId}
-                emptyLabel="Tidak ada"
-                items={options.catalogs.paymentNetworks}
-                extraOptions={
-                  initial?.paymentNetworkId &&
-                  !options.catalogs.paymentNetworks.some((item) => item.id === initial.paymentNetworkId) ? (
-                    <option value={initial.paymentNetworkId}>{"Jaringan tersimpan"} (diarsipkan)</option>
-                  ) : undefined
-                }
-                onCreated={() => void reload()}
-                onChange={setNetworkId}
-              />
             </div>
 
-            {!isCredit ? (
-              <>
-                <div className="finance-checks">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={liquid}
-                      onChange={(event) => {
-                        setLiquid(event.target.checked);
-                        if (!event.target.checked) setSpendable(false);
-                      }}
-                    />{" "}
-                    Dana likuid
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={spendable}
-                      disabled={!liquid}
-                      onChange={(event) => setSpendable(event.target.checked)}
-                    />{" "}
-                    Dapat digunakan
-                  </label>
-                </div>
+            <div className="finance-checks">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={liquid}
+                  onChange={(event) => {
+                    setLiquid(event.target.checked);
+                    if (!event.target.checked) setSpendable(false);
+                  }}
+                />{" "}
+                Dana likuid
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={spendable}
+                  disabled={!liquid}
+                  onChange={(event) => setSpendable(event.target.checked)}
+                />{" "}
+                Dapat digunakan
+              </label>
+            </div>
 
-                <div className="field-grid">
-                  <label className="field">
-                    <span>Biaya admin bulanan ({currency})</span>
-                    <input
-                      inputMode="decimal"
-                      value={adminFee}
-                      onChange={(event) => setAdminFee(event.target.value)}
-                      placeholder="0 — Gratis admin"
-                    />
-                    <small>Opsional. Potongan administrasi rutin rekening.</small>
-                  </label>
-                  <label className="field">
-                    <span>Bunga simpanan / deposito (% p.a.)</span>
-                    <input
-                      inputMode="decimal"
-                      value={interestRate}
-                      onChange={(event) => setInterestRate(event.target.value)}
-                      placeholder="Mis. 0,5 atau 4,25"
-                    />
-                    <small>Opsional. Suku bunga tahunan tabungan atau deposito.</small>
-                  </label>
-                </div>
+            <details
+              className="asset-form-advanced"
+              open={advancedOpen}
+              onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+            >
+              <summary>Pengaturan bunga, biaya admin &amp; detail opsional</summary>
+              <div className="field-grid">
+                <label className="field">
+                  <span>Biaya admin/bln ({currency})</span>
+                  <input
+                    inputMode="decimal"
+                    value={adminFee}
+                    onChange={(event) => setAdminFee(event.target.value)}
+                    placeholder="0 — Gratis"
+                  />
+                </label>
+                <label className="field">
+                  <span>Bunga simpanan (% p.a.)</span>
+                  <input
+                    inputMode="decimal"
+                    value={interestRate}
+                    onChange={(event) => setInterestRate(event.target.value)}
+                    placeholder="Mis. 0,5 atau 4,25"
+                  />
+                </label>
+              </div>
 
-                {(previewAdminMinor > 0n || previewRateBps > 0) && (
-                  <div className="asset-terms-config">
-                    <div className="field-grid">
-                      {previewAdminMinor > 0n && (
-                        <label className="field">
-                          <span>Jadwal potong biaya admin</span>
-                          <select value={adminDay} onChange={(event) => setAdminDay(event.target.value)}>
-                            {ADMIN_DAY_CHOICES.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      {previewRateBps > 0 && (
-                        <>
-                          <label className="field">
-                            <span>Siklus pencairan bunga</span>
-                            <select
-                              value={interestCycle}
-                              onChange={(event) => setInterestCycle(event.target.value as InterestCycle)}
-                            >
-                              <option value="monthly">Bulanan</option>
-                              <option value="daily">Cair harian</option>
-                              <option value="maturity">Saat jatuh tempo</option>
-                            </select>
-                          </label>
-                          {interestCycle === "monthly" && (
-                            <label className="field">
-                              <span>Tanggal cair bunga bulanan</span>
-                              <select value={interestDay} onChange={(event) => setInterestDay(event.target.value)}>
-                                {ADMIN_DAY_CHOICES.map((opt) => (
-                                  <option key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
-                          <label className="field">
-                            <span>Pajak bunga (%)</span>
-                            <input
-                              inputMode="decimal"
-                              value={interestTax}
-                              onChange={(event) => setInterestTax(event.target.value)}
-                              placeholder="20"
-                            />
-                            <small>Umumnya 20% PPh final simpanan/deposito.</small>
-                          </label>
-                        </>
-                      )}
-                    </div>
-
+              {(previewAdminMinor > 0n || previewRateBps > 0) && (
+                <div className="asset-terms-config">
+                  <div className="field-grid">
                     {previewAdminMinor > 0n && (
-                      <label className="asset-auto-admin-check">
-                        <input
-                          type="checkbox"
-                          checked={autoPostAdmin}
-                          onChange={(event) => setAutoPostAdmin(event.target.checked)}
-                        />
-                        <span>Catat biaya admin otomatis tiap bulan di Automation</span>
+                      <label className="field">
+                        <span>Jadwal potong admin</span>
+                        <select value={adminDay} onChange={(event) => setAdminDay(event.target.value)}>
+                          {ADMIN_DAY_CHOICES.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                     )}
-
-                    {previewBaseBalance > 0n && previewRateBps > 0 && (
-                      <p className="asset-terms-preview">
-                        Estimasi bunga bersih:{" "}
-                        <strong>
-                          +{formatMinor(yieldPreview.netInterestMonthlyMinor.toString(), currency, exponent)}/bln
-                        </strong>{" "}
-                        ({formatMinor(yieldPreview.netInterestAnnualMinor.toString(), currency, exponent)}/thn)
-                        {previewAdminMinor > 0n && (
-                          <>
-                            {" · "}Net setelah admin:{" "}
-                            <strong
-                              className={
-                                yieldPreview.netAfterAdminMonthlyMinor < 0n ? "pnl-negative" : "pnl-positive"
-                              }
-                            >
-                              {formatSignedMinor(yieldPreview.netAfterAdminMonthlyMinor, currency, exponent)}/bln
-                            </strong>
-                          </>
+                    {previewRateBps > 0 && (
+                      <>
+                        <label className="field">
+                          <span>Siklus cair bunga</span>
+                          <select
+                            value={interestCycle}
+                            onChange={(event) => setInterestCycle(event.target.value as InterestCycle)}
+                          >
+                            <option value="monthly">Bulanan</option>
+                            <option value="daily">Cair harian</option>
+                            <option value="maturity">Saat jatuh tempo</option>
+                          </select>
+                        </label>
+                        {interestCycle === "monthly" && (
+                          <label className="field">
+                            <span>Tgl cair bunga</span>
+                            <select value={interestDay} onChange={(event) => setInterestDay(event.target.value)}>
+                              {ADMIN_DAY_CHOICES.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                         )}
-                      </p>
+                        <label className="field">
+                          <span>Pajak bunga (%)</span>
+                          <input
+                            inputMode="decimal"
+                            value={interestTax}
+                            onChange={(event) => setInterestTax(event.target.value)}
+                            placeholder="20"
+                          />
+                        </label>
+                      </>
                     )}
                   </div>
-                )}
-              </>
-            ) : (
-              <p className="finance-hint">
-                Transaksi s.d. tanggal <strong>{cutoffDay || 20}</strong> masuk ke tagihan jatuh tempo terdekat (<strong>{previewCurrentDue}</strong>), sedangkan transaksi di atas tanggal <strong>{cutoffDay || 20}</strong> otomatis masuk ke tagihan periode berikutnya (<strong>{previewNextDue}</strong>).
-              </p>
-            )}
 
-            <div className="field-grid">
-              <label className="field">
-                <span>4 digit/karakter terakhir (opsional)</span>
-                <input
-                  maxLength={4}
-                  value={suffix}
-                  onChange={(event) => setSuffix(event.target.value)}
+                  {previewAdminMinor > 0n && (
+                    <label className="asset-auto-admin-check">
+                      <input
+                        type="checkbox"
+                        checked={autoPostAdmin}
+                        onChange={(event) => setAutoPostAdmin(event.target.checked)}
+                      />
+                      <span>Catat biaya admin otomatis tiap bulan</span>
+                    </label>
+                  )}
+
+                  {previewBaseBalance > 0n && previewRateBps > 0 && (
+                    <p className="asset-terms-preview">
+                      Estimasi bunga bersih:{" "}
+                      <strong>
+                        +{formatMinor(yieldPreview.netInterestMonthlyMinor.toString(), currency, exponent)}/bln
+                      </strong>{" "}
+                      ({formatMinor(yieldPreview.netInterestAnnualMinor.toString(), currency, exponent)}/thn)
+                      {previewAdminMinor > 0n && (
+                        <>
+                          {" · "}Net setelah admin:{" "}
+                          <strong
+                            className={
+                              yieldPreview.netAfterAdminMonthlyMinor < 0n ? "pnl-negative" : "pnl-positive"
+                            }
+                          >
+                            {formatSignedMinor(yieldPreview.netAfterAdminMonthlyMinor, currency, exponent)}/bln
+                          </strong>
+                        </>
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="field-grid">
+                <InlineCatalogSelect
+                  label="Grup aset"
+                  catalog="assetGroups"
+                  createLabel="grup aset"
+                  value={groupId}
+                  emptyLabel="Tanpa grup"
+                  items={options.catalogs.assetGroups}
+                  extraOptions={
+                    initial?.assetGroupId &&
+                    !options.catalogs.assetGroups.some((item) => item.id === initial.assetGroupId) ? (
+                      <option value={initial.assetGroupId}>{initial.assetGroupName} (diarsipkan)</option>
+                    ) : undefined
+                  }
+                  onCreated={() => void reload()}
+                  onChange={setGroupId}
                 />
-                <small>Untuk membedakan rekening atau kartu tanpa menyimpan nomor lengkap.</small>
-              </label>
-              <label className="field">
-                <span>Catatan</span>
-                <textarea
-                  rows={2}
-                  maxLength={850}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="Opsional"
+                <InlineCatalogSelect
+                  label="Jaringan kartu"
+                  catalog="paymentNetworks"
+                  createLabel="jaringan kartu"
+                  value={networkId}
+                  emptyLabel="Tidak ada"
+                  items={options.catalogs.paymentNetworks}
+                  extraOptions={
+                    initial?.paymentNetworkId &&
+                    !options.catalogs.paymentNetworks.some((item) => item.id === initial.paymentNetworkId) ? (
+                      <option value={initial.paymentNetworkId}>{"Jaringan tersimpan"} (diarsipkan)</option>
+                    ) : undefined
+                  }
+                  onCreated={() => void reload()}
+                  onChange={setNetworkId}
                 />
-              </label>
-            </div>
+              </div>
+
+              <div className="field-grid">
+                <label className="field">
+                  <span>4 digit akhir (opsional)</span>
+                  <input
+                    maxLength={4}
+                    value={suffix}
+                    onChange={(event) => setSuffix(event.target.value)}
+                    placeholder="Mis. 4821"
+                  />
+                </label>
+                <label className="field">
+                  <span>Catatan (opsional)</span>
+                  <input
+                    maxLength={850}
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    placeholder="Opsional"
+                  />
+                </label>
+              </div>
+            </details>
 
             {error && (
               <p role="alert" className="finance-error">
@@ -855,8 +679,6 @@ function AssetForm({
               >
                 {pending && operation === "save" ? (
                   <LoadingIndicator>{initial ? "Memperbarui…" : "Menyimpan…"}</LoadingIndicator>
-                ) : isCredit ? (
-                  "Simpan Kredit / PayLater"
                 ) : (
                   "Simpan aset"
                 )}
@@ -881,7 +703,7 @@ function AssetDetailDialog({
   onClose: () => void;
   onEdit: () => void;
   onCorrectOpening: () => void;
-  onPayBill: () => void;
+  onPayBill?: () => void;
   onSettleReceivable?: () => void;
 }) {
   const dialog = useFinanceDialog(onClose);
@@ -1314,9 +1136,7 @@ function AssetDetailDialog({
           )}
         </div>
         {loading ? (
-          <div className="route-loading-status asset-detail-loading" role="status">
-            <LoadingIndicator>Memuat riwayat akun…</LoadingIndicator>
-          </div>
+          <p className="finance-hint" role="status" aria-live="polite">Memuat riwayat akun…</p>
         ) : error ? (
           <p role="alert" className="finance-error">
             {error}
@@ -1400,7 +1220,7 @@ function AssetDetailDialog({
             className="finance-secondary"
             onClick={() => {
               onClose();
-              onPayBill();
+              onPayBill?.();
             }}
           >
             Bayar tagihan
@@ -1436,7 +1256,7 @@ function AssetDetailDialog({
   );
 }
 
-function PayCreditBillDialog({
+export function PayCreditBillDialog({
   creditAsset,
   regularAssets,
   onClose,
@@ -1612,7 +1432,7 @@ function PayCreditBillDialog({
   );
 }
 
-function SettleReceivableDialog({
+export function SettleReceivableDialog({
   receivableAsset,
   regularAssets,
   onClose,
@@ -1820,7 +1640,7 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
     <div className="dialog-heading"><div><span className="eyebrow">REKONSILIASI ASET</span><h2 id="asset-opening-title">Koreksi saldo awal</h2></div><button type="button" className="icon-button" aria-label="Tutup" disabled={pending} onClick={() => dialog.current?.close()}><X size={20} /></button></div>
     <p className="finance-hint">Perbaiki saldo saat aset pertama dicatat. Transaksi yang sudah ada tetap utuh.</p>
     {!asset.isActive && <p className="finance-hint">Aset diarsipkan. Pulihkan aset sebelum membuat koreksi baru; riwayatnya tetap dapat dilihat.</p>}
-    {loading ? <div className="route-loading-status" role="status"><LoadingIndicator>Menyiapkan formulir…</LoadingIndicator><span>Memuat saldo awal.</span></div> : history && <form onSubmit={submit} aria-busy={pending}><fieldset className="finance-fieldset" disabled={pending}>
+    {loading ? <p className="finance-hint" role="status" aria-live="polite">Memuat saldo awal…</p> : history && <form onSubmit={submit} aria-busy={pending}><fieldset className="finance-fieldset" disabled={pending}>
       <dl className="investment-preview"><div><dt>Saldo awal asli</dt><dd>{formatMinor(history.originalMinor, history.currency, history.exponent)}</dd></div><div><dt>Saldo awal saat ini</dt><dd>{formatMinor(history.effectiveMinor, history.currency, history.exponent)}</dd></div></dl>
       {asset.isActive && <>
       <label className="field"><span>Saldo awal yang benar ({history.currency})</span><input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" /></label>
@@ -1835,237 +1655,810 @@ function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClo
   </dialog>;
 }
 
-export function AssetsManager({ assets, totals, investmentTotals }: { assets: FinanceAsset[]; totals: { currency: string; exponent: number; amountMinor: string; unpricedCount: number; liquidMinor?: string; eligibleMinor?: string; liabilitiesMinor?: string }[]; investmentTotals: InvestmentTotal[] }) {
-  const mobile = useMobileViewport();
+function shortAccountRef(id: string) {
+  const clean = id.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return `AKN-${clean.slice(0, 4)}-${clean.slice(-4)}`;
+}
+
+function isEmoneyAccount(asset: FinanceAsset): boolean {
+  const t = (asset.assetTypeName || "").toLowerCase();
+  const d = (asset.displayName || "").toLowerCase();
+  return (
+    t.includes("e-money") ||
+    d.includes("flazz") ||
+    d.includes("brizzi") ||
+    d.includes("tapcash") ||
+    d.includes("jakcard") ||
+    d.includes("e-money")
+  );
+}
+
+function isSavingsOrDepositAccount(asset: FinanceAsset): boolean {
+  if (isEmoneyAccount(asset)) return false;
+  const t = (asset.assetTypeName || "").toLowerCase();
+  const d = (asset.displayName || "").toLowerCase();
+  const terms = parseAssetTerms(asset.note);
+  return (
+    t.includes("deposito") ||
+    d.includes("deposito") ||
+    t.includes("tabungan") ||
+    d.includes("tabungan") ||
+    terms.interestRateBps > 0
+  );
+}
+
+export function AssetsManager({
+  assets,
+  totals,
+}: {
+  assets: FinanceAsset[];
+  totals: {
+    currency: string;
+    exponent: number;
+    amountMinor: string;
+    unpricedCount: number;
+    liquidMinor?: string;
+    eligibleMinor?: string;
+    liabilitiesMinor?: string;
+  }[];
+  investmentTotals?: InvestmentTotal[];
+}) {
+  const { open, close } = useInspector();
+  useInspectorSync("asset:", assets, (id) => assets.find((item) => `asset:${item.id}` === id),
+    (asset, update) => openAccountInspector(asset, null, update));
   const [viewingAsset, setViewingAsset] = useState<FinanceAsset | null>(null);
   const [editing, setEditing] = useState<FinanceAsset | "new" | null>(null);
   const [payingCredit, setPayingCredit] = useState<FinanceAsset | null>(null);
   const [settlingReceivable, setSettlingReceivable] = useState<FinanceAsset | null>(null);
   const [correcting, setCorrecting] = useState<FinanceAsset | null>(null);
+  const [topUpPreset, setTopUpPreset] = useState<TransactionPreset | null>(null);
   const { pending, begin, finish } = useMutationPending();
   const { refresh, notify, refreshing } = useFinanceFeedback();
   const [restoringId, setRestoringId] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState("");
+
   async function restore(id: string) {
-    if (refreshing || !begin()) return; setRestoringId(id); setError("");
-    try { await financeRequest("asset-restore", { id }); refresh(); notify("Aset berhasil dipulihkan."); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Aset belum dapat dipulihkan."); }
-    finally { finish(); }
+    if (refreshing || !begin()) return;
+    setRestoringId(id);
+    setError("");
+    try {
+      await financeRequest("asset-restore", { id });
+      refresh();
+      notify("Aset berhasil dipulihkan.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Aset belum dapat dipulihkan.");
+    } finally {
+      finish();
+    }
   }
+
   const openNewAsset = () => setEditing("new");
+
+  // Filter murni rekening/aset kas milik sendiri (bebas dari kredit, piutang talangan, dan akun investasi)
   const active = assets.filter((item) => item.isActive);
-  const regularActive = active.filter((item) => !isCreditAsset(item));
-  const creditActive = active.filter((item) => isCreditAsset(item));
-  const archived = assets.filter((item) => !item.isActive);
-  const creditFirst = creditActive.some((item) => computeCreditBills(item).totalUnpaidMinor > 0n);
+  const regularActive = active.filter(
+    (item) =>
+      item.assetClass === "asset" &&
+      !isCreditAsset(item) &&
+      !isReceivableAsset(item)
+  );
+  const archived = assets.filter(
+    (item) => !item.isActive && item.assetClass === "asset"
+  );
 
   const liveViewingAsset = viewingAsset
     ? assets.find((item) => item.id === viewingAsset.id) ?? viewingAsset
     : null;
 
-  const creditSection = creditActive.length > 0 ? (
-    <section className="surface credit-assets-section">
-      <SectionHeading
-        title="Fasilitas Kredit"
-        eyebrow={creditFirst ? "PERLU PERHATIAN · ADA TAGIHAN" : "TAGIHAN BERJALAN & FASILITAS KREDIT"}
-        action={<div className="section-heading-actions"><span className="count-pill">{creditActive.length} akun</span></div>}
-      />
-      <div className="credit-card-list">
-        {creditActive.map((asset) => {
-          const mark = resolveProviderMark(asset.providerName, asset.displayName, "coral");
-          const meta = parseCreditMeta(asset.note);
-          const bills = computeCreditBills(asset);
-          const hasBill = bills.totalUnpaidMinor > 0n;
-          const subtitle = [asset.providerName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ");
-          const limitUsedPct = bills.limitMinor > 0n && bills.availableLimitMinor !== null
-            ? Math.min(100, Math.max(0, Math.round(Number(((bills.limitMinor - bills.availableLimitMinor) * 100n) / bills.limitMinor))))
-            : null;
-          return (
-            <article
-              className={`credit-card credit-card--interactive${hasBill ? " credit-card--due" : ""}`}
-              key={asset.id}
-              onClick={(event) => {
-                if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
-              }}
-            >
-              <div className="credit-card-head">
-                <ProviderBrandMark mark={mark} />
-                <div className="credit-card-title">
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const toggleGroup = (key: string) =>
+    setCollapsedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const emoneyAccounts = regularActive.filter(isEmoneyAccount);
+  const tabunganDepositoAccounts = regularActive.filter(isSavingsOrDepositAccount);
+  const kasBankAccounts = regularActive.filter(
+    (a) => !emoneyAccounts.includes(a) && !tabunganDepositoAccounts.includes(a)
+  );
+
+  const primaryTotal = totals[0];
+  const pCurr = primaryTotal?.currency ?? "IDR";
+  const pExp = primaryTotal?.exponent ?? 0;
+
+  // Totals are per currency (the primary one); summing minor units of different currencies would be meaningless.
+  const primaryActive = regularActive.filter((a) => a.currency === pCurr);
+  const totalBalanceBig = primaryActive.reduce((sum, a) => sum + BigInt(a.balanceMinor), 0n);
+  const totalEstInterestBig = primaryActive.reduce((sum, a) => {
+    const terms = parseAssetTerms(a.note);
+    if (terms.interestRateBps <= 0) return sum;
+    const yieldVal = estimateAssetMonthlyYield(BigInt(a.balanceMinor), terms);
+    return sum + yieldVal.netInterestMonthlyMinor;
+  }, 0n);
+  const totalAdminBig = primaryActive.reduce((sum, a) => {
+    const terms = parseAssetTerms(a.note);
+    return sum + terms.adminFeeMinor;
+  }, 0n);
+  const netMonthlyCarryBig = totalEstInterestBig - totalAdminBig;
+
+  function openAccountInspector(asset: FinanceAsset, trigger?: HTMLElement | null, emit: (entry: InspectorEntry, trigger?: HTMLElement | null) => void = open) {
+    const terms = parseAssetTerms(asset.note);
+    const yieldEst = estimateAssetMonthlyYield(BigInt(asset.balanceMinor), terms);
+    const money = (val: string | bigint) => formatMinor(val, asset.currency, asset.exponent);
+    const isEmoney = isEmoneyAccount(asset);
+    const subtitle = [asset.providerName, asset.assetTypeName].filter(Boolean).join(" · ");
+
+    emit(
+      {
+        id: `asset:${asset.id}`,
+        title: asset.displayName,
+        subtitle: subtitle || "Rekening & Aset",
+        body: (
+          <div className="inspector-cards">
+            {/* Kartu 1: Ringkasan Hero Rekening */}
+            <section className="inspector-card inspector-card--hero">
+              <div className="inspector-card-top">
+                <span className="inspector-ref-badge">{shortAccountRef(asset.id)}</span>
+                <Chip tone={asset.normallySpendable ? "positive" : "info"}>
+                  {isEmoney
+                    ? "Kartu E-Money"
+                    : asset.normallySpendable
+                    ? "Likuid · Siap Pakai"
+                    : "Tabungan / Cadangan"}
+                </Chip>
+              </div>
+              <div className="inspector-hero-metric">
+                <span className="inspector-hero-caption">Saldo Tercatat Saat Ini</span>
+                <div className="inspector-hero-amount">
+                  <Amount
+                    value={money(asset.balanceMinor)}
+                    level="summary"
+                    tone={BigInt(asset.balanceMinor) < 0n ? "negative" : "positive"}
+                  />
+                </div>
+              </div>
+              <div className="inspector-meta-grid">
+                <div>
+                  <span className="inspector-meta-label">Institusi / Penyedia</span>
+                  <strong className="inspector-meta-value">{asset.providerName || "—"}</strong>
+                </div>
+                <div>
+                  <span className="inspector-meta-label">Jenis &amp; Nomor Ekor</span>
+                  <strong className="inspector-meta-value">
+                    {asset.assetTypeName}
+                    {asset.safeSuffix ? ` · •••• ${asset.safeSuffix}` : ""}
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            {/* Kartu 2: Rincian Bunga, Pajak & Biaya Admin Bulanan */}
+            <section className="inspector-card inspector-card--breakdown">
+              <h3 className="inspector-card-heading">Rincian Bunga, Pajak &amp; Biaya Admin Bulanan</h3>
+              <InspectorFacts
+                items={[
+                  { label: "Saldo awal tercatat", value: <Amount value={money(asset.openingMinor)} /> },
+                  {
+                    label: "Suku bunga tahunan",
+                    value:
+                      terms.interestRateBps > 0
+                        ? `${formatBpsRate(terms.interestRateBps)} p.a. (Pajak ${formatBpsRate(terms.interestTaxBps)})`
+                        : "0% (Tanpa bunga)",
+                  },
+                  ...(terms.interestRateBps > 0
+                    ? [
+                        {
+                          label: "Jadwal cair bunga",
+                          value: formatInterestCycleLabel(terms.interestCycle, terms.interestDay),
+                        },
+                        {
+                          label: "Estimasi bunga bersih",
+                          value: (
+                            <Amount
+                              value={`+${money(yieldEst.netInterestMonthlyMinor)}/bln`}
+                              tone="positive"
+                            />
+                          ),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: "Biaya admin bank",
+                    value:
+                      terms.adminFeeMinor > 0n ? (
+                        <Amount value={`−${money(terms.adminFeeMinor)}/bln`} tone="negative" />
+                      ) : (
+                        "Bebas biaya admin"
+                      ),
+                  },
+                ]}
+              />
+              {(terms.interestRateBps > 0 || terms.adminFeeMinor > 0n) && (
+                <div className="inspector-highlight-box">
+                  <span>Dampak Bersih Bulanan (Bunga − Admin)</span>
+                  <strong>
+                    {formatSignedMinor(
+                      yieldEst.netAfterAdminMonthlyMinor,
+                      asset.currency,
+                      asset.exponent
+                    )}
+                    /bln
+                  </strong>
+                </div>
+              )}
+            </section>
+
+            {/* Kartu 3: Tindakan Rekening */}
+            <section className="inspector-card inspector-card--actions">
+              <div className="assets-inspector-actions">
+                {isEmoney && (
                   <button
                     type="button"
-                    className="asset-title-trigger"
-                    onClick={() => setViewingAsset(asset)}
+                    className="button-primary"
+                    onClick={() => {
+                      close();
+                      setTopUpPreset({
+                        kind: "transfer",
+                        destinationId: asset.id,
+                        note: `Top-Up ${asset.displayName}`,
+                      });
+                    }}
                   >
-                    <strong>{asset.displayName}</strong>
+                    <Plus size={14} weight="bold" aria-hidden="true" />
+                    <span>Top-Up E-Money</span>
                   </button>
-                  {subtitle && <span>{subtitle}</span>}
-                </div>
-              </div>
-              <div className="credit-card-chips">
-                <span className="credit-chip">{ASSET_CLASS_LABEL[asset.assetClass]}</span>
-                <span className="credit-chip">Cutoff tgl {bills.cutoffDay}</span>
-                <span className="credit-chip">Jatuh tempo tgl {bills.dueDay}</span>
-                {(asset.creditInstallments ?? []).filter((row) => row.status === "scheduled").length > 0 && (
-                  <span className="credit-chip">
-                    {(asset.creditInstallments ?? []).filter((row) => row.status === "scheduled").length} cicilan terjadwal
-                  </span>
                 )}
+                <button
+                  type="button"
+                  className="finance-secondary"
+                  onClick={() => {
+                    close();
+                    setViewingAsset(asset);
+                  }}
+                >
+                  Riwayat &amp; Mutasi Akun
+                </button>
+                <button
+                  type="button"
+                  className="finance-secondary"
+                  onClick={() => {
+                    close();
+                    setCorrecting(asset);
+                  }}
+                >
+                  Koreksi Saldo Awal
+                </button>
+                <button
+                  type="button"
+                  className="finance-secondary"
+                  onClick={() => {
+                    close();
+                    setEditing(asset);
+                  }}
+                >
+                  <PencilSimple size={14} weight="bold" aria-hidden="true" />
+                  <span>Ubah Rekening</span>
+                </button>
               </div>
-              {bills.availableLimitMinor !== null && (
-                <div className="credit-limit">
-                  <div className="credit-limit-text">
-                    <span>Sisa limit</span>
-                    <strong className="financial-value">{formatMinor(bills.availableLimitMinor.toString(), asset.currency, asset.exponent)}</strong>
-                    <small>dari {formatMinor(bills.limitMinor.toString(), asset.currency, asset.exponent)}</small>
-                  </div>
-                  {limitUsedPct !== null && <div className="credit-limit-bar" aria-hidden="true"><span style={{ width: `${limitUsedPct}%` }} /></div>}
-                </div>
-              )}
-              {meta.cleanNote && <small className="credit-card-note">{meta.cleanNote}</small>}
-              {hasBill ? (
-                <div className="credit-bills">
-                  <div className="credit-bill-box credit-bill-box--current">
-                    <span>Tagihan {formatShortDueIso(bills.currentDueIso)}</span>
-                    <strong className="financial-value financial-value--entity">{formatMinor(bills.currentBillMinor.toString(), asset.currency, asset.exponent)}</strong>
-                  </div>
-                  {bills.nextBillMinor > 0n && (
-                    <div className="credit-bill-box">
-                      <span>Periode {formatShortDueIso(bills.nextDueIso)}</span>
-                      <strong className="financial-value financial-value--entity">{formatMinor(bills.nextBillMinor.toString(), asset.currency, asset.exponent)}</strong>
+            </section>
+          </div>
+        ),
+      },
+      trigger ?? (document.activeElement as HTMLElement | null)
+    );
+  }
+
+  const renderAccountGroup = (
+    id: string,
+    title: string,
+    items: FinanceAsset[],
+    isEmoney = false,
+    isTabungan = false
+  ) => {
+    const isCollapsed = Boolean(collapsedGroups[id]);
+    const groupSubtotal = items.reduce((sum, a) => sum + BigInt(a.balanceMinor), 0n);
+
+    return (
+      <section className="assets-group-card" key={id}>
+        <button
+          type="button"
+          onClick={() => toggleGroup(id)}
+          className="assets-group-header"
+          aria-expanded={!isCollapsed}
+        >
+          <div className="assets-group-title-wrap">
+            {isCollapsed ? (
+              <CaretRight size={14} weight="bold" aria-hidden="true" />
+            ) : (
+              <CaretDown size={14} weight="bold" aria-hidden="true" />
+            )}
+            <span className="assets-group-title">{title}</span>
+            <span className="assets-group-count">{items.length} akun</span>
+          </div>
+          <span className="assets-group-subtotal">
+            {formatMinor(groupSubtotal.toString(), pCurr, pExp)}
+          </span>
+        </button>
+
+        {!isCollapsed && (
+          <div className="assets-group-body">
+            {!items.length ? (
+              <div className="assets-group-empty">Belum ada rekening pada kelompok ini.</div>
+            ) : (
+              items.map((asset) => {
+                const terms = parseAssetTerms(asset.note);
+                const yieldVal =
+                  terms.interestRateBps > 0
+                    ? estimateAssetMonthlyYield(BigInt(asset.balanceMinor), terms)
+                    : null;
+                const mark = resolveProviderMark(
+                  asset.providerName,
+                  asset.displayName,
+                  asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet"
+                );
+                const subText = [asset.providerName, asset.assetTypeName]
+                  .filter(Boolean)
+                  .join(" · ");
+                const termLabel =
+                  isTabungan && terms.interestRateBps > 0
+                    ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.${
+                        yieldVal && yieldVal.netInterestMonthlyMinor > 0n
+                          ? ` · +${formatMinor(
+                              yieldVal.netInterestMonthlyMinor.toString(),
+                              asset.currency,
+                              asset.exponent
+                            )}/bln`
+                          : ""
+                      }`
+                    : isEmoney
+                    ? "Chip NFC Prabayar"
+                    : terms.adminFeeMinor > 0n
+                    ? `Admin ${formatMinor(
+                        terms.adminFeeMinor.toString(),
+                        asset.currency,
+                        asset.exponent
+                      )}/bln`
+                    : "Bebas biaya admin";
+
+                return (
+                  <div
+                    key={asset.id}
+                    className="assets-account-row"
+                    onClick={(event) => {
+                      if (!shouldIgnoreRowClick(event.target)) {
+                        openAccountInspector(asset, event.currentTarget);
+                      }
+                    }}
+                  >
+                    {/* Left: Official Provider Brand Icon + Name + Institution */}
+                    <div className="assets-account-left">
+                      <ProviderBrandMark mark={mark} />
+                      <div className="assets-account-identity">
+                        <div className="assets-account-name-line">
+                          <button
+                            type="button"
+                            className="assets-account-name-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAccountInspector(asset, e.currentTarget);
+                            }}
+                          >
+                            {asset.displayName}
+                          </button>
+                          {asset.safeSuffix && (
+                            <span className="assets-account-suffix">•••• {asset.safeSuffix}</span>
+                          )}
+                        </div>
+                        <div className="assets-account-sub">{subText || "Rekening Aset"}</div>
+                        <div className="assets-account-mobile-term">{termLabel}</div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <strong className="pnl-positive credit-settled-pill"><CheckCircle size={15} weight="fill" /> {CREDIT_STATUS_LABEL[creditAccountStatus(bills)]}</strong>
-              )}
-              <div className="credit-card-actions">
-                {hasBill && <button type="button" className="button-primary credit-pay-button" onClick={() => setPayingCredit(asset)}>Bayar tagihan</button>}
-                <button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah / Atur tagihan</button>
+
+                    {/* Middle: Term Pill (Desktop) */}
+                    <div className="assets-account-middle">
+                      <span
+                        className={`assets-term-pill${
+                          terms.interestRateBps > 0
+                            ? " assets-term-pill--yield"
+                            : terms.adminFeeMinor > 0n
+                            ? " assets-term-pill--fee"
+                            : ""
+                        }`}
+                      >
+                        {termLabel}
+                      </span>
+                    </div>
+
+                    {/* Right: Balance + Quick Action */}
+                    <div className="assets-account-right">
+                      <div className="assets-balance-block">
+                        <div
+                          className="assets-balance-val"
+                          data-negative={BigInt(asset.balanceMinor) < 0n}
+                        >
+                          {formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}
+                        </div>
+                        <div className="assets-balance-caption">Saldo Tercatat</div>
+                      </div>
+
+                      {isEmoney && (
+                        <button
+                          type="button"
+                          className="assets-topup-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTopUpPreset({
+                              kind: "transfer",
+                              destinationId: asset.id,
+                              note: `Top-Up ${asset.displayName}`,
+                            });
+                          }}
+                        >
+                          <Plus size={12} weight="bold" aria-hidden="true" />
+                          <span>Top-Up</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  // Tab 1: Daftar Rekening & Saldo (3 Collapsible Groups)
+  const daftarRekeningPanel = !regularActive.length ? (
+    <section className="surface finance-empty">
+      <h2>{archived.length ? "Tidak ada rekening aktif" : "Belum ada rekening atau aset"}</h2>
+      <p>
+        {archived.length
+          ? "Tampilkan yang diarsipkan untuk memulihkan rekening, atau tambahkan rekening baru."
+          : "Tambahkan rekening bank, dompet tunai, e-wallet, atau kartu e-money pertama Anda."}
+      </p>
+      <button className="button-primary" type="button" onClick={openNewAsset}>
+        <Plus size={16} weight="bold" aria-hidden="true" />
+        <span>Tambah Rekening</span>
+      </button>
+    </section>
+  ) : (
+    <div className="assets-workspace">
+      {renderAccountGroup("kas", "Kas, Bank Operasional & E-Wallet", kasBankAccounts)}
+      {renderAccountGroup(
+        "tabungan",
+        "Tabungan Bunga Tinggi & Deposito",
+        tabunganDepositoAccounts,
+        false,
+        true
+      )}
+      {renderAccountGroup("emoney", "Kartu Prabayar E-Money (Chip NFC)", emoneyAccounts, true)}
+    </div>
+  );
+
+  // Tab 2: Bunga, Biaya Admin & Rekonsiliasi Saldo Awal (Functional Audit & Yield Comparison Tab)
+  const rekonsiliasiPanel = (
+    <div className="assets-workspace">
+      <div className="assets-terms-summary-strip">
+        <div className="assets-terms-stat-card">
+          <span className="assets-terms-stat-label">Estimasi Bunga Bersih / Bulan</span>
+          <strong className="assets-terms-stat-val pnl-positive">
+            +{formatMinor(totalEstInterestBig.toString(), pCurr, pExp)}
+          </strong>
+        </div>
+        <div className="assets-terms-stat-card">
+          <span className="assets-terms-stat-label">Total Potongan Admin Bank / Bulan</span>
+          <strong className="assets-terms-stat-val pnl-negative">
+            −{formatMinor(totalAdminBig.toString(), pCurr, pExp)}
+          </strong>
+        </div>
+        <div className="assets-terms-stat-card">
+          <span className="assets-terms-stat-label">Dampak Bersih (Bunga − Admin) / Bulan</span>
+          <strong
+            className={`assets-terms-stat-val ${
+              netMonthlyCarryBig >= 0n ? "pnl-positive" : "pnl-negative"
+            }`}
+          >
+            {formatSignedMinor(netMonthlyCarryBig, pCurr, pExp)}
+          </strong>
+        </div>
+      </div>
+
+      {/* Desktop Evaluation & Reconciliation Table */}
+      <div className="assets-reconcile-table-wrap">
+        <table className="assets-reconcile-table">
+          <thead>
+            <tr>
+              <th>Rekening &amp; Institusi</th>
+              <th>Bunga Simpanan</th>
+              <th>Est. Bunga Bersih / Bln</th>
+              <th>Biaya Admin / Bln</th>
+              <th>Saldo Awal → Saat Ini</th>
+              <th style={{ textAlign: "right" }}>Rekonsiliasi &amp; Ketentuan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {regularActive.map((asset) => {
+              const terms = parseAssetTerms(asset.note);
+              const yieldEst = estimateAssetMonthlyYield(BigInt(asset.balanceMinor), terms);
+              const money = (v: string | bigint) => formatMinor(v, asset.currency, asset.exponent);
+              return (
+                <tr key={asset.id}>
+                  <td>
+                    <strong>{asset.displayName}</strong>
+                    <div className="assets-account-sub">
+                      {[asset.providerName, asset.assetTypeName].filter(Boolean).join(" · ")}
+                    </div>
+                  </td>
+                  <td>
+                    {terms.interestRateBps > 0
+                      ? `${formatBpsRate(terms.interestRateBps)} p.a. (Pajak ${formatBpsRate(
+                          terms.interestTaxBps
+                        )})`
+                      : "0%"}
+                  </td>
+                  <td className={yieldEst.netInterestMonthlyMinor > 0n ? "pnl-positive" : ""}>
+                    {yieldEst.netInterestMonthlyMinor > 0n
+                      ? `+${money(yieldEst.netInterestMonthlyMinor)}`
+                      : "—"}
+                  </td>
+                  <td className={terms.adminFeeMinor > 0n ? "pnl-negative" : ""}>
+                    {terms.adminFeeMinor > 0n ? `−${money(terms.adminFeeMinor)}` : "Gratis"}
+                  </td>
+                  <td>
+                    {money(asset.openingMinor)} → <strong>{money(asset.balanceMinor)}</strong>
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <div className="assets-reconcile-actions">
+                      <button
+                        type="button"
+                        className="row-action"
+                        onClick={() => setCorrecting(asset)}
+                      >
+                        Koreksi Saldo
+                      </button>
+                      <button
+                        type="button"
+                        className="row-action"
+                        onClick={() => setEditing(asset)}
+                      >
+                        Atur Bunga/Admin
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile Evaluation & Reconciliation List */}
+      <div className="assets-reconcile-mobile-list">
+        {regularActive.map((asset) => {
+          const terms = parseAssetTerms(asset.note);
+          const yieldEst = estimateAssetMonthlyYield(BigInt(asset.balanceMinor), terms);
+          const money = (v: string | bigint) => formatMinor(v, asset.currency, asset.exponent);
+          return (
+            <div key={asset.id} className="assets-reconcile-mobile-item">
+              <div className="assets-reconcile-mobile-top">
+                <strong>{asset.displayName}</strong>
+                <span>{money(asset.balanceMinor)}</span>
               </div>
-            </article>
+              <div className="assets-account-sub">
+                Bunga:{" "}
+                {terms.interestRateBps > 0
+                  ? `${formatBpsRate(terms.interestRateBps)} (+${money(
+                      yieldEst.netInterestMonthlyMinor
+                    )}/bln)`
+                  : "0%"}{" "}
+                · Admin: {terms.adminFeeMinor > 0n ? `−${money(terms.adminFeeMinor)}/bln` : "Gratis"}
+              </div>
+              <div className="assets-reconcile-actions">
+                <button type="button" className="row-action" onClick={() => setCorrecting(asset)}>
+                  Koreksi Saldo
+                </button>
+                <button type="button" className="row-action" onClick={() => setEditing(asset)}>
+                  Atur Bunga/Admin
+                </button>
+              </div>
+            </div>
           );
         })}
       </div>
-    </section>
-  ) : null;
+    </div>
+  );
 
-  return <div className="page finance-assets-page">
-    <header className="page-header"><PageHeading title="Aset" description="Rekening, kas, e-money, tabungan, dan piutang beserta saldo awalnya."
-      actions={<><ExportMenuButton dataset="assets" label="Ekspor Aset" /><button className="button-primary" type="button" onClick={openNewAsset}><Plus size={17} /> Tambah aset</button></>} /></header>
-    {totals.map((item) => {
-      const money = (value: string | undefined) => formatMinor(value ?? "0", item.currency, item.exponent);
-      return <div className="ui-kpis assets-kpis" key={item.currency} aria-label={`Ringkasan aset ${item.currency}`}>
-        <Kpi title="Total aset tercatat" icon={Bank} tone="neutral" value={money(item.amountMinor)} valueTone={BigInt(item.amountMinor) < 0n ? "negative" : ""}
-          note={item.unpricedCount ? `${item.unpricedCount} posisi investasi tanpa harga belum termasuk` : `Termasuk investasi dan piutang · ${item.currency}`} />
-        <Kpi title="Dana likuid" icon={Drop} tone="info" value={money(item.liquidMinor)} valueTone={BigInt(item.liquidMinor ?? "0") < 0n ? "negative" : ""} note="Akun aktif bertanda likuid" />
-        <Kpi title="Dapat dipakai belanja" icon={Wallet} tone="positive" value={money(item.eligibleMinor)} valueTone={BigInt(item.eligibleMinor ?? "0") < 0n ? "negative" : ""} note="Sebelum cadangan dan kewajiban" />
-        <Kpi title="Kewajiban kredit" icon={CreditCard} tone="negative" value={money(item.liabilitiesMinor)} note="Termasuk cicilan bulan berikutnya"
-          action={<AppLink href="/credit" className="text-link">Kredit &amp; Talangan</AppLink>} />
-      </div>;
-    })}
-    <div className="asset-overview-grid">
-    <InvestmentSummary totals={investmentTotals} /></div>
-    {creditFirst && creditSection}
-    {!regularActive.length ? <section className="surface finance-empty"><h2>{archived.length ? "Tidak ada aset aktif" : "Belum ada aset"}</h2><p>{archived.length ? "Tampilkan yang diarsipkan untuk memulihkan aset, atau tambahkan aset baru." : "Buat akun atau aset pertama, lalu catat saldo awalnya."}</p>
-      <button className="button-primary" type="button" onClick={openNewAsset}>Tambah aset</button></section> : <section className="surface"><SectionHeading title="Akun & nilai tercatat" eyebrow="ASET AKTIF" action={<div className="section-heading-actions"><span className="count-pill">{regularActive.length} aset</span><ExportMenuButton dataset="assets" label="Ekspor Aset" /></div>} />
-      <div className="asset-list">{regularActive.map((asset) => {
-        const isReceivable = isReceivableAsset(asset);
-        const mark = resolveProviderMark(
-          asset.providerName,
-          asset.displayName,
-          isReceivable ? "teal" : asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet",
-        );
-        const terms = parseAssetTerms(asset.note);
-        const termSummary = [
-          isReceivable ? "Piutang / Talangan" : ASSET_CLASS_LABEL[asset.assetClass],
-          !mobile && asset.assetGroupName ? asset.assetGroupName : null,
-          terms.interestRateBps > 0 ? `Bunga ${formatBpsRate(terms.interestRateBps)} p.a.` : null,
-          terms.adminFeeMinor > 0n ? `Admin ${formatMinor(terms.adminFeeMinor, asset.currency, asset.exponent)}/bln` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        return <article
-          className="asset-row asset-row--interactive data-list-row data-list-row--entity"
-          key={asset.id}
-          onClick={(event) => {
-            if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
-          }}
-        >
-        <div className="data-list-identity"><ProviderBrandMark mark={mark} />
-          <div className="asset-copy">
-            <button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}>
-              <strong>{asset.displayName}</strong>
-            </button>
-            <span>{[asset.providerName, asset.assetTypeName, asset.safeSuffix ? `•••• ${asset.safeSuffix}` : null].filter(Boolean).join(" · ")}</span>
-            {termSummary && <small>{termSummary}</small>}
-          </div></div>
-        <div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong>
-        <div className="data-list-actions">
-          {isReceivable && BigInt(asset.balanceMinor) > 0n && (
-            <button
-              type="button"
-              className="row-action"
-              onClick={() => setSettlingReceivable(asset)}
-            >
-              Terima ganti
-            </button>
+  const heading = (
+    <PageHeading
+      title="Rekening & Aset"
+      summary={
+        <>
+          <span>
+            Total Tercatat:{" "}
+            <strong>{formatMinor(totalBalanceBig.toString(), pCurr, pExp)}</strong>
+          </span>
+          {primaryTotal?.liquidMinor && (
+            <>
+              <span aria-hidden="true">|</span>
+              <span>
+                Dana Likuid:{" "}
+                <strong>{formatMinor(primaryTotal.liquidMinor, pCurr, pExp)}</strong>
+              </span>
+            </>
           )}
-          <button type="button" className="row-action" onClick={() => setEditing(asset)}><PencilSimple size={14} weight="bold" /> Ubah</button>
-          <button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Koreksi saldo awal</button>
-        </div></div></article>;
-      })}</div></section>}
+        </>
+      }
+      actions={
+        <>
+          <ExportMenuButton dataset="assets" label="Ekspor Aset" />
+          <button className="button-primary" type="button" onClick={openNewAsset}>
+            <Plus size={16} weight="bold" aria-hidden="true" />
+            <span>Tambah Rekening</span>
+          </button>
+        </>
+      }
+    />
+  );
 
-    {!creditFirst && creditSection}
+  return (
+    <div className="page finance-assets-page">
+      <PageTabs
+        label="Lembar Kerja Rekening & Aset"
+        heading={heading}
+        tabs={[
+          {
+            id: "rekening",
+            label: "Daftar Rekening & Saldo",
+            panel: daftarRekeningPanel,
+          },
+          {
+            id: "rekonsiliasi",
+            label: "Bunga, Admin & Rekonsiliasi",
+            panel: rekonsiliasiPanel,
+          },
+        ]}
+      />
 
-    {archived.length > 0 && <><label className="finance-history-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Tampilkan yang diarsipkan ({archived.length})</label>
-      {showArchived && <section className="surface finance-archived"><SectionHeading title="Aset diarsipkan" />
-      <div className="asset-list">{archived.map((asset) => {
-        const mark = resolveProviderMark(asset.providerName, asset.displayName, asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet");
-        return <div
-          className="asset-row asset-row--interactive data-list-row data-list-row--entity"
-          key={asset.id}
-          onClick={(event) => {
-            if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
-          }}
-        ><div className="data-list-identity"><ProviderBrandMark mark={mark} /><div className="asset-copy"><button type="button" className="asset-title-trigger" onClick={() => setViewingAsset(asset)}><strong>{asset.displayName}</strong></button><small>{ASSET_CLASS_LABEL[asset.assetClass]} · Diarsipkan</small></div></div><div className="data-list-management"><strong className="asset-amount financial-value financial-value--entity">{formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}</strong><div className="data-list-actions"><button type="button" className="row-action" onClick={() => setCorrecting(asset)}>Riwayat saldo awal</button><button type="button" className="row-action" disabled={pending || refreshing} aria-busy={pending && restoringId === asset.id} onClick={() => void restore(asset.id)}>{pending && restoringId === asset.id ? <LoadingIndicator>Memulihkan...</LoadingIndicator> : "Pulihkan"}</button></div></div></div>;
-      })}</div><details className="context-help"><summary>Tentang aset diarsipkan</summary><p className="finance-hint supporting-prose">Saldo awal dan riwayat tetap tersimpan. Aset tidak dihapus permanen; pulihkan untuk menggunakannya kembali.</p></details></section>}</>}
-    {error && <p className="finance-error" role="alert">{error}</p>}
-    <details className="context-help"><summary>Cara membaca aset &amp; fasilitas kredit</summary><p className="finance-hint supporting-prose supporting-prose--section">Saldo aset positif berasal dari saldo awal dan seluruh pergerakan yang tercatat. Klik nama atau baris aset untuk melihat rincian ketentuan akun, bunga simpanan, biaya admin, dan mutasi terakhir.</p></details>
-    {liveViewingAsset && (
-      <AssetDetailDialog
-        key={liveViewingAsset.id}
-        asset={liveViewingAsset}
-        onClose={() => setViewingAsset(null)}
-        onEdit={() => setEditing(liveViewingAsset)}
-        onCorrectOpening={() => setCorrecting(liveViewingAsset)}
-        onPayBill={() => setPayingCredit(liveViewingAsset)}
-        onSettleReceivable={() => setSettlingReceivable(liveViewingAsset)}
+      {archived.length > 0 && (
+        <>
+          <label className="finance-history-toggle">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(event) => setShowArchived(event.target.checked)}
+            />{" "}
+            Tampilkan rekening yang diarsipkan ({archived.length})
+          </label>
+          {showArchived && (
+            <section className="surface finance-archived">
+              <SectionHeading title="Rekening diarsipkan" />
+              <div className="asset-list">
+                {archived.map((asset) => {
+                  const mark = resolveProviderMark(
+                    asset.providerName,
+                    asset.displayName,
+                    asset.normallySpendable ? "blue" : asset.normallyLiquid ? "cyan" : "violet"
+                  );
+                  return (
+                    <div
+                      className="asset-row asset-row--interactive data-list-row data-list-row--entity"
+                      key={asset.id}
+                      onClick={(event) => {
+                        if (!shouldIgnoreRowClick(event.target)) setViewingAsset(asset);
+                      }}
+                    >
+                      <div className="data-list-identity">
+                        <ProviderBrandMark mark={mark} />
+                        <div className="asset-copy">
+                          <button
+                            type="button"
+                            className="asset-title-trigger"
+                            onClick={() => setViewingAsset(asset)}
+                          >
+                            <strong>{asset.displayName}</strong>
+                          </button>
+                          <small>{ASSET_CLASS_LABEL[asset.assetClass]} · Diarsipkan</small>
+                        </div>
+                      </div>
+                      <div className="data-list-management">
+                        <strong className="asset-amount financial-value financial-value--entity">
+                          {formatMinor(asset.balanceMinor, asset.currency, asset.exponent)}
+                        </strong>
+                        <div className="data-list-actions">
+                          <button
+                            type="button"
+                            className="row-action"
+                            onClick={() => setCorrecting(asset)}
+                          >
+                            Riwayat saldo awal
+                          </button>
+                          <button
+                            type="button"
+                            className="row-action"
+                            disabled={pending || refreshing}
+                            aria-busy={pending && restoringId === asset.id}
+                            onClick={() => void restore(asset.id)}
+                          >
+                            {pending && restoringId === asset.id ? (
+                              <LoadingIndicator>Memulihkan...</LoadingIndicator>
+                            ) : (
+                              "Pulihkan"
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
+      {error && (
+        <p className="finance-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <ExcelStatusBar
+        rowCount={regularActive.length}
+        totalIn={formatMinor(totalEstInterestBig.toString(), pCurr, pExp)}
+        totalOut={formatMinor(totalAdminBig.toString(), pCurr, pExp)}
+        customNetLabel="Total Nilai Tercatat"
+        customNetValue={formatMinor(totalBalanceBig.toString(), pCurr, pExp)}
       />
-    )}
-    {editing && (
-      <AssetForm
-        key={editing === "new" ? "new" : editing.id}
-        initial={editing === "new" ? undefined : editing}
-        onClose={() => setEditing(null)}
-      />
-    )}
-    {payingCredit && (
-      <PayCreditBillDialog
-        key={payingCredit.id}
-        creditAsset={payingCredit}
-        regularAssets={regularActive}
-        onClose={() => setPayingCredit(null)}
-      />
-    )}
-    {settlingReceivable && (
-      <SettleReceivableDialog
-        key={settlingReceivable.id}
-        receivableAsset={settlingReceivable}
-        regularAssets={regularActive}
-        onClose={() => setSettlingReceivable(null)}
-      />
-    )}
-    {correcting && <AssetOpeningCorrection key={correcting.id} asset={correcting} onClose={() => setCorrecting(null)} />}
-  </div>;
+
+      {liveViewingAsset && (
+        <AssetDetailDialog
+          key={liveViewingAsset.id}
+          asset={liveViewingAsset}
+          onClose={() => setViewingAsset(null)}
+          onEdit={() => setEditing(liveViewingAsset)}
+          onCorrectOpening={() => setCorrecting(liveViewingAsset)}
+          onPayBill={() => setPayingCredit(liveViewingAsset)}
+          onSettleReceivable={() => setSettlingReceivable(liveViewingAsset)}
+        />
+      )}
+      {editing && (
+        <AssetForm
+          key={editing === "new" ? "new" : editing.id}
+          initial={editing === "new" ? undefined : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {payingCredit && (
+        <PayCreditBillDialog
+          key={payingCredit.id}
+          creditAsset={payingCredit}
+          regularAssets={regularActive}
+          onClose={() => setPayingCredit(null)}
+        />
+      )}
+      {settlingReceivable && (
+        <SettleReceivableDialog
+          key={settlingReceivable.id}
+          receivableAsset={settlingReceivable}
+          regularAssets={regularActive}
+          onClose={() => setSettlingReceivable(null)}
+        />
+      )}
+      {correcting && (
+        <AssetOpeningCorrection
+          key={correcting.id}
+          asset={correcting}
+          onClose={() => setCorrecting(null)}
+        />
+      )}
+      {topUpPreset && (
+        <TransactionEditor
+          key={`topup:${topUpPreset.destinationId}`}
+          preset={topUpPreset}
+          onClose={() => setTopUpPreset(null)}
+        />
+      )}
+    </div>
+  );
 }

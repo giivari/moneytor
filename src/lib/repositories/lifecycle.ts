@@ -9,7 +9,7 @@ export const lifecycleReferences = {
   payment_networks: [["assets", "payment_network_id"]],
   asset_types: [["assets", "asset_type_id"]],
   asset_groups: [["assets", "asset_group_id"]],
-  transaction_categories: [["financial_activities", "category_id"], ["planning_budgets", "category_id"], ["recurring_transaction_rules", "category_id"], ["recurring_transaction_occurrences", "category_id"], ["income_event_rule_versions", "category_id"], ["income_event_instances", "category_id"], ["automation_actions", "category_id"], ["automation_conditions", "category_id"], ["automation_allocation_assessments", "category_id"]],
+  transaction_categories: [["financial_activities", "category_id"], ["planning_budgets", "category_id"], ["recurring_transaction_rules", "category_id"], ["recurring_transaction_occurrences", "category_id"], ["income_event_rule_versions", "category_id"], ["income_event_instances", "category_id"], ["automation_actions", "category_id"], ["automation_conditions", "category_id"], ["automation_allocation_assessments", "category_id"], ["category_nature_overrides", "category_id"], ["transaction_categories", "parent_id"]],
   additional_charge_types: [["activity_charges", "charge_type_id"], ["recurring_rule_charges", "type_id"], ["recurring_occurrence_charges", "type_id"], ["automation_action_charges", "type_id"]],
   investment_instrument_types: [["investment_instruments", "instrument_type_id"]],
   investment_portfolios: [["investment_opening_positions", "portfolio_id"], ["investment_transactions", "portfolio_id"]],

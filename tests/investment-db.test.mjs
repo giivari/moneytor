@@ -198,7 +198,11 @@ test("P4 isolated disposable PostgreSQL investment engine", { skip: !enabled }, 
       await assert.rejects(s.postInvestmentTrade({ ...draft("buy", "1", "100"), note: "x".repeat(1001) }, randomUUID()), /Teks/);
       await assert.rejects(s.postInvestmentTrade(draft("buy", "1", "100", "0", "2099-01-01T00:00:00.000Z"), randomUUID()), /masa depan/);
       await assert.rejects(s.saveMarketPrice({ instrumentId, price: "100", asOf: "2099-01-01T00:00:00.000Z" }, randomUUID()), /masa depan/);
-      await assert.rejects(s.refreshMarketPrice(instrumentId, randomUUID()), /belum dikonfigurasi/);
+      // Hermetic: the developer's .env.local may configure a provider; this case asserts the unconfigured behaviour.
+      const configuredProvider = process.env.MONETA_PRICE_PROVIDER;
+      delete process.env.MONETA_PRICE_PROVIDER;
+      try { await assert.rejects(s.refreshMarketPrice(instrumentId, randomUUID()), /belum dikonfigurasi/); }
+      finally { if (configuredProvider !== undefined) process.env.MONETA_PRICE_PROVIDER = configuredProvider; }
       assert.equal((await investmentSnapshot()).trades.find((t) => t.id === fullSell).status, "posted");
     });
     await t.test("P4.1 instrument metadata edit and composite provider quote refresh with failure preservation", async () => {

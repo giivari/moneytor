@@ -537,3 +537,23 @@ Pengeluaran dikelompokkan ke induk katalog dan sifat efektif (`none` = tanpa sif
 }
 ```
 <!-- contract-examples:end -->
+
+## Perubahan kontrak: audit 2026-11-14 (migrasi 021-023)
+
+- `POST /api/finance/asset-create`: field baru opsional `idempotencyKey` (UUID). Kunci yang sama + isi sama mengembalikan `{ id }` aset yang sama
+  (tanpa saldo awal kedua); kunci sama + isi beda ditolak. Klien (form Aset, fasilitas kredit, piutang split bill) selalu mengirimnya.
+  Tabel baru `asset_create_requests` (migrasi 023).
+- `POST /api/planning` aksi `delete` kini soft-delete: respons tetap `{ id }`, data tidak dihapus. Budget/goal/reserve diarsipkan
+  (`isActive=false`, `archivedAt`/`releasedAt` terisi), kewajiban terbuka menjadi `cancelled`, cadangan terkait dilepas. Guard DELETE migrasi 007
+  dipulihkan oleh migrasi 021; kode runtime dan `scripts/vercel-db-setup.mjs` tidak lagi mengubah fungsi guard.
+- `POST /api/auth/*`: batas percobaan kini hanya menghitung kegagalan per klien (bucket `kind:<hmac(IP, garam harian)>`, 15 menit; login 20, recovery 10,
+  bootstrap 10, security 20) dan sesi aktif punya bucket `session:` sendiri (120/15 menit). IP mentah tidak disimpan (migrasi 022, tabel `auth_rate_salts`).
+  Respons galat tetap generik. `MONETA_ORIGIN`/`MONETA_RP_ID` tidak lagi ditulis ulang dari header host.
+- `GET /api/health`: `migrations: "ok"` hanya bila migrasi `REQUIRED_MIGRATION` (`src/lib/db/required-migration.ts`) terpasang; tes menjaga nilainya.
+- Impor: kolom biaya pada baris pengeluaran kini dibukukan sebagai charge "Biaya Admin" (sebelumnya dibuang); tanggal tanpa zona waktu dan serial Excel
+  berjam dibaca sebagai WIB; CSV dengan tanda kutip tak tertutup ditolak; commit ulang dengan kunci sama untuk berkas lain ditolak.
+- Ekspor: sel nominal berupa angka satuan mayor (USD 12.50 -> 12.5; di atas 2^53 berupa string desimal); total belanja memakai definisi `spending_effects`
+  (biaya transfer dan bunga ikut); nama file memakai tanggal WIB.
+- Galat dari `exports`/`imports`/otomatisasi tidak lagi meneruskan pesan PostgreSQL/sistem; `finance` GET `asset-detail` yang tidak ditemukan -> 404.
+- "Dana siap pakai": definisi tidak berubah. `creditDebtDue` selalu menghitung tagihan berjalan, tagihan berikutnya hanya bila jatuh tempo masuk horizon.
+- Anggaran Planning (`spentMinor`) kini dihitung dari view `spending_effects`, sama dengan analitik.

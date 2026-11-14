@@ -171,27 +171,19 @@ async function changePlan(client: PoolClient, action: string, body: Record<strin
   const id = uuid(value(body,"id",36));
   const row = await locked(client,tableFor(planKind),id,version(body));
   if (action === "delete") {
-    await client.query(`
-      CREATE OR REPLACE FUNCTION guard_planning_record() RETURNS trigger LANGUAGE plpgsql AS $fn$
-      BEGIN
-        IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
-        IF TG_OP = 'UPDATE' AND (NEW.id <> OLD.id OR NEW.currency_code <> OLD.currency_code OR NEW.kind <> OLD.kind) THEN
-          RAISE EXCEPTION 'Planning identity, currency and kind are immutable';
-        END IF;
-        IF TG_TABLE_NAME = 'planning_budgets' THEN
-          IF NEW.category_id IS NOT NULL AND NOT EXISTS (
-            SELECT 1 FROM transaction_categories WHERE id = NEW.category_id AND applies_to = 'expense'
-          ) THEN RAISE EXCEPTION 'Budget category must apply to expenses'; END IF;
-        END IF;
-        RETURN NEW;
-      END $fn$;
-    `);
+    // Riwayat Planning tidak pernah dihapus (guard_planning_record menolak DELETE); "hapus" = arsip/batal + lepas cadangan.
     if (planKind === "obligation") {
-      await client.query("DELETE FROM planning_reserves WHERE obligation_id=$1", [id]);
-    } else if (planKind === "goal") {
-      await client.query("DELETE FROM planning_reserves WHERE goal_id=$1", [id]);
+      await client.query("UPDATE planning_reserves SET is_active=false,released_at=now(),version=version+1,updated_at=now() WHERE obligation_id=$1 AND is_active", [id]);
+      if (row.status === "open") {
+        await client.query("UPDATE planning_obligations SET status='cancelled',cancelled_at=now(),version=version+1,updated_at=now() WHERE id=$1", [id]);
+      }
+      return id;
     }
-    await client.query(`DELETE FROM ${tableFor(planKind)} WHERE id=$1`, [id]);
+    if (planKind === "goal") {
+      await client.query("UPDATE planning_reserves SET is_active=false,released_at=now(),version=version+1,updated_at=now() WHERE goal_id=$1 AND is_active", [id]);
+    }
+    const table = tableFor(planKind), column = planKind === "reserve" ? "released_at" : "archived_at";
+    await client.query(`UPDATE ${table} SET is_active=false,${column}=COALESCE(${column},now()),version=version+1,updated_at=now() WHERE id=$1`, [id]);
     return id;
   }
   if (action === "archive" || action === "restore") {
@@ -330,13 +322,12 @@ export async function listPlanning(): Promise<PlanningData> {
       c.minor_unit_exponent AS exponent,b.limit_minor::text AS "limitMinor",b.period_start::text AS "periodStart",b.period_end::text AS "periodEnd",
       b.category_id AS "categoryId",tc.display_name AS "categoryName",b.note,b.is_active AS "isActive",b.archived_at::text AS "archivedAt",
       b.version,b.created_at::text AS "createdAt",b.updated_at::text AS "updatedAt",
-      COALESCE((SELECT sum((CASE WHEN a.kind='expense' THEN a.base_amount_minor WHEN a.kind='refund' THEN -a.base_amount_minor ELSE 0 END)
-        + COALESCE((SELECT sum(ac.amount_minor) FROM activity_charges ac WHERE ac.activity_id=a.id),0))
-        FROM financial_activities a WHERE a.status='posted' AND a.currency_code=b.currency_code
-          AND a.occurred_at >= (b.period_start::timestamp AT TIME ZONE 'Asia/Jakarta')
-          AND a.occurred_at < ((b.period_end + 1)::timestamp AT TIME ZONE 'Asia/Jakarta')
-          AND ((a.kind IN ('expense','refund') AND (b.category_id IS NULL OR a.category_id=b.category_id))
-            OR (b.category_id IS NULL AND a.kind IN ('transfer','repay')))),0)::text AS "spentMinor"
+      -- Belanja = definisi tunggal view spending_effects (migrasi 020), sama dengan analitik dan detail aset.
+      COALESCE((SELECT sum(se.amount_minor) FROM spending_effects se
+        WHERE se.currency_code=b.currency_code
+          AND se.occurred_at >= (b.period_start::timestamp AT TIME ZONE 'Asia/Jakarta')
+          AND se.occurred_at < ((b.period_end + 1)::timestamp AT TIME ZONE 'Asia/Jakarta')
+          AND (b.category_id IS NULL OR se.category_id=b.category_id)),0)::text AS "spentMinor"
       FROM planning_budgets b JOIN planning_labels l ON l.id=b.label_id JOIN currencies c ON c.code=b.currency_code
       LEFT JOIN transaction_categories tc ON tc.id=b.category_id ORDER BY b.is_active DESC,b.created_at DESC,b.id DESC`);
     const goals = await client.query<PlanningGoal>(`SELECT g.id,'goal' AS kind,g.label_id AS "labelId",l.display_name AS "labelName",g.title,g.currency_code AS currency,
