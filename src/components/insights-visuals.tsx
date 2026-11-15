@@ -109,7 +109,7 @@ export function useInsightsVisualTrend({
     0n,
   );
   // Beranda (dashboard) keeps all bins but narrows the viewBox on phones so axis text is not scaled below 12px.
-  const width = dashboard ? (viewport ? 340 : 600) : mobile ? 340 : Math.max(420, rows.length * 44 + 72);
+  const width = dashboard ? (viewport ? 340 : 600) : mobile ? 340 : Math.max(600, rows.length * 54 + 84);
   const bottom = dashboard ? 98 : 180;
   const axisLeft = 68;
   const step = (width - axisLeft - 12) / Math.max(1, rows.length);
@@ -507,6 +507,13 @@ export function InsightsComposition({
   const rawByKey = new Map(rows.map((r) => [r.key, r]));
   const shares = compositionShares(clampCategoryRows(rows), charges);
   const id = useId();
+  const [compMode, setCompMode] = useState<"top" | "parent" | "nature">("top");
+  const activeCompMode =
+    compMode === "parent" && categoryParents.length > 0
+      ? "parent"
+      : compMode === "nature" && natures.length > 0
+        ? "nature"
+        : "top";
   const sorted = shares.rows;
   const active = sorted.filter((row) => BigInt(row.spendingMinor) > 0n);
   const refundedZeroRows = sorted.filter((row) => {
@@ -608,67 +615,97 @@ export function InsightsComposition({
               <FinancialAmount value={formatMinor(total, first.currency, first.exponent)} level="summary" className="insight-money" />
             </div>
           </div>
-          <ol className="insight-visual-ranking">
-            {displayRows.map(({ row, color }) => renderCompositionRow(row, color, rawByKey.get(row.key)))}
-          </ol>
           {!dashboard && (categoryParents.length > 0 || natures.length > 0) && (
-            <div className="insight-parent-nature-summary">
+            <div className="insight-seg-tabs insight-comp-tabs" role="group" aria-label="Pengelompokan komposisi belanja">
+              <button
+                type="button"
+                className="insight-seg-tab"
+                data-active={activeCompMode === "top" ? "true" : "false"}
+                onClick={() => setCompMode("top")}
+              >
+                Top Kategori
+              </button>
               {categoryParents.length > 0 && (
-                <div>
-                  <small className="insight-note">Per induk kategori</small>
-                  <ul className="insight-visual-ranking">
-                    {categoryParents.map((parent) => {
-                      const rawSpend = BigInt(parent.spendingMinor);
-                      const clamped = clampSpendingMinor(parent.spendingMinor);
-                      const refCnt = BigInt(parent.refundCount ?? "0");
-                      return (
-                        <li key={`parent-${parent.key}`} className="insight-comp-row--compact">
-                          <span className="insight-comp-name">
-                            <span className="insight-comp-label">
-                              {parent.name}
-                              {parent.archived ? " · Diarsipkan" : ""}
-                              {(rawSpend < 0n || refCnt > 0n)
-                                ? ` (${refCnt > 0n ? `Refund ${parent.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · bersih ${formatMinor(parent.spendingMinor, parent.currency, parent.exponent)}` : ""})`
-                                : ""}
-                            </span>
-                          </span>
-                          <strong>
-                            <FinancialAmount as="span" value={formatMinor(clamped, parent.currency, parent.exponent)} />
-                          </strong>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
+                <button
+                  type="button"
+                  className="insight-seg-tab"
+                  data-active={activeCompMode === "parent" ? "true" : "false"}
+                  onClick={() => setCompMode("parent")}
+                >
+                  Induk
+                </button>
               )}
               {natures.length > 0 && (
-                <div>
-                  <small className="insight-note">Per sifat efektif</small>
-                  <ul className="insight-visual-ranking">
-                    {natures.map((nature) => {
-                      const rawSpend = BigInt(nature.spendingMinor);
-                      const clamped = clampSpendingMinor(nature.spendingMinor);
-                      const refCnt = BigInt(nature.refundCount ?? "0");
-                      return (
-                        <li key={`nature-${nature.key}`} className="insight-comp-row--compact">
-                          <span className="insight-comp-name">
-                            <span className="insight-comp-label">
-                              {nature.name}
-                              {(rawSpend < 0n || refCnt > 0n)
-                                ? ` (${refCnt > 0n ? `Refund ${nature.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · bersih ${formatMinor(nature.spendingMinor, nature.currency, nature.exponent)}` : ""})`
-                                : ""}
-                            </span>
-                          </span>
-                          <strong>
-                            <FinancialAmount as="span" value={formatMinor(clamped, nature.currency, nature.exponent)} />
-                          </strong>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
+                <button
+                  type="button"
+                  className="insight-seg-tab"
+                  data-active={activeCompMode === "nature" ? "true" : "false"}
+                  onClick={() => setCompMode("nature")}
+                >
+                  Sifat
+                </button>
               )}
             </div>
+          )}
+          {activeCompMode === "top" && (
+            <ol className="insight-visual-ranking">
+              {displayRows.map(({ row, color }) => renderCompositionRow(row, color, rawByKey.get(row.key)))}
+            </ol>
+          )}
+          {activeCompMode === "parent" && categoryParents.length > 0 && (
+            <ul className="insight-visual-ranking">
+              {categoryParents.slice(0, maxLines).map((parent, idx) => {
+                const rawSpend = BigInt(parent.spendingMinor);
+                const clamped = clampSpendingMinor(parent.spendingMinor);
+                const refCnt = BigInt(parent.refundCount ?? "0");
+                const parentShareBps = total > 0n ? ((BigInt(clamped) * 10000n) / total).toString() : null;
+                return (
+                  <li key={`parent-${parent.key}`} className="insight-comp-row--compact">
+                    <span className="insight-comp-name">
+                      <i style={{ background: colors[idx % colors.length] }} />
+                      <span className="insight-comp-label">
+                        {parent.name}
+                        {parent.archived ? " · Diarsipkan" : ""}
+                        {(rawSpend < 0n || refCnt > 0n)
+                          ? ` (${refCnt > 0n ? `Refund ${parent.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · bersih ${formatMinor(parent.spendingMinor, parent.currency, parent.exponent)}` : ""})`
+                          : ""}
+                      </span>
+                    </span>
+                    <strong>
+                      <FinancialAmount as="span" value={formatMinor(clamped, parent.currency, parent.exponent)} />
+                      <small>{percentageLabel(parentShareBps)}</small>
+                    </strong>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {activeCompMode === "nature" && natures.length > 0 && (
+            <ul className="insight-visual-ranking">
+              {natures.slice(0, maxLines).map((nature, idx) => {
+                const rawSpend = BigInt(nature.spendingMinor);
+                const clamped = clampSpendingMinor(nature.spendingMinor);
+                const refCnt = BigInt(nature.refundCount ?? "0");
+                const natureShareBps = total > 0n ? ((BigInt(clamped) * 10000n) / total).toString() : null;
+                return (
+                  <li key={`nature-${nature.key}`} className="insight-comp-row--compact">
+                    <span className="insight-comp-name">
+                      <i style={{ background: colors[idx % colors.length] }} />
+                      <span className="insight-comp-label">
+                        {nature.name}
+                        {(rawSpend < 0n || refCnt > 0n)
+                          ? ` (${refCnt > 0n ? `Refund ${nature.refundCount}x` : "Refund"}${rawSpend < 0n ? ` · bersih ${formatMinor(nature.spendingMinor, nature.currency, nature.exponent)}` : ""})`
+                          : ""}
+                      </span>
+                    </span>
+                    <strong>
+                      <FinancialAmount as="span" value={formatMinor(clamped, nature.currency, nature.exponent)} />
+                      <small>{percentageLabel(natureShareBps)}</small>
+                    </strong>
+                  </li>
+                );
+              })}
+            </ul>
           )}
           {inlineDetails && hasHiddenRows && (
             <details className="insight-inline-detail">

@@ -5,6 +5,7 @@ import type { AnalyticsGranularity } from "@/lib/analytics/periods";
 import type { AnalyticsReport } from "@/lib/analytics/types";
 import { insightsDraft, insightsQuery, periodLabel, type InsightsDraft } from "@/lib/analytics/presentation";
 import { formatMinor } from "@/lib/finance/format";
+import { PageHeading } from "./ui";
 import { useInsightsReport } from "./use-insights-report";
 import { InsightsReportView } from "./insights-report";
 import { useInsightsMonth } from "./use-insights-month";
@@ -75,7 +76,7 @@ export function InsightsWorkspace({
   const [draft, setDraft] = useState(() => insightsDraft(initialQuery));
   const [inputError, setInputError] = useState("");
   const [slide, setSlide] = useState(0);
-  const [activeTab, setActiveTab] = useState<"all" | "cashflow" | "distribution">("all");
+  const [activeTab, setActiveTab] = useState<"ringkasan" | "arus-kas" | "bedah">("ringkasan");
 
   const queryParams = new URLSearchParams(state.query);
   const selected = queryParams.get("currency") ?? state.report?.summary[0]?.currency ?? "";
@@ -142,38 +143,48 @@ export function InsightsWorkspace({
     state.report?.summary[0];
 
   return (
-    <div className="insight-workspace" data-insight-tab={activeTab}>
-      {/* Pita Tab Fungsional Analitik */}
-      <div className="insight-view-tabs-bar">
-        <div className="page-tabs">
+    <>
+      <header className="page-header">
+        <PageHeading
+          title="Analitik"
+          description="Pemasukan, belanja, dan konteks keuangan dari transaksi yang tercatat."
+        />
+        <div className="page-tabs" role="tablist" aria-label="Kategori analisis keuangan">
           <button
             type="button"
+            role="tab"
             className="page-tab"
-            data-tab-active={activeTab === "all" ? "true" : "false"}
-            onClick={() => setActiveTab("all")}
+            aria-selected={activeTab === "ringkasan"}
+            data-tab-active={activeTab === "ringkasan" ? "true" : "false"}
+            onClick={() => setActiveTab("ringkasan")}
           >
             Ringkasan &amp; Rekonsiliasi
           </button>
           <button
             type="button"
+            role="tab"
             className="page-tab"
-            data-tab-active={activeTab === "cashflow" ? "true" : "false"}
-            onClick={() => setActiveTab("cashflow")}
+            aria-selected={activeTab === "arus-kas"}
+            data-tab-active={activeTab === "arus-kas" ? "true" : "false"}
+            onClick={() => setActiveTab("arus-kas")}
           >
             Tren Arus Kas &amp; Kewajiban
           </button>
           <button
             type="button"
+            role="tab"
             className="page-tab"
-            data-tab-active={activeTab === "distribution" ? "true" : "false"}
-            onClick={() => setActiveTab("distribution")}
+            aria-selected={activeTab === "bedah"}
+            data-tab-active={activeTab === "bedah" ? "true" : "false"}
+            onClick={() => setActiveTab("bedah")}
           >
             Bedah Kategori, Akun &amp; Aset
           </button>
         </div>
-      </div>
+      </header>
 
-      <section className="surface insight-toolbar" aria-label="Filter periode dan tampilan grafik">
+      <div className="insight-workspace" data-insight-tab={activeTab}>
+        <section className="surface insight-toolbar" aria-label="Filter periode dan tampilan grafik">
         <div className="insight-toolbar-top">
           <div className="insight-toolbar-period">
             <strong>{state.report ? periodLabel(state.report.period) : "Periode laporan"}</strong>
@@ -352,6 +363,7 @@ export function InsightsWorkspace({
         }
         isNetNegative={summaryItem?.netMinor ? BigInt(summaryItem.netMinor) < 0n : false}
       />
-    </div>
+      </div>
+    </>
   );
 }

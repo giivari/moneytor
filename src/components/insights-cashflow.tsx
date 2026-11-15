@@ -188,7 +188,7 @@ export function InsightsFinancialSuite({
     return peak > acc ? peak : acc;
   }, 0n);
 
-  const svgWidth = Math.max(440, cashSeries.length * 46 + 80);
+  const svgWidth = mobile ? 360 : Math.max(920, cashSeries.length * 76 + 96);
   const yZero = 100;
   const halfSpan = 64;
   const stepX = (svgWidth - 80) / Math.max(1, cashSeries.length);
