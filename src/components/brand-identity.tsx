@@ -5,8 +5,8 @@ export function BrandIdentity() {
       <img
         src="/icon-192.png"
         alt=""
-        width={18}
-        height={18}
+        width={22}
+        height={22}
         className="brand-logo-img"
         decoding="async"
       />

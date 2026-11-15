@@ -41,20 +41,20 @@
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 10px;
   min-height: var(--control-lg);
-  padding-inline: var(--space-3);
+  padding-inline: var(--space-2);
   font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-regular);
-  letter-spacing: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
   line-height: 1;
   border-radius: var(--radius-md);
 }
 .brand .brand-identity {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 10px;
 }
 .brand-mark {
   display: inline-flex;

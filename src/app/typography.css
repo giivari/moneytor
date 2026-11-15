@@ -19,7 +19,7 @@ small { font-size: var(--type-meta); font-weight: var(--weight-regular); }
   font-weight: var(--weight-medium);
   line-height: 1.4;
 }
-.brand { font-weight: var(--weight-regular); }
+.brand { font-weight: var(--weight-medium); }
 .auth-brand { font-weight: var(--weight-strong); }
 
 /* One entity-name level across financial lists, plans and security devices. */
