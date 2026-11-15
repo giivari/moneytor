@@ -184,8 +184,8 @@ export function AutomationWorkspace({ schedules, income, general, embedded = fal
       </div>}
       <details className="context-help"><summary>Tentang otomatisasi</summary><p className="supporting-prose supporting-prose--section">Aturan menghubungkan pemicu, kondisi, dan tindakan. Jadwal diproses ketika moneytor dibuka. Tindakan dari transaksi selalu memerlukan konfirmasi. Koreksi dan pembatalan tetap menggunakan Transactions dan menyimpan riwayat.</p></details>
     </section>
-    <AutomationRulesSection archived={archived} onArchivedChange={(value) => { setArchived(value); setStatus(""); }} utilities={<>      {!archived && <ListFilterControl value={status} onChange={setStatus} label="Status aturan" options={[{value:"",label:"Semua status"},{value:"active",label:"Aktif"},{value:"paused",label:"Dijeda"}]} />}
-<ListSortControl {...ruleSort} />{embedded && createButton}</>}>
+    <AutomationRulesSection archived={archived} onArchivedChange={(value) => { setArchived(value); setStatus(""); }} action={embedded ? createButton : undefined} utilities={<>      {!archived && <ListFilterControl value={status} onChange={setStatus} label="Status aturan" options={[{value:"",label:"Semua status"},{value:"active",label:"Aktif"},{value:"paused",label:"Dijeda"}]} />}
+<ListSortControl {...ruleSort} /></>}>
       {!visibleRules.length ? <p className="finance-empty-inline">Belum ada aturan pada filter ini.</p> : <div className="automation-rule-list">{visibleRules.map((rule) => <article className="surface automation-rule" key={rule.key}>
         <div className="automation-rule-heading"><div><h3>{rule.title}</h3><p>{rule.context}</p>{rule.categoryName && <p>{rule.categoryName}</p>}</div><span className={`automation-status ${rule.status}`}>{labels[rule.status]}</span></div>
         <ResponsiveDisclosure label="Kelola otomatisasi" className="history-detail compact-management-controls"><div className="finance-actions compact-management-actions">

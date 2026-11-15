@@ -804,8 +804,8 @@ export function TransactionsView(props: {
       <span>
         Total: <strong>{totals.total} transaksi</strong>
       </span>
-      <span aria-hidden="true">|</span>
-      <span>
+      <span className="mutasi-summary-counts" aria-hidden="true">|</span>
+      <span className="mutasi-summary-counts">
         <strong>{totals.counts.expense ?? 0}</strong> pengeluaran · <strong>{totals.counts.income ?? 0}</strong> pemasukan ·{" "}
         <strong>{totals.counts.transfer ?? 0}</strong> transfer{others > 0 && <> · <strong>{others}</strong> lainnya</>}
       </span>

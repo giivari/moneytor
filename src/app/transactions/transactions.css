@@ -464,6 +464,14 @@
   font-size: var(--text-sm);
 }
 
+.transactions-page .automation-page,
+.transactions-page .import-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 /* Responsive Mobile List vs Desktop Table */
 @media (min-width: 768px) {
   .mutasi-list-mobile {
@@ -579,12 +587,13 @@
     text-align: right;
     white-space: nowrap;
   }
-}
 
-.transactions-page .automation-page,
-.transactions-page .import-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
+  .mutasi-summary-counts {
+    display: none;
+  }
+
+  .transactions-page .automation-page,
+  .transactions-page .import-page {
+    gap: var(--space-2);
+  }
 }

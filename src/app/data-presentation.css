@@ -100,7 +100,13 @@
   .list-toolbar-options { order: 4; flex: 1 1 100%; }
   .list-toolbar-options[data-expanded="true"] { flex-basis: 100%; }
   .list-toolbar-options > .disclosure-toggle { padding-block: var(--space-1); min-height: var(--control-md); font-size: var(--text-xs); }
-  .list-toolbar .list-sort-control select,
+  .list-toolbar .list-sort-control select {
+    min-height: var(--control-md);
+    padding: 0 28px 0 var(--space-2);
+    background-position: right 8px center;
+    background-size: 14px;
+    font-size: var(--text-xs);
+  }
   .list-toolbar .export-trigger-button {
     min-height: var(--control-md);
     padding-block: 0;
@@ -108,8 +114,8 @@
     font-size: var(--text-xs);
   }
   .list-filter-control > span { position:absolute; inline-size:1px; block-size:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
-  .list-filter-disclosure > .disclosure-toggle { min-height:44px; padding-block:4px; }
-  .list-filter-disclosure { margin-bottom:12px; }
+  .list-filter-disclosure > .disclosure-toggle { min-height:var(--control-md); padding-block:2px; font-size:var(--text-xs); align-items:center; }
+  .list-filter-disclosure { margin-bottom:var(--space-1); }
   .list-filter-disclosure .field select { max-inline-size:100%; }
   .compact-financial-row--record > .compact-financial-row__identity { font-size:var(--type-entity); line-height:1.35; }
   .compact-financial-row--record .financial-value--row { font-size:var(--type-value-entity); }
