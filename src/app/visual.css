@@ -75,12 +75,12 @@ p { color: var(--muted); }
   .surface { padding: 20px; }
 }
 
-/* Clean brand identity without dark blur smudge behind lettering. */
+/* Clean Fluent 2 / New Outlook titlebar brand identity. */
 .brand-identity {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   min-width: 0;
 }
 .brand-logo-img {
@@ -92,6 +92,9 @@ p { color: var(--muted); }
 }
 .brand-wordmark {
   color: var(--ink);
-  font-weight: var(--weight-strong);
-  letter-spacing: -.03em;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
+  line-height: 1;
 }

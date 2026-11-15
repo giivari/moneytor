@@ -19,7 +19,8 @@ small { font-size: var(--type-meta); font-weight: var(--weight-regular); }
   font-weight: var(--weight-medium);
   line-height: 1.4;
 }
-.brand, .auth-brand { font-weight: var(--weight-strong); }
+.brand { font-weight: var(--weight-regular); }
+.auth-brand { font-weight: var(--weight-strong); }
 
 /* One entity-name level across financial lists, plans and security devices. */
 .asset-copy strong, .compact-financial-row__identity, .planning-row h3, .automation-rule h3, .settings-nav-copy strong, .settings-catalog-identity strong, .credential-details strong, .security-session strong {
