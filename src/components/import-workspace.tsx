@@ -25,6 +25,7 @@ type Props = {
   assets: FinanceAsset[];
   categories: CatalogRecord[];
   initialBatches: ImportBatchSummary[];
+  embedded?: boolean;
 };
 
 const PAGE_SIZE = 25;
@@ -45,7 +46,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-export function ImportWorkspace({ assets, categories, initialBatches }: Props) {
+export function ImportWorkspace({ assets, categories, initialBatches, embedded = false }: Props) {
   const { notify, refresh, refreshing } = useFinanceFeedback();
   const { pending, begin, finish } = useMutationPending();
   const [error, setError] = useState("");
@@ -320,22 +321,24 @@ export function ImportWorkspace({ assets, categories, initialBatches }: Props) {
   }
 
   return (
-    <div className="page import-page">
-      <header className="page-header">
-        <PageHeading
-          title="Buku Mutasi"
-          summary={
-            <>
-              <span>Impor Mutasi (CSV / Excel)</span>
-              <span aria-hidden="true">|</span>
-              <span>
-                Riwayat batch: <strong>{batches.length}</strong>
-              </span>
-            </>
-          }
-        />
-        <TransactionsTabs active="imports" />
-      </header>
+    <div className={embedded ? "import-page" : "page import-page"}>
+      {!embedded && (
+        <header className="page-header">
+          <PageHeading
+            title="Buku Mutasi"
+            summary={
+              <>
+                <span>Impor Mutasi (CSV / Excel)</span>
+                <span aria-hidden="true">|</span>
+                <span>
+                  Riwayat batch: <strong>{batches.length}</strong>
+                </span>
+              </>
+            }
+          />
+          <TransactionsTabs active="imports" />
+        </header>
+      )}
 
       {error && (
         <p className="finance-error" role="alert">

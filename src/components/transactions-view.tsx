@@ -14,11 +14,15 @@ import {
 import { financeRequest } from "@/lib/finance/client";
 import { formatMinor, minorToInput } from "@/lib/finance/format";
 import type { TransactionPreset } from "@/lib/domain/transaction-preset";
-import type { FinanceActivity } from "@/lib/finance/types";
+import type { FinanceActivity, FinanceAsset } from "@/lib/finance/types";
 import type { AutomationView } from "@/lib/automation/service";
 import type { IncomeEventView } from "@/lib/automation/income-events";
 import type { GeneralView } from "@/lib/automation/composable-service";
-import { TransactionsTabs } from "./transactions-tabs";
+import type { CatalogRecord } from "@/lib/repositories/catalogs";
+import type { ImportBatchSummary } from "@/lib/imports/types";
+import { PageTabs } from "./page-tabs";
+import { AutomationWorkspace } from "./automation-workspace";
+import { ImportWorkspace } from "./import-workspace";
 import { TransactionEditor } from "./transaction-editor";
 import { useInspector, useInspectorSync, type InspectorEntry } from "./inspector";
 import type { ActivityTotals } from "@/lib/domain/activity-totals";
@@ -328,8 +332,13 @@ export function TransactionsView(props: {
     income: IncomeEventView;
     general: GeneralView;
   };
+  imports?: {
+    assets: FinanceAsset[];
+    categories: CatalogRecord[];
+    initialBatches: ImportBatchSummary[];
+  };
 }) {
-  const { activities, monthly, totals } = props;
+  const { activities, monthly, totals, automation, imports } = props;
   const { refreshing } = useFinanceFeedback();
   const { open } = useInspector();
   useInspectorSync("activity:", activities, (id) => activities.find((item) => `activity:${item.id}` === id),
@@ -803,25 +812,50 @@ export function TransactionsView(props: {
     </>
   );
 
+  const heading = (
+    <PageHeading
+      title="Buku Mutasi"
+      summary={summaryNode}
+      actions={
+        toastMsg ? (
+          <div className="mutasi-toast" role="status">
+            <CheckCircle size={14} weight="bold" aria-hidden="true" />
+            <span>{toastMsg}</span>
+          </div>
+        ) : undefined
+      }
+    />
+  );
+
+  const otomatisasiPanel = automation ? (
+    <AutomationWorkspace
+      schedules={automation.schedules}
+      income={automation.income}
+      general={automation.general}
+      embedded
+    />
+  ) : null;
+
+  const imporPanel = imports ? (
+    <ImportWorkspace
+      assets={imports.assets}
+      categories={imports.categories}
+      initialBatches={imports.initialBatches}
+      embedded
+    />
+  ) : null;
+
   return (
     <div className="page transactions-page">
-      <header className="page-header">
-        <PageHeading
-          title="Buku Mutasi"
-          summary={summaryNode}
-          actions={
-            toastMsg ? (
-              <div className="mutasi-toast" role="status">
-                <CheckCircle size={14} weight="bold" aria-hidden="true" />
-                <span>{toastMsg}</span>
-              </div>
-            ) : undefined
-          }
-        />
-        <TransactionsTabs active="all" />
-      </header>
-
-      {semuaPanel}
+      <PageTabs
+        label="Lembar Kerja Buku Mutasi"
+        heading={heading}
+        tabs={[
+          { id: "semua", label: "Semua Mutasi", panel: semuaPanel },
+          { id: "otomatisasi", label: "Otomatisasi & Jadwal", panel: otomatisasiPanel },
+          { id: "impor", label: "Impor Mutasi (CSV)", panel: imporPanel },
+        ]}
+      />
 
       <ExcelStatusBar
         rowCount={useOverall ? totals.total : filteredItems.length}

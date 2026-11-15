@@ -41,7 +41,7 @@ const labels: Record<string, string> = { active: "Aktif", paused: "Dijeda", arch
   posted: "Tercatat", skipped: "Dilewati", voided: "Dibatalkan", superseded: "Diganti", income: "Pemasukan", expense: "Pengeluaran", transfer: "Transfer" };
 function date(value: string) { return new Date(value).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" }) + " WIB"; }
 type Confirmation = { action: string; id: string; name: string };
-export function AutomationWorkspace({ schedules, income, general }: { schedules: AutomationView; income: IncomeEventView; general: GeneralView }) {
+export function AutomationWorkspace({ schedules, income, general, embedded = false }: { schedules: AutomationView; income: IncomeEventView; general: GeneralView; embedded?: boolean }) {
   const { rules, instances } = unifyAutomation(schedules, income, general);
   const [view, setView] = useState<"attention" | "upcoming" | "history">("attention");
   const [source, setSource] = useState("");
@@ -114,44 +114,45 @@ export function AutomationWorkspace({ schedules, income, general }: { schedules:
             secondaryActions={renderSecondary(item)}
             details={errorId===item.id&&error?<p id={`${item.id}-amount-error`} className="finance-error" role="alert">{error}</p>:undefined} />;
   };
-  return <div className="page automation-page">
-    <header className="page-header">
-      <PageHeading
-        title="Buku Mutasi"
-        summary={
-          <>
-            <span>Otomatisasi &amp; Jadwal</span>
-            <span aria-hidden="true">|</span>
-            <span>
-              Aturan aktif: <strong>{rules.filter((item) => item.status === "active").length}</strong>
-            </span>
-            <span aria-hidden="true">|</span>
-            <span>
-              Perlu konfirmasi: <strong>{attention.length}</strong>
-            </span>
-          </>
-        }
-        actions={
-          general.ready ? (
-            <AppLink
-              href="/transactions/automation/new"
-              className="button-primary"
-              aria-disabled={pending || refreshing}
-              onClick={(event) => {
-                if (pending || refreshing) event.preventDefault();
-              }}
-            >
-              + Tambah Otomatisasi
-            </AppLink>
-          ) : (
-            <button type="button" className="button-primary" disabled>
-              + Tambah Otomatisasi
-            </button>
-          )
-        }
-      />
-      <TransactionsTabs active="automation" />
-    </header>
+  const createButton = general.ready ? (
+    <AppLink
+      href="/transactions/automation/new"
+      className="button-primary"
+      aria-disabled={pending || refreshing}
+      onClick={(event) => {
+        if (pending || refreshing) event.preventDefault();
+      }}
+    >
+      + Tambah Otomatisasi
+    </AppLink>
+  ) : (
+    <button type="button" className="button-primary" disabled>
+      + Tambah Otomatisasi
+    </button>
+  );
+  return <div className={embedded ? "automation-page" : "page automation-page"}>
+    {!embedded && (
+      <header className="page-header">
+        <PageHeading
+          title="Buku Mutasi"
+          summary={
+            <>
+              <span>Otomatisasi &amp; Jadwal</span>
+              <span aria-hidden="true">|</span>
+              <span>
+                Aturan aktif: <strong>{rules.filter((item) => item.status === "active").length}</strong>
+              </span>
+              <span aria-hidden="true">|</span>
+              <span>
+                Perlu konfirmasi: <strong>{attention.length}</strong>
+              </span>
+            </>
+          }
+          actions={createButton}
+        />
+        <TransactionsTabs active="automation" />
+      </header>
+    )}
     {!general.ready && <p className="finance-hint">Pembuatan aturan umum menunggu aktivasi lokal. Aturan yang sudah ada tetap dapat dikelola.</p>}
     <ResponsiveDisclosure label="Filter otomatisasi" desktopExpanded className="list-filter-disclosure"
       summary={[source === "time" ? "Waktu tertentu" : source ? "Transaksi terjadi" : "", general.categories.find(item=>item.id===category)?.name].filter(Boolean).join(" · ") || "Semua pemicu & kategori"}>
@@ -184,7 +185,7 @@ export function AutomationWorkspace({ schedules, income, general }: { schedules:
       <details className="context-help"><summary>Tentang otomatisasi</summary><p className="supporting-prose supporting-prose--section">Aturan menghubungkan pemicu, kondisi, dan tindakan. Jadwal diproses ketika moneytor dibuka. Tindakan dari transaksi selalu memerlukan konfirmasi. Koreksi dan pembatalan tetap menggunakan Transactions dan menyimpan riwayat.</p></details>
     </section>
     <AutomationRulesSection archived={archived} onArchivedChange={(value) => { setArchived(value); setStatus(""); }} utilities={<>      {!archived && <ListFilterControl value={status} onChange={setStatus} label="Status aturan" options={[{value:"",label:"Semua status"},{value:"active",label:"Aktif"},{value:"paused",label:"Dijeda"}]} />}
-<ListSortControl {...ruleSort} /></>}>
+<ListSortControl {...ruleSort} />{embedded && createButton}</>}>
       {!visibleRules.length ? <p className="finance-empty-inline">Belum ada aturan pada filter ini.</p> : <div className="automation-rule-list">{visibleRules.map((rule) => <article className="surface automation-rule" key={rule.key}>
         <div className="automation-rule-heading"><div><h3>{rule.title}</h3><p>{rule.context}</p>{rule.categoryName && <p>{rule.categoryName}</p>}</div><span className={`automation-status ${rule.status}`}>{labels[rule.status]}</span></div>
         <ResponsiveDisclosure label="Kelola otomatisasi" className="history-detail compact-management-controls"><div className="finance-actions compact-management-actions">

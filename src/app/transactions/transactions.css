@@ -580,3 +580,11 @@
     white-space: nowrap;
   }
 }
+
+.transactions-page .automation-page,
+.transactions-page .import-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
