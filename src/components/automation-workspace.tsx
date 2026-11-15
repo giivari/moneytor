@@ -33,6 +33,8 @@ import { SectionHeading } from "./section-heading";
 import { AutomationRulesSection } from "./automation-rules-section";
 import { LoadingIndicator } from "./loading-indicator";
 import { AppLink } from "./app-link";
+import { PageHeading } from "./ui";
+import { TransactionsTabs } from "./transactions-tabs";
 
 const labels: Record<string, string> = { active: "Aktif", paused: "Dijeda", archived: "Diarsipkan", upcoming: "Akan datang", due: "Jatuh tempo",
   pending_confirmation: "Perlu konfirmasi", awaiting_confirmation: "Perlu konfirmasi", failed: "Perlu diperiksa", review_required: "Tinjau sumber",
@@ -113,8 +115,43 @@ export function AutomationWorkspace({ schedules, income, general }: { schedules:
             details={errorId===item.id&&error?<p id={`${item.id}-amount-error`} className="finance-error" role="alert">{error}</p>:undefined} />;
   };
   return <div className="page automation-page">
-    <header className="page-heading"><div><span className="eyebrow">MUTASI</span><h1>Otomatisasi</h1><p>Atur kapan, syarat, dan tindakan untuk transaksi kamu.</p></div>
-      {general.ready ? <AppLink href="/transactions/automation/new" className="button-primary" aria-disabled={pending || refreshing} onClick={(event) => { if (pending || refreshing) event.preventDefault(); }}>Tambah otomatisasi</AppLink> : <button type="button" className="button-primary" disabled>Tambah otomatisasi</button>}</header>
+    <header className="page-header">
+      <PageHeading
+        title="Buku Mutasi"
+        summary={
+          <>
+            <span>Otomatisasi &amp; Jadwal</span>
+            <span aria-hidden="true">|</span>
+            <span>
+              Aturan aktif: <strong>{rules.filter((item) => item.status === "active").length}</strong>
+            </span>
+            <span aria-hidden="true">|</span>
+            <span>
+              Perlu konfirmasi: <strong>{attention.length}</strong>
+            </span>
+          </>
+        }
+        actions={
+          general.ready ? (
+            <AppLink
+              href="/transactions/automation/new"
+              className="button-primary"
+              aria-disabled={pending || refreshing}
+              onClick={(event) => {
+                if (pending || refreshing) event.preventDefault();
+              }}
+            >
+              + Tambah Otomatisasi
+            </AppLink>
+          ) : (
+            <button type="button" className="button-primary" disabled>
+              + Tambah Otomatisasi
+            </button>
+          )
+        }
+      />
+      <TransactionsTabs active="automation" />
+    </header>
     {!general.ready && <p className="finance-hint">Pembuatan aturan umum menunggu aktivasi lokal. Aturan yang sudah ada tetap dapat dikelola.</p>}
     <ResponsiveDisclosure label="Filter otomatisasi" desktopExpanded className="list-filter-disclosure"
       summary={[source === "time" ? "Waktu tertentu" : source ? "Transaksi terjadi" : "", general.categories.find(item=>item.id===category)?.name].filter(Boolean).join(" · ") || "Semua pemicu & kategori"}>

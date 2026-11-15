@@ -6,11 +6,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { LoadingIndicator } from "./loading-indicator";
 import {
-  ArrowRight,
   ArrowsDownUp,
   CheckCircle,
   DownloadSimple,
-  FileArrowUp,
   Funnel,
 } from "@phosphor-icons/react";
 import { financeRequest } from "@/lib/finance/client";
@@ -20,15 +18,13 @@ import type { FinanceActivity } from "@/lib/finance/types";
 import type { AutomationView } from "@/lib/automation/service";
 import type { IncomeEventView } from "@/lib/automation/income-events";
 import type { GeneralView } from "@/lib/automation/composable-service";
-import { PageTabs } from "./page-tabs";
+import { TransactionsTabs } from "./transactions-tabs";
 import { TransactionEditor } from "./transaction-editor";
-import { AppLink } from "./app-link";
 import { useInspector, useInspectorSync, type InspectorEntry } from "./inspector";
 import type { ActivityTotals } from "@/lib/domain/activity-totals";
 import { InspectorFacts } from "./inspector-facts";
 import { Amount, Chip, PageHeading } from "./ui";
 import { ExcelStatusBar } from "./excel-status-bar";
-import { ICON_SM } from "./icon-size";
 
 const labels: Record<FinanceActivity["kind"], string> = {
   income: "Pemasukan",
@@ -790,89 +786,42 @@ export function TransactionsView(props: {
     </div>
   );
 
-  // Tab 2: Otomatisasi & Jadwal
-  const otomatisasiPanel = (
-    <div className="mutasi-tab-card">
-      <div className="mutasi-tab-card-header">
-        <div>
-          <h2 className="mutasi-tab-card-title">Otomatisasi &amp; Transaksi Terjadwal</h2>
-          <p className="mutasi-tab-card-desc">
-            Kelola aturan tagihan berulang, autodebet bulanan, dan alokasi persentase pemasukan otomatis.
-          </p>
-        </div>
-        <AppLink href="/transactions/automation" className="button-primary">
-          <span>Buka Ruang Kerja Otomatisasi</span>
-          <ArrowRight size={ICON_SM} aria-hidden="true" />
-        </AppLink>
-      </div>
-      <p className="mutasi-tab-card-body">
-        Setiap transaksi otomatis yang jatuh tempo akan meminta konfirmasi di Beranda atau langsung membukukan mutasi sesuai aturan yang Anda tetapkan.
-      </p>
-    </div>
-  );
-
-  // Tab 3: Impor Mutasi (CSV)
-  const imporPanel = (
-    <div className="mutasi-tab-card">
-      <div className="mutasi-tab-card-header">
-        <div>
-          <h2 className="mutasi-tab-card-title">Impor Mutasi Bank &amp; E-Wallet (CSV)</h2>
-          <p className="mutasi-tab-card-desc">
-            Unggah e-statement CSV untuk memetakan transaksi masuk, keluar, dan biaya admin secara massal.
-          </p>
-        </div>
-        <AppLink href="/transactions/imports" className="button-primary">
-          <FileArrowUp size={ICON_SM} aria-hidden="true" />
-          <span>Buka Ruang Kerja Impor CSV</span>
-        </AppLink>
-      </div>
-      <p className="mutasi-tab-card-body">
-        Sistem akan memeriksa pratinjau baris, memisahkan biaya transfer/admin, dan menolak duplikasi sebelum disimpan ke buku besar.
-      </p>
-    </div>
-  );
-
-  const heading = (
-    <PageHeading
-      title="Buku Mutasi"
-      summary={
-        <>
-          <span>
-            Belanja Bulan Ini: <strong>{currentMonthExpense ?? "Rp0"}</strong>
-          </span>
-          <span aria-hidden="true">|</span>
-          <span>
-            Total: <strong>{totals.total} transaksi</strong>
-          </span>
-          <span aria-hidden="true">|</span>
-          <span>
-            <strong>{totals.counts.expense ?? 0}</strong> pengeluaran · <strong>{totals.counts.income ?? 0}</strong> pemasukan ·{" "}
-            <strong>{totals.counts.transfer ?? 0}</strong> transfer{others > 0 && <> · <strong>{others}</strong> lainnya</>}
-          </span>
-        </>
-      }
-      actions={
-        toastMsg ? (
-          <div className="mutasi-toast" role="status">
-            <CheckCircle size={14} weight="bold" aria-hidden="true" />
-            <span>{toastMsg}</span>
-          </div>
-        ) : undefined
-      }
-    />
+  const summaryNode = (
+    <>
+      <span>
+        Belanja Bulan Ini: <strong>{currentMonthExpense ?? "Rp0"}</strong>
+      </span>
+      <span aria-hidden="true">|</span>
+      <span>
+        Total: <strong>{totals.total} transaksi</strong>
+      </span>
+      <span aria-hidden="true">|</span>
+      <span>
+        <strong>{totals.counts.expense ?? 0}</strong> pengeluaran · <strong>{totals.counts.income ?? 0}</strong> pemasukan ·{" "}
+        <strong>{totals.counts.transfer ?? 0}</strong> transfer{others > 0 && <> · <strong>{others}</strong> lainnya</>}
+      </span>
+    </>
   );
 
   return (
     <div className="page transactions-page">
-      <PageTabs
-        label="Lembar Kerja Buku Mutasi"
-        heading={heading}
-        tabs={[
-          { id: "semua", label: "Semua Mutasi", panel: semuaPanel },
-          { id: "otomatisasi", label: "Otomatisasi & Jadwal", panel: otomatisasiPanel },
-          { id: "impor", label: "Impor Mutasi (CSV)", panel: imporPanel },
-        ]}
-      />
+      <header className="page-header">
+        <PageHeading
+          title="Buku Mutasi"
+          summary={summaryNode}
+          actions={
+            toastMsg ? (
+              <div className="mutasi-toast" role="status">
+                <CheckCircle size={14} weight="bold" aria-hidden="true" />
+                <span>{toastMsg}</span>
+              </div>
+            ) : undefined
+          }
+        />
+        <TransactionsTabs active="all" />
+      </header>
+
+      {semuaPanel}
 
       <ExcelStatusBar
         rowCount={useOverall ? totals.total : filteredItems.length}

@@ -1,13 +1,15 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArrowLeft, CheckCircle, FileArrowUp, WarningCircle } from "@phosphor-icons/react";
+import { CheckCircle, FileArrowUp, WarningCircle } from "@phosphor-icons/react";
 import { AppLink as Link } from "@/components/app-link";
 import { useFinanceFeedback, useMutationPending } from "./finance-feedback";
 import { FinancialDataTable } from "./financial-data-table";
 import { ListToolbar } from "./list-toolbar";
 import { LoadingIndicator } from "./loading-indicator";
 import { SectionHeading } from "./section-heading";
+import { TransactionsTabs } from "./transactions-tabs";
+import { PageHeading } from "./ui";
 import { formatMinor } from "@/lib/finance/format";
 import { requestJson } from "@/lib/finance/client";
 import type { FinanceAsset } from "@/lib/finance/types";
@@ -319,18 +321,21 @@ export function ImportWorkspace({ assets, categories, initialBatches }: Props) {
 
   return (
     <div className="page import-page">
-      <div>
-        <Link className="settings-back" href="/transactions">
-          <ArrowLeft size={17} /> Transactions
-        </Link>
-        <div className="page-heading finance-heading">
-          <div>
-            <span className="eyebrow">IMPOR TERKONTROL &amp; JEJAK AUDIT</span>
-            <h1>Impor Transaksi (CSV / Excel)</h1>
-            <p>Pratinjau baris, petakan akun dan kategori, tinjau kandidat duplikat, lalu konfirmasi sebelum masuk ke ledger.</p>
-          </div>
-        </div>
-      </div>
+      <header className="page-header">
+        <PageHeading
+          title="Buku Mutasi"
+          summary={
+            <>
+              <span>Impor Mutasi (CSV / Excel)</span>
+              <span aria-hidden="true">|</span>
+              <span>
+                Riwayat batch: <strong>{batches.length}</strong>
+              </span>
+            </>
+          }
+        />
+        <TransactionsTabs active="imports" />
+      </header>
 
       {error && (
         <p className="finance-error" role="alert">
