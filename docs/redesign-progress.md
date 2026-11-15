@@ -144,3 +144,9 @@ Sesi penutup: konflik CSS .page-heading-actions/.finance-dialog dipusatkan; spin
 Hasil akhir: tsc/lint/test:unit 168/test:ui 156 bersih, semua tes DB lulus (55433 170, auth 12, 55434 47), next build sukses.
 Langkah berikutnya: keputusan Beranda vs income event (home-overview.test melarang reconcile penuh di Beranda); idempotensi portfolio/instrument/type-create;
 konflik CSS .page-heading-actions/.finance-dialog; skrip user-migrate; peringatan MODULE_TYPELESS_PACKAGE_JSON.
+
+## Harga pasar otomatis multi-aset + cron (2026-11-15)
+Keputusan: adapter `reksadana` (risanb.com, NAB terbaru dari `history.nav` + `nav` per dana), `yahoo` (chart v8, harga dibulatkan ke `priceHint`, mata uang subunit GBp/ZAc/ILA ditolak), `gold` (GC=F x USDIDR=X / 31,1034768, bigint, 6 desimal).
+Cron `/api/cron/refresh-prices` memakai `refreshAllMarketPrices` (tanpa sesi, dijaga CRON_SECRET timing-safe, kunci idempotensi deterministik -> updated/skipped/failed). Pengecualian sesi dicatat di CLAUDE.md dan ARCHITECTURE.md.
+File: lib/investments/{providers,service,cron-auth}.ts, api/cron/refresh-prices/route.ts, vercel.json, .env.example, tests/{investment-domain,investment-db}.test.mjs, docs/{ARCHITECTURE,DEPLOY,CONTRACT}.md, placeholder di components/investment-manager.tsx (atas permintaan pemilik).
+Langkah berikutnya: setel CRON_SECRET + MONETA_PRICE_PROVIDER=composite di Vercel; isi referensi harga tiap instrumen; pantau log cron pertama (Yahoo tak resmi, bisa 429).

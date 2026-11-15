@@ -557,3 +557,22 @@ Pengeluaran dikelompokkan ke induk katalog dan sifat efektif (`none` = tanpa sif
 - Galat dari `exports`/`imports`/otomatisasi tidak lagi meneruskan pesan PostgreSQL/sistem; `finance` GET `asset-detail` yang tidak ditemukan -> 404.
 - "Dana siap pakai": definisi tidak berubah. `creditDebtDue` selalu menghitung tagihan berjalan, tagihan berikutnya hanya bila jatuh tempo masuk horizon.
 - Anggaran Planning (`spentMinor`) kini dihitung dari view `spending_effects`, sama dengan analitik.
+
+## Harga pasar otomatis multi-aset + cron harian
+Frontend tidak perlu berubah. Tidak ada perubahan bentuk `financeSnapshot`/`InvestmentSnapshot`.
+
+- Prefix baru `priceSymbol` (dengan `MONETA_PRICE_PROVIDER=composite`): `reksadana:<ID>` (mis. `RD1669`), `yahoo:<simbol>` (mis. `BBCA.JK`, `AAPL`),
+  `gold:gram` | `gold:IDR` | `gold:USD`. Kuotasi tersimpan sebagai `PricePoint` dengan `sourceType: "provider"` dan `sourceId` `reksadana` | `yahoo` | `gold`.
+- `GET /api/cron/refresh-prices` (bukan sesi passkey; header `Authorization: Bearer <CRON_SECRET>`; `Cache-Control: no-store`):
+  `503` bila `CRON_SECRET` atau penyedia harga belum dikonfigurasi, `401` bila token salah, `200` dengan ringkasan:
+
+```json
+{
+  "updated": 2,
+  "skipped": 1,
+  "failed": [
+    { "instrumentId": "00000000-0000-4000-8000-000000000000", "name": "Contoh instrumen", "reason": "Penyedia harga menolak permintaan (HTTP 429). Gunakan harga manual." }
+  ]
+}
+```
+`skipped` = kuotasi identik sudah tersimpan (mis. akhir pekan atau cron dikirim ulang).

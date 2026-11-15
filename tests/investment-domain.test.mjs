@@ -171,3 +171,105 @@ test("P4.1 external market quote providers: composite routing, coingecko, twelve
   }
 });
 
+
+test("Adapter multi-aset: reksadana, yahoo, dan gold lewat composite", async () => {
+  const { registerHooks } = await import("node:module");
+  const hooks = registerHooks({
+    resolve(specifier, context, next) {
+      if (specifier === "server-only") return { url: "data:text/javascript,export default {}", shortCircuit: true };
+      if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
+      if (specifier.startsWith("./") && context.parentURL?.endsWith(".ts") && !specifier.endsWith(".ts")) return next(new URL(`${specifier}.ts`, context.parentURL).href, context);
+      return next(specifier, context);
+    },
+  });
+  try {
+    const { configuredPriceProvider, setMarketPriceFetchForTest } = await import("../src/lib/investments/providers.ts");
+    const savedEnv = { ...process.env };
+    try {
+      process.env.MONETA_PRICE_PROVIDER = "composite";
+      delete process.env.MONETA_REKSADANA_BASE_URL;
+      delete process.env.MONETA_YAHOO_BASE_URL;
+      const composite = configuredPriceProvider();
+      const inst = (o) => ({
+        id: "11111111-1111-4111-8111-111111111111", displayName: "T", symbol: null, market: null,
+        typeId: "22222222-2222-4222-8222-222222222222", typeName: "X", currency: "IDR", exponent: 0,
+        priceSymbol: null, isActive: true, ...o,
+      });
+      const chart = (meta) => new Response(JSON.stringify({ chart: { result: [{ meta }], error: null } }), { status: 200 });
+      const seen = [];
+      setMarketPriceFetchForTest(async (input, init) => {
+        const url = String(input);
+        seen.push({ url, init });
+        if (url === "https://reksadana.risanb.com/api/funds/RD1669.json") {
+          return new Response(JSON.stringify({ fund: { id: "RD1669", currency: "IDR" }, nav: [{ date: "2025-11-11", nav: 1507.13, nav_adjusted: 1507.13 }], history: { nav: [{ date: "2025-11-13", value: 1507.5, source: "bareksa" }, { date: "2025-11-12", value: 1507.25, source: "bareksa" }] } }), { status: 200 });
+        }
+        if (url.includes("/api/funds/RD0000.json")) {
+          return new Response(JSON.stringify({ fund: { id: "RD0000", currency: "IDR" }, nav: [], history: { nav: [] } }), { status: 200 });
+        }
+        if (url.includes("/v8/finance/chart/BBCA.JK?interval=1d&range=5d")) return chart({ regularMarketPrice: 9850, currency: "IDR", regularMarketTime: 1763000000, priceHint: 0 });
+        if (url.includes("/v8/finance/chart/AAPL?")) return chart({ regularMarketPrice: 182.52999877929688, currency: "USD", regularMarketTime: 1763000000, priceHint: 2 });
+        if (url.includes("/v8/finance/chart/VUKE.L?")) return chart({ regularMarketPrice: 3500, currency: "GBp", regularMarketTime: 1763000000, priceHint: 2 });
+        if (url.includes("/v8/finance/chart/NOPE?")) return new Response(JSON.stringify({ chart: { result: null, error: { code: "Not Found" } } }), { status: 200 });
+        if (url.includes("/v8/finance/chart/GC%3DF?") || url.includes("/v8/finance/chart/GC=F?")) return chart({ regularMarketPrice: 2000, currency: "USD", regularMarketTime: 1763000500, priceHint: 2 });
+        if (url.includes("USDIDR%3DX?") || url.includes("USDIDR=X?")) return chart({ regularMarketPrice: 16000, currency: "IDR", regularMarketTime: 1763000000, priceHint: 2 });
+        return new Response("Not found", { status: 404 });
+      });
+
+      const rd = await composite.fetchQuote(inst({ priceSymbol: "reksadana:RD1669" }));
+      assert.deepEqual(rd, { instrumentId: "11111111-1111-4111-8111-111111111111", price: "1507.5", currency: "IDR", asOf: "2025-11-13T00:00:00.000Z", sourceId: "reksadana" });
+      await assert.rejects(composite.fetchQuote(inst({ priceSymbol: "reksadana:RD0000" })), /NAB/);
+      await assert.rejects(composite.fetchQuote(inst({ priceSymbol: "reksadana:../etc" })), /tidak valid/);
+
+      const bbca = await composite.fetchQuote(inst({ priceSymbol: "yahoo:BBCA.JK" }));
+      assert.equal(bbca.price, "9850"); assert.equal(bbca.sourceId, "yahoo"); assert.equal(bbca.asOf, "2025-11-13T02:13:20.000Z");
+      assert.ok(seen.some((c) => c.url.includes("BBCA.JK") && /Mozilla/.test(c.init?.headers?.["User-Agent"] ?? "")));
+      const aapl = await composite.fetchQuote(inst({ currency: "USD", priceSymbol: "yahoo:AAPL" }));
+      assert.equal(aapl.price, "182.53");
+      await assert.rejects(composite.fetchQuote(inst({ currency: "USD", priceSymbol: "yahoo:VUKE.L" })), /sen|subunit/i);
+      await assert.rejects(composite.fetchQuote(inst({ priceSymbol: "yahoo:NOPE" })), /tidak tersedia|tidak ditemukan/);
+      await assert.rejects(composite.fetchQuote(inst({ priceSymbol: "yahoo:BBCA.JK", currency: "USD" })), /Mata uang kuotasi/);
+
+      const goldIdr = await composite.fetchQuote(inst({ priceSymbol: "gold:gram" }));
+      assert.equal(goldIdr.price, "1028823.890196"); assert.equal(goldIdr.sourceId, "gold"); assert.equal(goldIdr.asOf, "2025-11-13T02:13:20.000Z");
+      const goldUsd = await composite.fetchQuote(inst({ currency: "USD", priceSymbol: "gold:USD" }));
+      assert.equal(goldUsd.price, "64.301493");
+      await assert.rejects(composite.fetchQuote(inst({ currency: "USD", priceSymbol: "gold:IDR" })), /Mata uang kuotasi/);
+
+      process.env.MONETA_YAHOO_BASE_URL = "https://yahoo.example.test/";
+      setMarketPriceFetchForTest(async (input) => {
+        assert.ok(String(input).startsWith("https://yahoo.example.test/v8/finance/chart/"));
+        return chart({ regularMarketPrice: 1, currency: "IDR", regularMarketTime: 1763000000 });
+      });
+      assert.equal((await composite.fetchQuote(inst({ priceSymbol: "yahoo:TLKM.JK" }))).price, "1");
+    } finally {
+      setMarketPriceFetchForTest(null);
+      for (const k of Object.keys(process.env)) if (!(k in savedEnv)) delete process.env[k];
+      Object.assign(process.env, savedEnv);
+    }
+  } finally {
+    hooks.deregister();
+  }
+});
+
+test("cronAuthorization: 503 tanpa secret, 401 token salah, ok bila cocok", async () => {
+  const { registerHooks } = await import("node:module");
+  const hooks = registerHooks({
+    resolve(specifier, context, next) {
+      if (specifier === "server-only") return { url: "data:text/javascript,export default {}", shortCircuit: true };
+      if (specifier.startsWith("@/")) return next(new URL(`../src/${specifier.slice(2)}.ts`, import.meta.url).href, context);
+      if (specifier.startsWith("./") && context.parentURL?.endsWith(".ts") && !specifier.endsWith(".ts")) return next(new URL(`${specifier}.ts`, context.parentURL).href, context);
+      return next(specifier, context);
+    },
+  });
+  try {
+    const { cronAuthorization } = await import("../src/lib/investments/cron-auth.ts");
+    assert.equal(cronAuthorization("Bearer abc", undefined), 503);
+    assert.equal(cronAuthorization("Bearer abc", "  "), 503);
+    assert.equal(cronAuthorization(null, "s3cret-value"), 401);
+    assert.equal(cronAuthorization("Basic s3cret-value", "s3cret-value"), 401);
+    assert.equal(cronAuthorization("Bearer wrong", "s3cret-value"), 401);
+    assert.equal(cronAuthorization("Bearer s3cret-value", "s3cret-value"), "ok");
+  } finally {
+    hooks.deregister();
+  }
+});

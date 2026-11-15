@@ -55,3 +55,9 @@ Dokumen ini menjelaskan struktur dan prinsip kerja utama dari aplikasi **moneyto
    - Proses impor membaca file `.csv` atau `.xlsx` ke tahap pratinjau (*staging*) terlebih dahulu agar pengguna dapat memeriksa pemetaan akun dan meninjau indikasi transaksi duplikat sebelum disimpan ke buku besar.
    - Proses ekspor menghasilkan dokumen laporan mandiri (`.pdf`, `.xlsx`, `.csv`, `.json`) langsung dari data terbaru tanpa bergantung pada layanan pihak ketiga.
 
+
+4. **Harga Pasar Otomatis (Cron)**:
+   - `vercel.json` menjadwalkan `GET /api/cron/refresh-prices` setiap hari pukul 00:00 UTC (07:00 WIB), sesudah NAB reksa dana Indonesia terbit.
+   - Route ini satu-satunya selain `/api/health` yang tidak memeriksa sesi passkey, karena Vercel Cron tidak punya sesi. Otorisasinya `Authorization: Bearer <CRON_SECRET>` (perbandingan timing-safe; 503 bila `CRON_SECRET` belum disetel, 401 bila salah). Fungsi `refreshAllMarketPrices` memeriksa ulang rahasia itu.
+   - Hanya menambah titik harga (`investment_price_points`); ledger tidak disentuh. Kuotasi identik memakai kunci idempotensi deterministik, jadi pengiriman ulang tidak membuat harga ganda. Satu instrumen yang gagal dicatat di `failed` tanpa menghentikan batch.
+   - Adapter di `src/lib/investments/providers.ts` (dipilih lewat prefix `priceSymbol` saat `MONETA_PRICE_PROVIDER=composite`): `reksadana:RD1669`, `yahoo:BBCA.JK`, `gold:gram` (atau `gold:IDR`/`gold:USD`), `coingecko:bitcoin`, `twelvedata:`, `alphavantage:`, `http:`. Harga emas memakai futures COMEX `GC=F` sebagai proksi spot, dikonversi ke gram (31,1034768 g per troy ounce) dan ke IDR memakai `USDIDR=X`. Yahoo adalah endpoint tidak resmi dan bisa membatasi permintaan.

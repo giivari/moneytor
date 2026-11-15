@@ -1,5 +1,5 @@
 import "server-only";
-import { decimal, decimalString, InvestmentError } from "@/lib/investments/math";
+import { decimal, decimalString, InvestmentError, roundRatio, SCALE } from "@/lib/investments/math";
 import { name, text, timestamp } from "@/lib/investments/validation";
 import type { Instrument } from "./types";
 
@@ -208,6 +208,97 @@ const httpJsonProvider: MarketPriceProvider = {
   },
 };
 
+const SUBUNIT_CURRENCIES = new Set(["GBX", "ILA", "ZAC"]);
+const TROY_OUNCE_GRAMS_E7 = 311034768n; // 31.1034768 gram per troy ounce, skala 1e7
+
+function yahooBaseUrl(): string {
+  return (process.env.MONETA_YAHOO_BASE_URL ?? "https://query1.finance.yahoo.com").replace(/\/+$/, "");
+}
+
+type YahooMeta = { price: string; currency: string | undefined; time: number | undefined };
+
+async function yahooMeta(symbol: string): Promise<YahooMeta> {
+  if (!/^[A-Za-z0-9.^=_-]{1,32}$/.test(symbol)) throw new InvestmentError("Simbol Yahoo tidak valid.");
+  const url = `${yahooBaseUrl()}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
+  const data = await fetchJson(url, { "User-Agent": "Mozilla/5.0 (compatible; moneytor-price-refresh/1.0)" }) as
+    { chart?: { result?: { meta?: Record<string, unknown> }[] | null; error?: unknown } };
+  const meta = data?.chart?.result?.[0]?.meta;
+  if (data?.chart?.error || !meta) throw new InvestmentError(`Kuotasi Yahoo untuk '${symbol}' tidak tersedia.`);
+  const raw = meta.regularMarketPrice;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) throw new InvestmentError(`Kuotasi Yahoo untuk '${symbol}' tidak tersedia.`);
+  const hint = typeof meta.priceHint === "number" && Number.isInteger(meta.priceHint) && meta.priceHint >= 0 && meta.priceHint <= 8 ? meta.priceHint : 8;
+  // Buang noise float (182.52999877929688) sesuai presisi kuotasi bursa.
+  const price = raw.toFixed(hint);
+  if (!(Number(price) > 0)) throw new InvestmentError(`Kuotasi Yahoo untuk '${symbol}' tidak tersedia.`);
+  const currency = typeof meta.currency === "string" && meta.currency.trim() ? meta.currency.trim() : undefined;
+  const time = typeof meta.regularMarketTime === "number" && meta.regularMarketTime > 0 ? meta.regularMarketTime : undefined;
+  return { price, currency, time };
+}
+
+const reksadanaProvider: MarketPriceProvider = {
+  id: "reksadana",
+  async fetchQuote(instrument: Instrument): Promise<MarketQuote> {
+    const fundId = extractReference(instrument, "reksadana").toUpperCase();
+    if (!/^(RD|BRK|KTN|MKR)\d{1,10}$/.test(fundId)) throw new InvestmentError("ID reksa dana tidak valid (contoh: reksadana:RD1669).");
+    const baseUrl = (process.env.MONETA_REKSADANA_BASE_URL ?? "https://reksadana.risanb.com").replace(/\/+$/, "");
+    const data = await fetchJson(`${baseUrl}/api/funds/${fundId}.json`) as {
+      fund?: Record<string, unknown>;
+      nav?: { date?: unknown; nav?: unknown }[];
+      history?: { nav?: { date?: unknown; value?: unknown }[] };
+    };
+    // `fund` hanya data statis. NAB terbaru ada di history.nav (gabungan sumber, paling segar) dan nav (Bibit); ambil tanggal terbaru.
+    const points: { date: string; value: number }[] = [];
+    const collect = (date: unknown, value: unknown) => {
+      if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof value === "number" && Number.isFinite(value) && value > 0) points.push({ date, value });
+    };
+    for (const p of Array.isArray(data?.history?.nav) ? data.history.nav : []) collect(p?.date, p?.value);
+    for (const p of Array.isArray(data?.nav) ? data.nav : []) collect(p?.date, p?.nav);
+    let latest: { date: string; value: number } | undefined;
+    for (const p of points) if (!latest || p.date > latest.date) latest = p;
+    if (!latest) throw new InvestmentError(`NAB reksa dana '${fundId}' belum tersedia.`);
+    return normalizeQuote(instrument, {
+      price: latest.value,
+      currency: data.fund?.currency ?? instrument.currency,
+      asOf: latest.date,
+      sourceId: "reksadana",
+    });
+  },
+};
+
+const yahooProvider: MarketPriceProvider = {
+  id: "yahoo",
+  async fetchQuote(instrument: Instrument): Promise<MarketQuote> {
+    const symbol = extractReference(instrument, "yahoo");
+    const meta = await yahooMeta(symbol);
+    if (meta.currency && (meta.currency !== meta.currency.toUpperCase() || SUBUNIT_CURRENCIES.has(meta.currency.toUpperCase()))) {
+      throw new InvestmentError(`Yahoo menyajikan '${symbol}' dalam satuan sen/subunit (${meta.currency}); gunakan harga manual.`);
+    }
+    return normalizeQuote(instrument, { price: meta.price, currency: meta.currency ?? instrument.currency, asOf: meta.time, sourceId: "yahoo" });
+  },
+};
+
+const goldProvider: MarketPriceProvider = {
+  id: "gold",
+  async fetchQuote(instrument: Instrument): Promise<MarketQuote> {
+    const ref = extractReference(instrument, "gold").toUpperCase();
+    const target = ref === "GRAM" ? instrument.currency : ref;
+    if (target !== "IDR" && target !== "USD") throw new InvestmentError("Referensi emas harus gold:gram, gold:IDR, atau gold:USD.");
+    // GC=F = futures COMEX (USD per troy ounce), dipakai sebagai proksi harga spot.
+    const xau = await yahooMeta("GC=F");
+    let fxScaled = SCALE;
+    let asOf = xau.time;
+    if (target === "IDR") {
+      const fx = await yahooMeta("USDIDR=X");
+      fxScaled = decimal(fx.price);
+      if (fx.time !== undefined) asOf = asOf === undefined ? fx.time : Math.min(asOf, fx.time);
+    }
+    // Harga per gram dengan 6 desimal: xau * kurs / 31,1034768.
+    const perGram6 = roundRatio(decimal(xau.price) * fxScaled * 10n ** 13n, TROY_OUNCE_GRAMS_E7 * SCALE * SCALE);
+    if (perGram6 <= 0n) throw new InvestmentError("Harga emas per gram tidak valid.");
+    return normalizeQuote(instrument, { price: decimalString(perGram6 * 10n ** 12n), currency: target, asOf, sourceId: "gold" });
+  },
+};
+
 const compositeProvider: MarketPriceProvider = {
   id: "composite",
   async fetchQuote(instrument: Instrument): Promise<MarketQuote> {
@@ -220,7 +311,7 @@ const compositeProvider: MarketPriceProvider = {
     } else {
       const fallback = (process.env.MONETA_PRICE_DEFAULT_ADAPTER ?? "").trim().toLowerCase();
       if (!fallback || fallback === "composite") {
-        throw new InvestmentError("Tambahkan prefix penyedia pada referensi harga instrumen (mis. coingecko:bitcoin, twelvedata:BBCA, atau http:SIMBOL).");
+        throw new InvestmentError("Tambahkan prefix penyedia pada referensi harga instrumen (mis. reksadana:RD1669, yahoo:BBCA.JK, coingecko:bitcoin, gold:gram, twelvedata:BBCA, atau http:SIMBOL).");
       }
       adapterId = fallback === "http" ? "http-json" : fallback;
     }
@@ -236,7 +327,7 @@ const compositeProvider: MarketPriceProvider = {
 };
 
 function registerBuiltInProviders() {
-  for (const builtin of [coingeckoProvider, twelveDataProvider, alphaVantageProvider, httpJsonProvider, compositeProvider]) {
+  for (const builtin of [coingeckoProvider, twelveDataProvider, alphaVantageProvider, httpJsonProvider, reksadanaProvider, yahooProvider, goldProvider, compositeProvider]) {
     providers.set(builtin.id, builtin);
   }
 }

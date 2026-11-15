@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
+import { equalSecret } from "@/lib/auth/primitives";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { inDatabaseTransaction } from "@/lib/db/pool";
 import { hasOpeningCorrections } from "@/lib/db/opening-capability";
@@ -9,31 +10,39 @@ import { investmentSnapshot } from "@/lib/investments/read";
 import { configuredPriceProvider, isRegisteredPriceProvider } from "@/lib/investments/providers";
 import { name, openingDraft, optionalText, text, timestamp, tradeDraft, uuid } from "@/lib/investments/validation";
 import { deleteUnused } from "@/lib/repositories/lifecycle";
-import type { OpeningDraft, TradeDraft } from "./types";
+import type { Instrument, OpeningDraft, TradeDraft } from "./types";
 
-async function locked<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
-  await requireOwnerSession();
+async function postingTransaction<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
   return inDatabaseTransaction(async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('moneytor_investment_posting'))");
     return action(client);
   });
 }
+async function locked<T>(action: (client: PoolClient) => Promise<T>): Promise<T> {
+  await requireOwnerSession();
+  return postingTransaction(action);
+}
 type Operation = "opening" | "trade" | "replace" | "void" | "price";
+function requestHash(operation: Operation, payload: unknown): string {
+  return createHash("sha256").update(JSON.stringify({ operation, payload })).digest("hex");
+}
+/** Body idempotensi; dipanggil di dalam transaksi yang sudah memegang advisory lock. */
+async function idempotentIn(client: PoolClient, operation: Operation, key: string, hash: string, action: (client: PoolClient) => Promise<string>): Promise<{ id: string; created: boolean }> {
+  const prior = await client.query("SELECT * FROM investment_operations WHERE idempotency_key=$1", [key]);
+  if (prior.rows[0]) {
+    if (prior.rows[0].operation !== operation || prior.rows[0].request_hash !== hash) throw new InvestmentError("Kunci permintaan telah digunakan untuk perubahan lain.");
+    return { id: prior.rows[0].opening_id ?? prior.rows[0].transaction_id ?? prior.rows[0].price_id, created: false };
+  }
+  const id = await action(client);
+  await client.query(`INSERT INTO investment_operations (idempotency_key,operation,request_hash,opening_id,transaction_id,price_id)
+    VALUES ($1,$2,$3,$4,$5,$6)`, [key, operation, hash, operation === "opening" ? id : null,
+    ["trade", "replace", "void"].includes(operation) ? id : null, operation === "price" ? id : null]);
+  return { id, created: true };
+}
 async function idempotent(operation: Operation, key: string, payload: unknown, action: (client: PoolClient) => Promise<string>): Promise<string> {
   uuid(key);
-  const hash = createHash("sha256").update(JSON.stringify({ operation, payload })).digest("hex");
-  return locked(async (client) => {
-    const prior = await client.query("SELECT * FROM investment_operations WHERE idempotency_key=$1", [key]);
-    if (prior.rows[0]) {
-      if (prior.rows[0].operation !== operation || prior.rows[0].request_hash !== hash) throw new InvestmentError("Kunci permintaan telah digunakan untuk perubahan lain.");
-      return prior.rows[0].opening_id ?? prior.rows[0].transaction_id ?? prior.rows[0].price_id;
-    }
-    const id = await action(client);
-    await client.query(`INSERT INTO investment_operations (idempotency_key,operation,request_hash,opening_id,transaction_id,price_id)
-      VALUES ($1,$2,$3,$4,$5,$6)`, [key, operation, hash, operation === "opening" ? id : null,
-      ["trade", "replace", "void"].includes(operation) ? id : null, operation === "price" ? id : null]);
-    return id;
-  });
+  const hash = requestHash(operation, payload);
+  return locked(async (client) => (await idempotentIn(client, operation, key, hash, action)).id);
 }
 async function activeCurrency(client: PoolClient, code: string) {
   const row = (await client.query("SELECT code FROM currencies WHERE code=$1 AND is_active FOR SHARE", [code])).rows[0];
@@ -225,15 +234,28 @@ export async function voidInvestmentTrade(id: string, key: string) {
     await validateReplay(client, old.portfolio_id, old.instrument_id, old.exponent); return id;
   });
 }
-export async function saveMarketPrice(raw: { instrumentId: string; price: string; asOf: string }, key: string, provider?: { id: string; currency: string }) {
+function priceDraft(raw: { instrumentId: string; price: string; asOf: string }, provider?: { id: string; currency: string }) {
   const draft = { instrumentId: uuid(raw.instrumentId), price: decimalString(decimal(raw.price)), asOf: timestamp(raw.asOf),
     sourceId: provider ? name(provider.id) : null, currency: provider ? text(provider.currency, 3) : null };
   if (draft.asOf > new Date().toISOString()) throw new InvestmentError("Harga saat ini tidak boleh berasal dari masa depan.");
-  return idempotent("price", key, draft, async (client) => {
-    const instrument = (await client.query("SELECT currency_code FROM investment_instruments WHERE id=$1 AND is_active FOR SHARE", [draft.instrumentId])).rows[0];
-    if (!instrument || (draft.currency && instrument.currency_code !== draft.currency)) throw new InvestmentError("Instrumen atau mata uang harga tidak valid.");
-    return insertPrice(client, draft.instrumentId, instrument.currency_code, draft.price, draft.asOf, draft.sourceId);
-  });
+  return draft;
+}
+async function insertPriceDraft(client: PoolClient, draft: ReturnType<typeof priceDraft>): Promise<string> {
+  const instrument = (await client.query("SELECT currency_code FROM investment_instruments WHERE id=$1 AND is_active FOR SHARE", [draft.instrumentId])).rows[0];
+  if (!instrument || (draft.currency && instrument.currency_code !== draft.currency)) throw new InvestmentError("Instrumen atau mata uang harga tidak valid.");
+  return insertPrice(client, draft.instrumentId, instrument.currency_code, draft.price, draft.asOf, draft.sourceId);
+}
+export async function saveMarketPrice(raw: { instrumentId: string; price: string; asOf: string }, key: string, provider?: { id: string; currency: string }) {
+  const draft = priceDraft(raw, provider);
+  return idempotent("price", key, draft, (client) => insertPriceDraft(client, draft));
+}
+async function fetchValidatedQuote(provider: NonNullable<ReturnType<typeof configuredPriceProvider>>, instrument: Instrument) {
+  const quote = await provider.fetchQuote(instrument);
+  const validSource = provider.id === "composite"
+    ? quote.sourceId !== "composite" && isRegisteredPriceProvider(quote.sourceId)
+    : quote.sourceId === provider.id;
+  if (quote.instrumentId !== instrument.id || !validSource) throw new InvestmentError("Referensi harga tidak sesuai.");
+  return quote;
 }
 export async function refreshMarketPrice(instrumentId: string, key: string) {
   await requireOwnerSession(); uuid(instrumentId); uuid(key);
@@ -241,12 +263,54 @@ export async function refreshMarketPrice(instrumentId: string, key: string) {
   if (!provider) throw new InvestmentError("Penyedia harga otomatis belum dikonfigurasi. Gunakan harga manual.");
   const instrument = (await investmentSnapshot()).instruments.find((i) => i.id === instrumentId && i.isActive);
   if (!instrument) throw new InvestmentError("Instrumen tidak aktif.");
-  const quote = await provider.fetchQuote(instrument);
-  const validSource = provider.id === "composite"
-    ? quote.sourceId !== "composite" && isRegisteredPriceProvider(quote.sourceId)
-    : quote.sourceId === provider.id;
-  if (quote.instrumentId !== instrumentId || !validSource) throw new InvestmentError("Referensi harga tidak sesuai.");
+  const quote = await fetchValidatedQuote(provider, instrument);
   return saveMarketPrice({ instrumentId, price: quote.price, asOf: quote.asOf }, key, { id: quote.sourceId, currency: quote.currency });
+}
+
+export type ScheduledRefreshResult = { updated: number; skipped: number; failed: { instrumentId: string; name: string; reason: string }[] };
+/** UUID deterministik dari kuotasi: kuotasi identik (cron dikirim ulang, akhir pekan) tidak membuat harga ganda. */
+function scheduledPriceKey(instrumentId: string, sourceId: string, asOf: string, price: string): string {
+  const h = createHash("sha256").update(`scheduled-price:${instrumentId}:${sourceId}:${asOf}:${price}`).digest("hex");
+  const variant = ((parseInt(h[16], 16) & 0x3) | 0x8).toString(16);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+/**
+ * Dipanggil cron terjadwal (tanpa sesi passkey). Diverifikasi ulang terhadap CRON_SECRET; hanya menambah titik harga,
+ * tidak menyentuh ledger. Satu instrumen gagal tidak menggagalkan batch.
+ */
+export async function refreshAllMarketPrices(cronToken: string): Promise<ScheduledRefreshResult> {
+  const secret = (process.env.CRON_SECRET ?? "").trim();
+  if (!secret || typeof cronToken !== "string" || !equalSecret(cronToken, secret)) throw new InvestmentError("Tidak berwenang.");
+  const provider = configuredPriceProvider();
+  if (!provider) throw new InvestmentError("Penyedia harga otomatis belum dikonfigurasi.");
+  const rows = (await inDatabaseTransaction(async (client) => {
+    await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    return client.query(`SELECT i.id,i.display_name,i.symbol,i.market,i.instrument_type_id,t.display_name AS type_name,i.currency_code,
+      c.minor_unit_exponent AS exponent,i.price_symbol FROM investment_instruments i
+      JOIN investment_instrument_types t ON t.id=i.instrument_type_id JOIN currencies c ON c.code=i.currency_code
+      WHERE i.is_active AND btrim(COALESCE(i.price_symbol,''))<>'' ORDER BY i.created_at,i.id`);
+  })).rows;
+  const instruments: Instrument[] = rows.map((r) => ({ id: r.id, displayName: r.display_name, symbol: r.symbol, market: r.market,
+    typeId: r.instrument_type_id, typeName: r.type_name, currency: r.currency_code, exponent: r.exponent, priceSymbol: r.price_symbol, isActive: true }));
+  const result: ScheduledRefreshResult = { updated: 0, skipped: 0, failed: [] };
+  let next = 0;
+  async function worker() {
+    while (next < instruments.length) {
+      const instrument = instruments[next++];
+      try {
+        const quote = await fetchValidatedQuote(provider!, instrument);
+        const draft = priceDraft({ instrumentId: instrument.id, price: quote.price, asOf: quote.asOf }, { id: quote.sourceId, currency: quote.currency });
+        const key = scheduledPriceKey(instrument.id, quote.sourceId, draft.asOf, draft.price);
+        const outcome = await postingTransaction((client) => idempotentIn(client, "price", key, requestHash("price", draft), (c) => insertPriceDraft(c, draft)));
+        if (outcome.created) result.updated++; else result.skipped++;
+      } catch (error) {
+        result.failed.push({ instrumentId: instrument.id, name: instrument.displayName,
+          reason: error instanceof InvestmentError ? error.message : "Kesalahan tak terduga saat memperbarui harga." });
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(4, instruments.length) }, worker));
+  return result;
 }
 
 export async function restoreInvestment(kind: "portfolio" | "instrument", id: string) {

@@ -38,7 +38,7 @@ npm run db:list | db:status | db:migrate   # lihat scripts/migrate.mjs
 - Ledger append-only: koreksi/void = movement pembalik (reversal), bukan edit atau hapus. Setiap mutasi dalam transaksi DB dengan idempotency key.
 - Saldo awal immutable dan >= 0 (constraint DB). Jangan mengubah migrasi yang sudah ada (checksum); perubahan skema = migrasi baru bernomor berikutnya.
 - Jangan menaruh perubahan skema atau SQL pembersihan data di `scripts/vercel-db-setup.mjs` (jalan di tiap build). Semua lewat migrasi.
-- Semua route di `src/app/api` wajib memeriksa sesi pemilik (kecuali `/api/health`). Jangan melonggarkan pemeriksaan origin/CSRF.
+- Semua route di `src/app/api` wajib memeriksa sesi pemilik, kecuali `/api/health` dan `/api/cron/refresh-prices` (tanpa sesi; diotorisasi Bearer `CRON_SECRET` timing-safe, hanya menambah titik harga, ledger tidak disentuh). Jangan melonggarkan pemeriksaan origin/CSRF.
 - Jangan log atau commit rahasia (`MONETA_BOOTSTRAP_SECRET`, `DATABASE_URL`, kunci API harga). Jangan commit data pribadi (UUID, nama akun nyata).
 - `assets.asset_class` (asset/liability/receivable) adalah sumber tunggal klasifikasi kredit/piutang (`isCreditAsset`, `isReceivableAsset`).
   Jangan menambah regex nama akun atau tag baru di `assets.note` untuk mengklasifikasi.

@@ -240,6 +240,37 @@ test("P4 isolated disposable PostgreSQL investment engine", { skip: !enabled }, 
         delete process.env.MONETA_PRICE_PROVIDER;
       }
     });
+    await t.test("cron refresh: tanpa sesi, satu instrumen gagal tidak menggagalkan batch, idempoten, token salah ditolak", async () => {
+      const { setMarketPriceFetchForTest } = await import("../src/lib/investments/providers.ts");
+      const bad = await s.createInstrument({ displayName: "Cron bad ref", currency: "IDR", typeId, priceSymbol: "http:BAD" });
+      await s.createInstrument({ displayName: "Cron no ref", currency: "IDR", typeId });
+      const saved = { provider: process.env.MONETA_PRICE_PROVIDER, url: process.env.MONETA_PRICE_PROVIDER_URL, secret: process.env.CRON_SECRET };
+      process.env.MONETA_PRICE_PROVIDER = "composite"; delete process.env.MONETA_PRICE_PROVIDER_URL; process.env.CRON_SECRET = "cron-test-secret-value";
+      globalThis.__investmentTestAuthorized = false;
+      try {
+        // Kuotasi identik dengan refresh P4.1 di atas, supaya nilai pasar subtes berikutnya tidak berubah.
+        setMarketPriceFetchForTest(async () => new Response(JSON.stringify({ bitcoin: { idr: "140000", last_updated_at: 1735948800 } }), { status: 200 }));
+        await assert.rejects(s.refreshAllMarketPrices("salah"), /Tidak berwenang/);
+        const expected = Number((await admin.query("SELECT count(*) FROM investment_instruments WHERE is_active AND btrim(COALESCE(price_symbol,''))<>''")).rows[0].count);
+        const before = Number((await admin.query("SELECT count(*) FROM investment_price_points WHERE instrument_id=$1", [initialInstrument])).rows[0].count);
+        const first = await s.refreshAllMarketPrices("cron-test-secret-value");
+        assert.ok(first.updated >= 1);
+        assert.equal(first.updated + first.skipped + first.failed.length, expected);
+        assert.ok(first.failed.some((f) => f.instrumentId === bad && f.name === "Cron bad ref" && f.reason.length > 0));
+        assert.equal(Number((await admin.query("SELECT count(*) FROM investment_price_points WHERE instrument_id=$1", [initialInstrument])).rows[0].count), before + 1);
+        const second = await s.refreshAllMarketPrices("cron-test-secret-value");
+        assert.equal(second.updated, 0);
+        assert.equal(second.skipped, first.updated);
+        assert.equal(second.failed.length, first.failed.length);
+        assert.equal(Number((await admin.query("SELECT count(*) FROM investment_price_points WHERE instrument_id=$1", [initialInstrument])).rows[0].count), before + 1);
+      } finally {
+        setMarketPriceFetchForTest(null);
+        globalThis.__investmentTestAuthorized = true;
+        for (const [key, value] of [["MONETA_PRICE_PROVIDER", saved.provider], ["MONETA_PRICE_PROVIDER_URL", saved.url], ["CRON_SECRET", saved.secret]]) {
+          if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+      }
+    });
     await t.test("lean summary matches full replay after corrections, voids, archives and missing prices", async () => {
       const full = await investmentSnapshot(), summary = await financeSnapshot();
       const sorted = (rows) => [...rows].sort((a, b) => a.currency.localeCompare(b.currency));
