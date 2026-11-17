@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { requireOwnerSession } from '@/lib/auth/session';
 import { database, inDatabaseTransaction } from '@/lib/db/pool';
+import { tableFlags } from '@/lib/db/readiness';
 import { validId } from './composable-domain';
 import { assessAllocationForReview, readAllocationSummaries } from './allocation-service';
 import { automationReviewQuery } from './review-query';
@@ -13,10 +14,8 @@ import type { ActivityReviewDetail, ActivityTimelineEvent, ReviewContext, Review
 
 export class AutomationReviewError extends Error {}
 export async function automationReviewReady(client:PoolClient|ReturnType<typeof database>=database()) {
-  return (await client.query<{schedule:boolean;income:boolean;general:boolean;allocation:boolean;review:boolean}>(`SELECT
-    to_regclass('recurring_transaction_occurrences') IS NOT NULL schedule,to_regclass('income_event_instances') IS NOT NULL income,
-    to_regclass('automation_instances') IS NOT NULL general,to_regclass('automation_allocation_assessments') IS NOT NULL allocation,
-    to_regclass('automation_activity_reviews') IS NOT NULL review`)).rows[0];
+  return tableFlags(client,{schedule:'recurring_transaction_occurrences',income:'income_event_instances',
+    general:'automation_instances',allocation:'automation_allocation_assessments',review:'automation_activity_reviews'});
 }
 type Projection = {id:string;storage:Storage;status:string;rule_version:number;percentage_bps:number|null;key:string;root_id:string|null;result_id:string|null;review_ready:boolean;revision:string;
   assessment_id:string|null;assessment_stale:boolean;reviewed_at:Date|null;decision:ReviewDecision|null;original_source_minor:string|null;
@@ -36,7 +35,7 @@ async function projections(client:PoolClient,keys:readonly string[]) {
   return (await client.query<Projection>(`SELECT * FROM (${query}) projection WHERE key=ANY($1::text[])`,[keys])).rows;
 }
 export async function readAutomationReviewContexts(storage:Storage,ids:string[],existingClient?:PoolClient):Promise<Record<string,ReviewContext>> {
-  await requireOwnerSession();
+  if(!existingClient)await requireOwnerSession();
   const read=async(client:PoolClient)=>Object.fromEntries((await projections(client,ids.map(id=>`${storage}:${id}`))).map(row=>[row.id,context(row)]));
   return existingClient?read(existingClient):inDatabaseTransaction(read);
 }

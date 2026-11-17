@@ -1,6 +1,6 @@
 import "server-only";
 import { requireOwnerSession } from "@/lib/auth/session";
-import { inDatabaseTransaction } from "@/lib/db/pool";
+import { inReadOnlyTransaction } from "@/lib/db/pool";
 import { computeCreditBills, isCreditAsset } from "@/lib/domain/credit";
 import { financeSnapshot } from "@/lib/finance/summary";
 import { periodChange } from "./domain";
@@ -25,8 +25,7 @@ async function readCurrencies(client: PoolClient, currency: string | null) {
 /** Owner-only metadata for controls, using the same currency universe as reports. */
 export async function analyticsCurrencyOptions() {
   await requireOwnerSession();
-  return inDatabaseTransaction(async (client) => {
-    await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  return inReadOnlyTransaction(async (client) => {
     return readCurrencies(client, null);
   });
 }
@@ -74,8 +73,7 @@ function incomeRanking(a: DimensionRow, b: DimensionRow) {
 export async function readAnalytics(input: AnalyticsInput = {}, now = new Date()): Promise<AnalyticsReport> {
   await requireOwnerSession();
   const period = validateAnalyticsInput(input, now), prior = previousPeriod(input.period ?? { kind: "current_month" }, period, now);
-  return inDatabaseTransaction(async (client) => {
-    await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  return inReadOnlyTransaction(async (client) => {
     const currency = input.currency ?? null;
     if (currency && !(await client.query("SELECT 1 FROM currencies WHERE code=$1", [currency])).rowCount) throw new AnalyticsInputError("Mata uang tidak tersedia");
     const currencies = await readCurrencies(client, currency);

@@ -2,7 +2,7 @@ import "server-only";
 import { unreferencedSql } from "@/lib/repositories/lifecycle";
 import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
-import { database, inDatabaseTransaction } from "@/lib/db/pool";
+import { database, inReadOnlyTransaction } from "@/lib/db/pool";
 import { hasOpeningCorrections } from "@/lib/db/opening-capability";
 import { decimal, decimalString, replayPosition, valuation } from "@/lib/investments/math";
 import { configuredPriceProvider } from "@/lib/investments/providers";
@@ -24,8 +24,7 @@ function accumulate(current: InvestmentTotal | undefined, holding: Pick<Holding,
 export async function investmentSnapshot(existing?: PoolClient): Promise<InvestmentSnapshot> {
   const readSnapshot = await prepareOwnerInvestmentRead();
   if (existing) return readSnapshot(existing);
-  return inDatabaseTransaction(async (client) => {
-    await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  return inReadOnlyTransaction(async (client) => {
     return readSnapshot(client);
   });
 }

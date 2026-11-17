@@ -1,8 +1,9 @@
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { requireOwnerSession } from '@/lib/auth/session';
 import { database, inDatabaseTransaction } from '@/lib/db/pool';
+import { tablesReady } from '@/lib/db/readiness';
 import { postActivityInTransaction } from '@/lib/finance/service';
 import type { ActivityDraft } from '@/lib/finance/types';
 import { evaluateConditions, resolveAsset, validId, positiveMinor, type GeneralRuleInput, type FinancialAction, type TriggerContext } from './composable-domain';
@@ -23,15 +24,15 @@ type Proposal = { id: string; assessment_id: string; status: string; result_acti
   created_at: Date; amount_minor: string; transfer_fee_minor:string|null; charges:{typeId:string;amountMinor:string}[] };
 type Fees = { transferFeeMinor?: string; charges?: {typeId: string; amountMinor: string}[] };
 export async function allocationReady(client?:PoolClient) {
-  return (await (client??database()).query<{ready:boolean}>("SELECT to_regclass('automation_allocation_assessments') IS NOT NULL AS ready")).rows[0].ready;
+  return tablesReady(client??database(),'automation_allocation_assessments');
 }
 /** Receipt is committed with P3; corrections keep the same P3 root identity. */
-export async function allocationDiscoveryFilter(client: PoolClient) {
-  const ready=(await client.query<{ready:boolean}>("SELECT to_regclass('automation_allocation_adjustments') IS NOT NULL AS ready")).rows[0].ready;
+export async function allocationDiscoveryFilter(client: Pool | PoolClient) {
+  const ready=await tablesReady(client,'automation_allocation_adjustments');
   return ready ? 'AND NOT EXISTS(SELECT 1 FROM automation_allocation_adjustments adjustment WHERE adjustment.result_activity_id=s.root_activity_id)' : '';
 }
 export async function allocationResultOrigin(client: PoolClient, rootId: string) {
-  const ready=(await client.query<{ready:boolean}>("SELECT to_regclass('automation_allocation_adjustments') IS NOT NULL AS ready")).rows[0].ready;
+  const ready=await tablesReady(client,'automation_allocation_adjustments');
   if(!ready)return null;
   return (await client.query<{instance_id:string;rule_id:string}>(`SELECT COALESCE(a.legacy_instance_id,a.general_instance_id) AS instance_id,a.rule_snapshot->>'ruleId' AS rule_id
     FROM automation_allocation_adjustments p JOIN automation_allocation_assessments a ON a.id=p.assessment_id WHERE p.result_activity_id=$1`,[rootId])).rows[0]??null;
@@ -146,10 +147,23 @@ async function assess(client:PoolClient, storage:AllocationStorage, id:string):P
   if(saved.state!=='aligned')await client.query(`UPDATE ${storage==='income_event'?'income_event_instances':'automation_instances'} SET status='review_required',updated_at=clock_timestamp() WHERE id=$1 AND result_activity_id IS NOT NULL AND status<>'review_required'`,[id]);
   return saved;
 }
+type SummaryFacts={p?:Proposal;assets:{id:string;display_name:string}[];exponent:number};
 async function summary(client:PoolClient,a:Assessment):Promise<AllocationSummary> {
   const p=(await client.query<Proposal>('SELECT * FROM automation_allocation_adjustments WHERE assessment_id=$1',[a.id])).rows[0];
   const assets=(await client.query<{id:string;display_name:string}>('SELECT id,display_name FROM assets WHERE id=ANY($1::uuid[])',[[a.source_asset_id,a.destination_asset_id].filter(Boolean)])).rows;
   const exponent=(await client.query<{minor_unit_exponent:number}>('SELECT minor_unit_exponent FROM currencies WHERE code=$1',[a.currency_code])).rows[0].minor_unit_exponent;
+  return summaryFrom(a,{p,assets,exponent});
+}
+/** Sama dengan summary() untuk banyak assessment, tetapi 3 query total (bukan 3 per assessment). */
+async function summaries(client:PoolClient,list:Assessment[]):Promise<AllocationSummary[]> {
+  if(!list.length)return [];
+  const proposals=(await client.query<Proposal>('SELECT * FROM automation_allocation_adjustments WHERE assessment_id=ANY($1::uuid[])',[list.map(a=>a.id)])).rows;
+  const assets=(await client.query<{id:string;display_name:string}>('SELECT id,display_name FROM assets WHERE id=ANY($1::uuid[])',
+    [[...new Set(list.flatMap(a=>[a.source_asset_id,a.destination_asset_id]).filter(Boolean))]])).rows;
+  const exponents=(await client.query<{code:string;minor_unit_exponent:number}>('SELECT code,minor_unit_exponent FROM currencies WHERE code=ANY($1::text[])',[[...new Set(list.map(a=>a.currency_code))]])).rows;
+  return list.map(a=>summaryFrom(a,{p:proposals.find(row=>row.assessment_id===a.id),assets,exponent:exponents.find(row=>row.code===a.currency_code)!.minor_unit_exponent}));
+}
+function summaryFrom(a:Assessment,{p,assets,exponent}:SummaryFacts):AllocationSummary {
   const first=a.result_snapshot[0];
   const original=first?.status==='posted' && first.kind===a.action_kind && first.currency_code===a.currency_code
     && first.source_asset_id===a.source_asset_id && first.destination_asset_id===a.destination_asset_id?first.base_amount_minor:'0';
@@ -217,11 +231,13 @@ export async function confirmAllocation(proposalId:string,rawFees:Fees={}) {
   return result;
 }
 export async function readAllocationSummaries(storage:AllocationStorage,ids:string[],existingClient?:PoolClient):Promise<Record<string,AllocationSummary>> {
-  await requireOwnerSession(); if(!ids.length || !await allocationReady(existingClient))return {};
+  // Dengan klien yang sudah dipegang pemanggil (sudah terotorisasi), jangan meminta koneksi pool kedua hanya untuk cek sesi.
+  if(!existingClient)await requireOwnerSession(); if(!ids.length || !await allocationReady(existingClient))return {};
   const read=async (client:PoolClient)=>{
     const rows=(await client.query<Assessment>(`SELECT DISTINCT ON (${instanceColumn(storage)}) * FROM automation_allocation_assessments
       WHERE ${instanceColumn(storage)}=ANY($1::uuid[]) ORDER BY ${instanceColumn(storage)},assessed_at DESC,id DESC`,[ids])).rows;
-    const output:Record<string,AllocationSummary>={};for(const a of rows)output[a.legacy_instance_id??a.general_instance_id!]=await summary(client,a);return output;
+    const output:Record<string,AllocationSummary>={};const built=await summaries(client,rows);
+    rows.forEach((a,index)=>{output[a.legacy_instance_id??a.general_instance_id!]=built[index];});return output;
   };
   return existingClient?read(existingClient):inDatabaseTransaction(read);
 }

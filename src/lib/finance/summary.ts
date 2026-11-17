@@ -1,7 +1,7 @@
 import "server-only";
 import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
-import { database, inDatabaseTransaction } from "@/lib/db/pool";
+import { database, inReadOnlyTransaction } from "@/lib/db/pool";
 import { prepareOwnerAssetRead } from "@/lib/repositories/assets";
 import { listActivities } from "./service";
 import { prepareOwnerInvestmentSummaryRead } from "@/lib/investments/read";
@@ -84,11 +84,7 @@ export async function monthlyExpenses(at: Date = new Date()) {
 }
 export async function financeSnapshot({ includeRecent = true, includeExpenses = true }: { includeRecent?: boolean; includeExpenses?: boolean } = {}, existing?: PoolClient) {
   await requireOwnerSession();
-  const [readAssets, readInvestments, recent, pendingAutomations] = await Promise.all([
-    prepareOwnerAssetRead(), prepareOwnerInvestmentSummaryRead(),
-    includeRecent ? listActivities(false, 6) : Promise.resolve([]),
-    includeRecent ? readPendingAutomations() : Promise.resolve([] as WorkspaceInstance[]),
-  ]);
+  const [readAssets, readInvestments] = await Promise.all([prepareOwnerAssetRead(), prepareOwnerInvestmentSummaryRead()]);
   const read = async (client: PoolClient) => {
     // One transaction uses one connection; queueing concurrent pg queries adds no parallelism.
     const assets = await readAssets(true, client);
@@ -107,7 +103,7 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
       const rows = await client.query<{ currency: string; exponent: number }>("SELECT code AS currency,minor_unit_exponent AS exponent FROM currencies WHERE code = ANY($1::text[])", [missing]);
       for (const row of rows.rows) byCurrency.set(row.currency, emptyCurrencyBalances(row.currency, row.exponent));
     }
-    return { assets, recent, pendingAutomations, investment, planningReady, throughDay, currencies: [...byCurrency.values()].map((entry) => {
+    return { assets, investment, planningReady, throughDay, currencies: [...byCurrency.values()].map((entry) => {
       const commitmentsForCurrency = planning.get(entry.currency);
       const position = availableFunds(entry.spendable, {
         reservedMinor: commitmentsForCurrency?.reservedMinor ?? "0", dueMinor: commitmentsForCurrency?.dueMinor ?? "0",
@@ -119,9 +115,11 @@ export async function financeSnapshot({ includeRecent = true, includeExpenses = 
         expenseMinor: entry.expense.toString(), unpricedCount: entry.unpricedCount };
     }) };
   };
-  if (existing) return read(existing);
-  return inDatabaseTransaction(async (client) => {
-    await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    return read(client);
-  });
+  // Snapshot transaction and the two non-snapshot readers are independent, so they overlap instead of queueing behind each other.
+  const [core, recent, pendingAutomations] = await Promise.all([
+    existing ? read(existing) : inReadOnlyTransaction(read),
+    includeRecent ? listActivities(false, 6) : Promise.resolve([]),
+    includeRecent ? readPendingAutomations() : Promise.resolve([] as WorkspaceInstance[]),
+  ]);
+  return { ...core, recent, pendingAutomations };
 }

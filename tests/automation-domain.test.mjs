@@ -26,6 +26,18 @@ test("schedule catch-up covers months of absence in one bounded pass", async () 
   assert.deepEqual(catchUpWindow("2026-12-05", "2026-12-05"), { start: "2026-12-05", end: "2026-12-05" });
 });
 
+test("filter SQL aturan jadwal ekuivalen dengan catchUpWindow: hanya aturan yang tertinggal dari horizon dimaterialisasi", async () => {
+  const { catchUpWindow, addDays, materializationHorizon, jakartaToday } = await import("../src/lib/automation/schedule.ts");
+  const now = new Date("2026-11-17T05:00:00Z");
+  const horizon = materializationHorizon(now);
+  assert.equal(horizon, addDays(jakartaToday(now), 30));
+  for (let offset = -400; offset <= 45; offset++) {
+    const cursor = addDays(jakartaToday(now), offset);
+    // Query memakai: materialized_through < horizon. Harus sama dengan "ada jendela kerja".
+    assert.equal(cursor < horizon, catchUpWindow(addDays(cursor, 1), horizon) !== null, cursor);
+  }
+});
+
 test("imported CSV/XLSX activity is excluded from automation discovery", async () => {
   const { importDiscoveryFilter, importedSourceExclusion } = await import("../src/lib/automation/import-filter.ts");
   assert.match(importedSourceExclusion, /^AND NOT EXISTS\(SELECT 1 FROM import_batch_rows imported WHERE imported\.activity_id=s\.root_activity_id\)$/);

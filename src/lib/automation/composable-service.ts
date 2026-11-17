@@ -3,15 +3,16 @@ import "server-only";
 import { allocationDiscoveryFilter, allocationResultOrigin, readAllocationSummaries } from "./allocation-service";
 import type { AllocationSummary } from "./allocation-domain";
 import { readAutomationReviewContexts } from "./review-service";
-import { importDiscoveryFilter } from "./import-filter";
+import { importDiscoveryFilter, importedSourceExclusion } from "./import-filter";
 import type { ReviewContext } from "./review-domain";
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
+import { tablesReady } from "@/lib/db/readiness";
 import { postActivityInTransaction } from "@/lib/finance/service";
 import type { ActivityDraft, ActivityKind } from "@/lib/finance/types";
-import { addDays, jakartaToday, maximumCatchUpDays } from "./schedule";
+import { addDays, jakartaToday, materializationHorizon, maximumCatchUpDays } from "./schedule";
 import { actionDraft, automationNote, calculateAmount, ComposableError, evaluateConditions, normalizeGeneralRule, resolveAsset, timeOccurrences,
   triggerRegistry, validId, type AssetReference, type Condition, type FinancialAction, type GeneralRuleInput, type TriggerContext } from "./composable-domain";
 
@@ -38,7 +39,7 @@ export type GeneralView = { ready: boolean; rules: GeneralRuleView[]; instances:
 
 async function ordered(client: PoolClient) { await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [orderLock]); }
 export async function generalAutomationReady() {
-  return (await database().query<{ ready: boolean }>("SELECT to_regclass('automation_rules') IS NOT NULL AS ready")).rows[0].ready;
+  return tablesReady(database(), "automation_rules");
 }
 async function requireReady() { if (!await generalAutomationReady()) throw new ComposableError("Automation umum belum diaktifkan pada database ini."); }
 
@@ -65,30 +66,58 @@ async function validateReferences(client: PoolClient, rule: GeneralRuleInput) {
     if (currency && !(await client.query("SELECT code FROM currencies WHERE code=$1", [currency])).rowCount) throw new ComposableError("Mata uang kondisi tidak tersedia.");
   }
 }
-async function readVersion(client: PoolClient, id: string, version: number): Promise<GeneralRuleInput> {
-  const row = (await client.query<{ title: string; trigger_namespace: GeneralRuleInput["trigger"]["namespace"]; trigger_config: GeneralRuleInput["trigger"];
+type VersionRef = { id: string; version: number };
+const versionKey = (id: string, version: number) => `${id}:${version}`;
+/** Membaca banyak versi aturan sekaligus: 4 query untuk N aturan (sebelumnya 4 per aturan). Hasil per versi identik dengan readVersion. */
+async function readVersions(client: PoolClient, refs: VersionRef[]): Promise<Map<string, GeneralRuleInput>> {
+  const output = new Map<string, GeneralRuleInput>();
+  if (!refs.length) return output;
+  const params = [refs.map((ref) => ref.id), refs.map((ref) => ref.version)];
+  const pairs = "(%rule_id%,%version_no%) IN (SELECT * FROM unnest($1::uuid[],$2::int[]))";
+  const scoped = (rule: string, version: string) => pairs.replace("%rule_id%", rule).replace("%version_no%", version);
+  const versionRows = (await client.query<{ rule_id: string; version_no: number; title: string; trigger_namespace: GeneralRuleInput["trigger"]["namespace"]; trigger_config: GeneralRuleInput["trigger"];
     condition_mode: "ALL" | "ANY"; execution_policy: GeneralRuleInput["execution"]; category_id: string | null }>(
-    `SELECT v.*,r.category_id FROM automation_rule_versions v JOIN automation_rules r ON r.id=v.rule_id WHERE v.rule_id=$1 AND v.version_no=$2`, [id, version])).rows[0];
-  if (!row) throw new ComposableError("Versi aturan tidak ditemukan.");
-  const conditions = (await client.query<{ field: Condition["field"]; operator: Condition["operator"]; activity_kind: string | null; asset_id: string | null;
+    `SELECT v.*,r.category_id FROM automation_rule_versions v JOIN automation_rules r ON r.id=v.rule_id WHERE ${scoped("v.rule_id", "v.version_no")}`, params)).rows;
+  const conditionRows = (await client.query<{ rule_id: string; version_no: number; field: Condition["field"]; operator: Condition["operator"]; activity_kind: string | null; asset_id: string | null;
     category_id: string | null; currency_code: string | null; amount_minor: string | null; upper_amount_minor: string | null }>(
-    "SELECT * FROM automation_conditions WHERE rule_id=$1 AND version_no=$2 ORDER BY position", [id, version])).rows.map((item): Condition => ({
-      field: item.field, operator: item.operator, value: item.activity_kind ?? item.asset_id ?? item.category_id ?? item.amount_minor ?? item.currency_code!,
-      ...(item.upper_amount_minor ? { upperValue: item.upper_amount_minor } : {}), ...(item.field === "base_amount" ? { currency: item.currency_code! } : {}) }));
-  const rows = await client.query<{ action_kind: FinancialAction["kind"]; source_strategy: AssetReference["strategy"] | null; source_asset_id: string | null;
+    `SELECT * FROM automation_conditions WHERE ${scoped("rule_id", "version_no")} ORDER BY rule_id,version_no,position`, params)).rows;
+  const actionRows = (await client.query<{ rule_id: string; version_no: number; action_kind: FinancialAction["kind"]; source_strategy: AssetReference["strategy"] | null; source_asset_id: string | null;
     destination_strategy: AssetReference["strategy"] | null; destination_asset_id: string | null; amount_strategy: FinancialAction["amount"]["strategy"];
     amount_minor: string | null; currency_code: string | null; percentage_bps: number | null; category_id: string | null; transfer_fee_minor: string | null; note: string | null }>(
-    "SELECT * FROM automation_actions WHERE rule_id=$1 AND version_no=$2 ORDER BY position", [id, version]);
-  if (rows.rowCount !== 1) throw new ComposableError("V1 memerlukan tepat satu tindakan.");
-  const action = rows.rows[0];
+    `SELECT * FROM automation_actions WHERE ${scoped("rule_id", "version_no")} ORDER BY rule_id,version_no,position`, params)).rows;
+  const chargeRows = (await client.query<{ rule_id: string; version_no: number; type_id: string; amount_minor: string }>(
+    `SELECT rule_id,version_no,type_id,amount_minor FROM automation_action_charges WHERE ${scoped("rule_id", "version_no")} ORDER BY rule_id,version_no,position`, params)).rows;
+  const group = <T extends { rule_id: string; version_no: number }>(rows: T[]) => {
+    const grouped = new Map<string, T[]>();
+    for (const row of rows) { const key = versionKey(row.rule_id, row.version_no); (grouped.get(key) ?? grouped.set(key, []).get(key)!).push(row); }
+    return grouped;
+  };
+  const versionsByKey = new Map(versionRows.map((row) => [versionKey(row.rule_id, row.version_no), row]));
+  const conditionsByKey = group(conditionRows), actionsByKey = group(actionRows), chargesByKey = group(chargeRows);
   const reference = (strategy: AssetReference["strategy"] | null, assetId: string | null): AssetReference | undefined => !strategy ? undefined : strategy === "configured_asset" ? { strategy, assetId: assetId! } : { strategy };
-  const charges = (await client.query<{ type_id: string; amount_minor: string }>("SELECT type_id,amount_minor FROM automation_action_charges WHERE rule_id=$1 AND version_no=$2 ORDER BY position", [id, version])).rows.map((charge) => ({ typeId: charge.type_id, amountMinor: charge.amount_minor }));
-  const amount: FinancialAction["amount"] = action.amount_strategy === "fixed" ? { strategy: "fixed", amountMinor: action.amount_minor!, currency: action.currency_code! }
-    : action.amount_strategy === "percentage_of_trigger" ? { strategy: action.amount_strategy, percentageBps: action.percentage_bps! } : { strategy: action.amount_strategy };
-  return { title: row.title, automationCategoryId: row.category_id ?? undefined, trigger: { ...row.trigger_config, namespace: row.trigger_namespace } as GeneralRuleInput["trigger"],
-    conditionMode: row.condition_mode, execution: row.execution_policy, conditions,
-    actions: [{ kind: action.action_kind, source: reference(action.source_strategy, action.source_asset_id), destination: reference(action.destination_strategy, action.destination_asset_id),
-      amount, categoryId: action.category_id ?? undefined, charges, transferFeeMinor: action.transfer_fee_minor ?? undefined, note: action.note ?? undefined }] };
+  for (const ref of refs) {
+    const key = versionKey(ref.id, ref.version);
+    if (output.has(key)) continue;
+    const row = versionsByKey.get(key);
+    if (!row) throw new ComposableError("Versi aturan tidak ditemukan.");
+    const conditions = (conditionsByKey.get(key) ?? []).map((item): Condition => ({
+      field: item.field, operator: item.operator, value: item.activity_kind ?? item.asset_id ?? item.category_id ?? item.amount_minor ?? item.currency_code!,
+      ...(item.upper_amount_minor ? { upperValue: item.upper_amount_minor } : {}), ...(item.field === "base_amount" ? { currency: item.currency_code! } : {}) }));
+    const actions = actionsByKey.get(key) ?? [];
+    if (actions.length !== 1) throw new ComposableError("V1 memerlukan tepat satu tindakan.");
+    const action = actions[0];
+    const charges = (chargesByKey.get(key) ?? []).map((charge) => ({ typeId: charge.type_id, amountMinor: charge.amount_minor }));
+    const amount: FinancialAction["amount"] = action.amount_strategy === "fixed" ? { strategy: "fixed", amountMinor: action.amount_minor!, currency: action.currency_code! }
+      : action.amount_strategy === "percentage_of_trigger" ? { strategy: action.amount_strategy, percentageBps: action.percentage_bps! } : { strategy: action.amount_strategy };
+    output.set(key, { title: row.title, automationCategoryId: row.category_id ?? undefined, trigger: { ...row.trigger_config, namespace: row.trigger_namespace } as GeneralRuleInput["trigger"],
+      conditionMode: row.condition_mode, execution: row.execution_policy, conditions,
+      actions: [{ kind: action.action_kind, source: reference(action.source_strategy, action.source_asset_id), destination: reference(action.destination_strategy, action.destination_asset_id),
+        amount, categoryId: action.category_id ?? undefined, charges, transferFeeMinor: action.transfer_fee_minor ?? undefined, note: action.note ?? undefined }] });
+  }
+  return output;
+}
+async function readVersion(client: PoolClient, id: string, version: number): Promise<GeneralRuleInput> {
+  return (await readVersions(client, [{ id, version }])).get(versionKey(id, version))!;
 }
 export async function saveGeneralRule(raw: GeneralRuleInput, id?: string, requestKey: string = randomUUID()) {
   await requireOwnerSession(); await requireReady();
@@ -231,12 +260,11 @@ async function refreshInstance(client: PoolClient, item: Instance, context: Trig
     calculated_amount_minor=$6,resolved_source_asset_id=$7,resolved_destination_asset_id=$8,currency_code=$9,status=$10,failure_reason=$11,updated_at=clock_timestamp() WHERE id=$1`,
     [item.id, context.effectiveActivityId ?? null, JSON.stringify(context), JSON.stringify(value.conditions), JSON.stringify(value.action), value.amount, value.source, value.destination, value.currency, value.status, value.failure]);
 }
-export interface SourceDiscoveryAdapter { discover(client: PoolClient): Promise<number> }
-async function discoverTransactions(client: PoolClient) {
-  let created = 0;
-  const allocationFilter = await allocationDiscoveryFilter(client);
-  const importFilter = await importDiscoveryFilter(client);
-  const sources = (await client.query<{ root_activity_id: string; eligible_at: Date; rule_id: string; version_no: number }>(`SELECT s.*,p.rule_id,p.version_no
+// SQL pekerjaan reconcile hidup di satu tempat: dipakai eksekusi (dengan lock) dan pre-check EXISTS (tanpa lock), agar keduanya tidak bisa menyimpang.
+const changedInstancesSql = (limit: string, lock: boolean) => `SELECT i.* FROM automation_instances i JOIN financial_activities f ON f.id=i.effective_activity_id
+      WHERE i.status NOT IN ('skipped','review_required') AND (f.status IS DISTINCT FROM i.trigger_snapshot->>'status'
+        OR EXISTS(SELECT 1 FROM financial_activities next WHERE next.replaces_activity_id=f.id)) ORDER BY i.updated_at,i.id LIMIT ${limit}${lock ? " FOR UPDATE OF i" : ""}`;
+const transactionSourcesSql = (allocationFilter: string, importFilter: string, limit: string) => `SELECT s.*,p.rule_id,p.version_no
     FROM automation_source_receipts s JOIN automation_active_periods p ON s.eligible_at>=p.opened_at AND (p.closed_at IS NULL OR s.eligible_at<p.closed_at)
     JOIN automation_rule_versions v ON v.rule_id=p.rule_id AND v.version_no=p.version_no AND v.trigger_namespace='transaction_posted'
     WHERE NOT EXISTS(SELECT 1 FROM automation_instances i WHERE i.rule_id=p.rule_id AND i.trigger_namespace='transaction_posted' AND i.trigger_identity=s.root_activity_id::text)
@@ -244,22 +272,52 @@ async function discoverTransactions(client: PoolClient) {
     AND NOT EXISTS(SELECT 1 FROM income_event_instances e WHERE e.result_activity_id=s.root_activity_id)
     ${allocationFilter}
     ${importFilter}
-    ORDER BY s.eligible_at,s.root_activity_id,p.rule_id LIMIT $1`, [batchSize])).rows;
-  for (const source of sources) created += await capture(client, source.rule_id, source.version_no, await readVersion(client, source.rule_id, source.version_no), await sourceContext(client, source.root_activity_id, source.eligible_at, true));
+    ORDER BY s.eligible_at,s.root_activity_id,p.rule_id LIMIT ${limit}`;
+const timeRulesSql = (horizon: string, lock: boolean) => `SELECT r.id,r.active_version,r.materialized_through::text FROM automation_rules r JOIN automation_rule_versions v
+    ON v.rule_id=r.id AND v.version_no=r.active_version WHERE r.status='active' AND v.trigger_namespace='time'
+      AND (v.trigger_config->'schedule'->>'startOn')::date<=${horizon}::date
+      AND (r.materialized_through IS NULL OR r.materialized_through<LEAST(${horizon}::date,
+        CASE WHEN v.trigger_config->'schedule'->>'frequency'='once' THEN (v.trigger_config->'schedule'->>'startOn')::date
+          ELSE COALESCE((v.trigger_config->'schedule'->>'endOn')::date,${horizon}::date) END))
+    ORDER BY r.materialized_through NULLS FIRST,r.updated_at,r.id LIMIT 50${lock ? " FOR UPDATE OF r" : ""}`;
+const automaticInstancesSql = `SELECT i.id FROM automation_instances i JOIN automation_rules r ON r.id=i.rule_id
+      WHERE i.trigger_namespace='time' AND i.status IN ('awaiting_confirmation','failed') AND i.confirmation_state='not_required' AND r.status='active'
+      ORDER BY i.scheduled_at,i.id LIMIT 10`;
+const dueUpcomingSql = "SELECT 1 FROM automation_instances WHERE status='upcoming' AND scheduled_at<=clock_timestamp()";
+
+/**
+ * Satu query baca-saja tanpa lock: adakah pekerjaan untuk reconcileGeneralAutomation? Bila tidak, transaksi + advisory lock global dilewati.
+ * Hanya membaca, jadi pekerjaan yang muncul sesudah cek ini diambil kunjungan berikutnya (sama seperti kini bila muncul sesudah reconcile).
+ */
+export async function hasGeneralAutomationWork(): Promise<boolean> {
+  const db = database();
+  const allocationFilter = await allocationDiscoveryFilter(db);
+  const importFilter = (await tablesReady(db, "import_batch_rows")) ? importedSourceExclusion : "";
+  const result = await db.query<{ work: boolean }>(`SELECT (
+    EXISTS(${changedInstancesSql("$1", false)})
+    OR EXISTS(${transactionSourcesSql(allocationFilter, importFilter, "$1")})
+    OR EXISTS(${timeRulesSql("$2", false)})
+    OR EXISTS(${dueUpcomingSql})
+    OR EXISTS(${automaticInstancesSql})) AS work`, [batchSize, materializationHorizon(new Date())]);
+  return result.rows[0].work;
+}
+export interface SourceDiscoveryAdapter { discover(client: PoolClient): Promise<number> }
+async function discoverTransactions(client: PoolClient) {
+  let created = 0;
+  const allocationFilter = await allocationDiscoveryFilter(client);
+  const importFilter = await importDiscoveryFilter(client);
+  const sources = (await client.query<{ root_activity_id: string; eligible_at: Date; rule_id: string; version_no: number }>(transactionSourcesSql(allocationFilter, importFilter, "$1"), [batchSize])).rows;
+  const versions = await readVersions(client, sources.map((source) => ({ id: source.rule_id, version: source.version_no })));
+  for (const source of sources) created += await capture(client, source.rule_id, source.version_no, versions.get(versionKey(source.rule_id, source.version_no))!, await sourceContext(client, source.root_activity_id, source.eligible_at, true));
   return created;
 }
 async function discoverTime(client: PoolClient) {
   let created = 0;
   const today = jakartaToday(), horizon = addDays(today, 30);
-  const timeRules = (await client.query<{ id: string; active_version: number; materialized_through: string | null }>(`SELECT r.id,r.active_version,r.materialized_through::text FROM automation_rules r JOIN automation_rule_versions v
-    ON v.rule_id=r.id AND v.version_no=r.active_version WHERE r.status='active' AND v.trigger_namespace='time'
-      AND (v.trigger_config->'schedule'->>'startOn')::date<=$1::date
-      AND (r.materialized_through IS NULL OR r.materialized_through<LEAST($1::date,
-        CASE WHEN v.trigger_config->'schedule'->>'frequency'='once' THEN (v.trigger_config->'schedule'->>'startOn')::date
-          ELSE COALESCE((v.trigger_config->'schedule'->>'endOn')::date,$1::date) END))
-    ORDER BY r.materialized_through NULLS FIRST,r.updated_at,r.id LIMIT 50 FOR UPDATE OF r`, [horizon])).rows;
+  const timeRules = (await client.query<{ id: string; active_version: number; materialized_through: string | null }>(timeRulesSql("$1", true), [horizon])).rows;
+  const timeVersions = await readVersions(client, timeRules.map((row) => ({ id: row.id, version: row.active_version })));
   for (const row of timeRules) {
-    const rule = await readVersion(client, row.id, row.active_version);
+    const rule = timeVersions.get(versionKey(row.id, row.active_version))!;
     if (rule.trigger.namespace !== "time") continue;
     const schedule = rule.trigger.schedule;
     let from = row.materialized_through ? addDays(row.materialized_through, 1) : schedule.startOn;
@@ -291,18 +349,15 @@ export const sourceDiscoveryAdapters: Record<TriggerContext["namespace"], Source
 export async function reconcileGeneralAutomation() {
   await requireOwnerSession();
   if (!await generalAutomationReady()) return { ready: false, created: 0, refreshed: 0, posted: 0 };
+  if (!await hasGeneralAutomationWork()) return { ready: true, created: 0, refreshed: 0, posted: 0 };
   const result = await inDatabaseTransaction(async (client) => {
     await ordered(client);
     let created = 0;
-    const changed = (await client.query<Instance>(`SELECT i.* FROM automation_instances i JOIN financial_activities f ON f.id=i.effective_activity_id
-      WHERE i.status NOT IN ('skipped','review_required') AND (f.status IS DISTINCT FROM i.trigger_snapshot->>'status'
-        OR EXISTS(SELECT 1 FROM financial_activities next WHERE next.replaces_activity_id=f.id)) ORDER BY i.updated_at,i.id LIMIT $1 FOR UPDATE OF i`, [batchSize])).rows;
+    const changed = (await client.query<Instance>(changedInstancesSql("$1", true), [batchSize])).rows;
     for (const item of changed) await refreshInstance(client, item, await sourceContext(client, item.root_activity_id!, item.eligible_at, true));
     for (const adapter of Object.values(sourceDiscoveryAdapters)) created += await adapter.discover(client);
     await client.query("UPDATE automation_instances SET status='awaiting_confirmation' WHERE status='upcoming' AND scheduled_at<=clock_timestamp()");
-    const automatic = (await client.query<{ id: string }>(`SELECT i.id FROM automation_instances i JOIN automation_rules r ON r.id=i.rule_id
-      WHERE i.trigger_namespace='time' AND i.status IN ('awaiting_confirmation','failed') AND i.confirmation_state='not_required' AND r.status='active'
-      ORDER BY i.scheduled_at,i.id LIMIT 10`)).rows;
+    const automatic = (await client.query<{ id: string }>(automaticInstancesSql)).rows;
     return { ready: true, created, refreshed: changed.length, automatic };
   });
   let posted = 0;
@@ -370,7 +425,8 @@ export async function readGeneralAutomation(historyIds?: string[]): Promise<Gene
     const categories = (await client.query<GeneralView["categories"][number]>("SELECT id,name,status FROM automation_categories ORDER BY name,id")).rows;
     const rows = (await client.query<{ id: string; created_at: Date; active_version: number; status: Status; category_name: string | null }>("SELECT r.*,c.name AS category_name FROM automation_rules r LEFT JOIN automation_categories c ON c.id=r.category_id ORDER BY r.created_at DESC,r.id DESC")).rows;
     const rules: GeneralRuleView[] = [];
-    for (const row of rows) rules.push({ createdAt: row.created_at.toISOString(), id: row.id, status: row.status, version: row.active_version, input: await readVersion(client, row.id, row.active_version), categoryName: row.category_name });
+    const versions = await readVersions(client, rows.map((row) => ({ id: row.id, version: row.active_version })));
+    for (const row of rows) rules.push({ createdAt: row.created_at.toISOString(), id: row.id, status: row.status, version: row.active_version, input: versions.get(versionKey(row.id, row.active_version))!, categoryName: row.category_name });
     const instances = (await client.query<Instance & { title: string; exponent: number; source_exponent: number; category_id: string | null; destination_name: string | null; latest_result_status: string | null }>(`SELECT i.*,v.title,r.category_id,c.minor_unit_exponent AS exponent,sc.minor_unit_exponent AS source_exponent,d.display_name AS destination_name,
       (WITH RECURSIVE chain AS (SELECT id,status,0 AS depth FROM financial_activities WHERE id=i.result_activity_id
         UNION ALL SELECT next.id,next.status,chain.depth+1 FROM financial_activities next JOIN chain ON next.replaces_activity_id=chain.id)

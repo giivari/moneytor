@@ -45,6 +45,10 @@ export function preview(schedule: Schedule, from: string, count = 5): string[] {
  */
 export const maximumCatchUpDays = 186;
 /** Inclusive materialization window from `start`, capped by the horizon and the catch-up limit; null when nothing is due. */
+/** Hari terjauh yang dimaterialisasi. Aturan dengan materialized_through >= nilai ini tidak punya pekerjaan (catchUpWindow == null). */
+export function materializationHorizon(now: Date): string {
+  return addDays(jakartaToday(now), 30);
+}
 export function catchUpWindow(start: string, horizon: string, maxDays = maximumCatchUpDays): { start: string; end: string } | null {
   const capped = addDays(start, Math.max(1, Math.trunc(maxDays)) - 1);
   const end = capped < horizon ? capped : horizon;

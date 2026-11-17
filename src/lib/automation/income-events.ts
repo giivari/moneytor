@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
+import { tablesReady } from "@/lib/db/readiness";
 import { assertUuid } from "@/lib/domain/catalog";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { postActivityInTransaction } from "@/lib/finance/service";
@@ -182,7 +183,7 @@ async function refreshCandidate(client: PoolClient, item: Instance) {
 }
 export async function reconcileIncomeEvents(): Promise<{ready:boolean;created:number;refreshed:number}> {
   await requireOwnerSession();
-  const ready = (await database().query<{ready:boolean}>("SELECT to_regclass('income_event_rules') IS NOT NULL AS ready")).rows[0].ready;
+  const ready = await tablesReady(database(), "income_event_rules");
   if (!ready) return {ready:false,created:0,refreshed:0};
   const changed = await database().query<{id:string}>(`SELECT i.id FROM income_event_instances i
     JOIN financial_activities f ON f.id=i.effective_activity_id
@@ -193,7 +194,7 @@ export async function reconcileIncomeEvents(): Promise<{ready:boolean;created:nu
     const row = await client.query<Instance>("SELECT * FROM income_event_instances WHERE id=$1 FOR UPDATE",[id]);
     if (row.rows[0]) await refreshCandidate(client,row.rows[0]);
   });
-  const genericReady = (await database().query<{ready:boolean}>("SELECT to_regclass('automation_action_results') IS NOT NULL AS ready")).rows[0].ready;
+  const genericReady = await tablesReady(database(), "automation_action_results");
   const filterClient = await database().connect();
   let allocationFilter: string, importFilter: string;
   try {
@@ -262,7 +263,7 @@ export async function skipIncomeEvent(id: string) {
 export type IncomeEventView = {ready:boolean;rules:Record<string,unknown>[];instances:Record<string,unknown>[]};
 export async function readIncomeEvents(historyIds?: string[]): Promise<IncomeEventView> {
   await requireOwnerSession();
-  const ready = (await database().query<{ready:boolean}>("SELECT to_regclass('income_event_rules') IS NOT NULL AS ready")).rows[0].ready;
+  const ready = await tablesReady(database(), "income_event_rules");
   if (!ready) return {ready:false,rules:[],instances:[]};
   const [rules,instances] = await Promise.all([
     database().query(`SELECT r.id,r.status,r.created_at,r.version_no,v.title,v.percentage_bps,v.output_kind,v.destination_asset_id,

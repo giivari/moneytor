@@ -4,12 +4,13 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
+import { tablesReady } from "@/lib/db/readiness";
 import { assertUuid } from "@/lib/domain/catalog";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { postActivityInTransaction, voidActivityInTransaction } from "@/lib/finance/service";
 import type { ActivityDraft, ActivityKind } from "@/lib/finance/types";
 import { automationNote } from "./composable-domain";
-import { addDays, catchUpWindow, dateOnly, jakartaToday, occursOn, scheduledAt, type Frequency, type Schedule } from "./schedule";
+import { addDays, catchUpWindow, dateOnly, jakartaToday, materializationHorizon, occursOn, scheduledAt, type Frequency, type Schedule } from "./schedule";
 
 export type RuleInput = Schedule & {
   title: string; kind: ActivityKind; amountMode: "fixed" | "confirm_amount"; amountMinor?: string;
@@ -144,8 +145,7 @@ function scheduleFrom(row: Row): Schedule {
 }
 function sqlDay(value: unknown): string { return value instanceof Date ? jakartaToday(value) : String(value).slice(0,10); }
 async function materializeRule(client: PoolClient, rule: Row, now: Date) {
-  const today = jakartaToday(now);
-  const horizon = addDays(today,30);
+  const horizon = materializationHorizon(now);
   // One pass covers up to maximumCatchUpDays, so months without a visit are caught up at once.
   const scan = catchUpWindow(addDays(sqlDay(rule.materialized_through),1), horizon);
   if (!scan) return;
@@ -172,10 +172,10 @@ async function materializeRule(client: PoolClient, rule: Row, now: Date) {
 
 export async function reconcileAutomation(now = new Date()): Promise<{ ready: boolean; processed: number }> {
   await requireOwnerSession();
-  const available = await database().query<{ ready: boolean }>("SELECT to_regclass('recurring_transaction_rules') IS NOT NULL AS ready");
-  if (!available.rows[0].ready) return { ready: false, processed: 0 };
+  if (!await tablesReady(database(), "recurring_transaction_rules")) return { ready: false, processed: 0 };
   // The rule lock serializes materialization across concurrent app requests.
-  const ruleIds = await database().query<{ id: string }>("SELECT id FROM recurring_transaction_rules WHERE status='active' ORDER BY materialized_through,created_at LIMIT 20");
+  // Hanya aturan yang tertinggal dari horizon: sisanya akan keluar dari materializeRule tanpa pekerjaan, tetapi tetap memakan transaksi + row lock.
+  const ruleIds = await database().query<{ id: string }>("SELECT id FROM recurring_transaction_rules WHERE status='active' AND materialized_through < $1::date ORDER BY materialized_through,created_at LIMIT 20", [materializationHorizon(now)]);
   for (const { id } of ruleIds.rows) await inDatabaseTransaction(async (client) => {
     const locked = await client.query<Row>("SELECT * FROM recurring_transaction_rules WHERE id=$1 FOR UPDATE", [id]);
     if (locked.rows[0]?.status === "active") await materializeRule(client,locked.rows[0],now);
@@ -264,7 +264,7 @@ export async function voidOccurrence(id: string): Promise<void> {
 export type AutomationView = { rules: Row[]; occurrences: Row[]; ready: boolean };
 export async function readAutomation(historyIds?: string[]): Promise<AutomationView> {
   await requireOwnerSession();
-  const ready = (await database().query<{ ready: boolean }>("SELECT to_regclass('recurring_transaction_rules') IS NOT NULL AS ready")).rows[0].ready;
+  const ready = await tablesReady(database(), "recurring_transaction_rules");
   if (!ready) return { rules: [], occurrences: [], ready: false };
   const occurrenceSelect = `SELECT o.*,r.title AS rule_title,COALESCE(s.currency_code,d.currency_code) AS currency_code,c.minor_unit_exponent AS exponent,
       CASE WHEN o.activity_id IS NOT NULL THEN

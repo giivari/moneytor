@@ -2,7 +2,8 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
-import { database, inDatabaseTransaction } from "@/lib/db/pool";
+import { database, inDatabaseTransaction, inReadOnlyTransaction } from "@/lib/db/pool";
+import { tablesReady } from "@/lib/db/readiness";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { CREDIT_REMINDER_NOTE_PREFIX, isReserveSourceAsset } from "@/lib/domain/credit";
 import type { AssetClass } from "@/lib/finance/types";
@@ -283,10 +284,7 @@ export async function mutatePlanning(action: string, body: Record<string, unknow
 }
 
 export async function planningSchemaReady(client?: PoolClient) {
-  const result = await (client ?? database()).query<{ ready: boolean }>(`SELECT to_regclass('planning_budgets') IS NOT NULL
-    AND to_regclass('planning_goals') IS NOT NULL AND to_regclass('planning_reserves') IS NOT NULL
-    AND to_regclass('planning_obligations') IS NOT NULL AS ready`);
-  return result.rows[0].ready;
+  return tablesReady(client ?? database(), "planning_budgets", "planning_goals", "planning_reserves", "planning_obligations");
 }
 /** LIKE pattern of reminders whose amounts already sit in a credit account's bills (counted via creditDebt). */
 export const creditReminderPattern = `${CREDIT_REMINDER_NOTE_PREFIX}%`;
@@ -316,8 +314,7 @@ export async function listPlanning(): Promise<PlanningData> {
   await requireOwnerSession();
   const empty: PlanningData = { ready: false,budgets: [],goals: [],reserves: [],obligations: [],labels: [],currencies: [],categories: [] };
   if (!await planningSchemaReady()) return empty;
-  return inDatabaseTransaction(async (client) => {
-    await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  return inReadOnlyTransaction(async (client) => {
     const budgets = await client.query<PlanningBudget>(`SELECT b.id,'budget' AS kind,b.label_id AS "labelId",l.display_name AS "labelName",b.title,b.currency_code AS currency,
       c.minor_unit_exponent AS exponent,b.limit_minor::text AS "limitMinor",b.period_start::text AS "periodStart",b.period_end::text AS "periodEnd",
       b.category_id AS "categoryId",tc.display_name AS "categoryName",b.note,b.is_active AS "isActive",b.archived_at::text AS "archivedAt",

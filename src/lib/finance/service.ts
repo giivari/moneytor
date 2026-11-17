@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
+import { tableFlags } from "@/lib/db/readiness";
 import { assertUuid } from "@/lib/domain/catalog";
 import { parseCreditMeta, type CreditInstallmentTerms } from "@/lib/domain/credit";
 import { applyCreditPost, applyCreditVoid } from "@/lib/domain/credit-purchase";
@@ -380,50 +381,46 @@ export async function listActivities(includeHistory = false, limit: number | nul
       AND ($4::timestamptz IS NULL OR (f.occurred_at,f.id) ${ordering.operator} ($4::timestamptz,$5::uuid))
     ORDER BY ${temporalOrderSql("f.occurred_at", "f.id", ordering.direction)} LIMIT $2`, [includeHistory, limit,ordering.kind,ordering.after?.at??null,ordering.after?.id??null]);
   const ids = result.rows.map((row) => row.id);
-  const charges = ids.length ? await database().query<{ id: string; activity_id: string; charge_type_id: string; display_name: string; system_key: string | null; amount_minor: string }>(
+  // Query lanjutan saling independen (tiap query memakai koneksi pool sendiri, tidak menahan koneksi sambil menunggu): tumpang-tindih, bukan berurutan.
+  const chargesPending = ids.length ? database().query<{ id: string; activity_id: string; charge_type_id: string; display_name: string; system_key: string | null; amount_minor: string }>(
     `SELECT ac.id,ac.activity_id,ac.charge_type_id,t.display_name,t.system_key,ac.amount_minor::text
      FROM activity_charges ac JOIN additional_charge_types t ON t.id=ac.charge_type_id
-     WHERE ac.activity_id=ANY($1::uuid[]) ORDER BY ac.created_at,ac.id`, [ids]) : { rows: [] };
+     WHERE ac.activity_id=ANY($1::uuid[]) ORDER BY ac.created_at,ac.id`, [ids]) : Promise.resolve({ rows: [] });
   // Terms are the same in every month except month 1's principal remainder, so month 2 carries the base principal.
-  const installmentTerms = ids.length ? await database().query<{ activity_id: string; count: number; principal: string; interest: string }>(
+  const installmentPending = ids.length ? database().query<{ activity_id: string; count: number; principal: string; interest: string }>(
     `SELECT activity_id,count(*)::int AS count,(max(principal_minor) FILTER (WHERE seq=2))::text AS principal,max(interest_minor)::text AS interest
-     FROM credit_installments WHERE activity_id=ANY($1::uuid[]) GROUP BY activity_id`, [ids]) : { rows: [] };
+     FROM credit_installments WHERE activity_id=ANY($1::uuid[]) GROUP BY activity_id`, [ids]) : Promise.resolve({ rows: [] });
+  const readyPending = ids.length ? tableFlags(database(), {
+    recurring: "recurring_transaction_occurrences", event: "income_event_instances",
+    general: "automation_action_results", allocation: "automation_allocation_adjustments",
+  }) : Promise.resolve({
+    recurring: false, event: false, general: false, allocation: false,
+  });
+  const [charges, installmentTerms, ready] = await Promise.all([chargesPending, installmentPending, readyPending]);
   const termsByActivity = new Map(installmentTerms.rows.map((row) => [row.activity_id,
     { count: row.count, principalMinor: row.principal ?? "0", interestMinor: row.interest }]));
-  const ready = ids.length ? (await database().query<{
-    recurring: boolean; event: boolean; general: boolean; allocation: boolean;
-  }>(`SELECT
-    to_regclass('recurring_transaction_occurrences') IS NOT NULL AS recurring,
-    to_regclass('income_event_instances') IS NOT NULL AS event,
-    to_regclass('automation_action_results') IS NOT NULL AS general,
-    to_regclass('automation_allocation_adjustments') IS NOT NULL AS allocation`)).rows[0] : {
-    recurring: false, event: false, general: false, allocation: false,
-  };
   const lineageCte = `WITH RECURSIVE lineage AS (
     SELECT id,id AS origin_id,0 AS depth FROM financial_activities WHERE id=ANY($1::uuid[])
     UNION ALL SELECT lineage.id,f.replaces_activity_id,lineage.depth+1 FROM lineage
       JOIN financial_activities f ON f.id=lineage.origin_id WHERE f.replaces_activity_id IS NOT NULL AND lineage.depth<30)`;
-  const recurring = ready.recurring ? await database().query<{ id: string; title: string }>(`${lineageCte}
+  const recurringPending = ready.recurring ? database().query<{ id: string; title: string }>(`${lineageCte}
     SELECT lineage.id,r.title FROM lineage JOIN recurring_transaction_occurrences o ON o.activity_id=lineage.origin_id
-      JOIN recurring_transaction_rules r ON r.id=o.rule_id`, [ids]) : { rows: [] };
-  const recurringNames = new Map(recurring.rows.map((entry) => [entry.id,entry.title]));
-  const eventOrigins = ready.event ? await database().query<{id:string;instance_id:string;title:string;
+      JOIN recurring_transaction_rules r ON r.id=o.rule_id`, [ids]) : Promise.resolve({ rows: [] });
+  const eventPending = ready.event ? database().query<{id:string;instance_id:string;title:string;
     root_activity_id:string;base_amount_minor:string;currency_code:string;occurred_at:Date;source_exponent:number}>(`${lineageCte}
     SELECT lineage.id,i.id AS instance_id,v.title,i.root_activity_id,source.base_amount_minor::text,
       source.currency_code,source.occurred_at,source_currency.minor_unit_exponent AS source_exponent
     FROM lineage JOIN income_event_instances i ON i.result_activity_id=lineage.origin_id
       JOIN income_event_rule_versions v ON v.rule_id=i.rule_id AND v.version_no=i.rule_version
-      JOIN financial_activities source ON source.id=i.effective_activity_id JOIN currencies source_currency ON source_currency.code=source.currency_code`,[ids]) : {rows:[]};
-  const eventNames = new Map(eventOrigins.rows.map((entry) => [entry.id,entry]));
-  const generalOrigins = ready.general ? await database().query<{id:string;instance_id:string;title:string;root_activity_id:string|null;
+      JOIN financial_activities source ON source.id=i.effective_activity_id JOIN currencies source_currency ON source_currency.code=source.currency_code`,[ids]) : Promise.resolve({rows:[]});
+  const generalPending = ready.general ? database().query<{id:string;instance_id:string;title:string;root_activity_id:string|null;
     source_kind:"income"|"expense"|"transfer"|null;base_amount_minor:string|null;currency_code:string|null;occurred_at:Date|null;source_exponent:number|null}>(`${lineageCte}
     SELECT lineage.id,i.id AS instance_id,v.title,i.root_activity_id,source.kind AS source_kind,
       source.base_amount_minor::text,source.currency_code,source.occurred_at,source_currency.minor_unit_exponent AS source_exponent
     FROM lineage JOIN automation_action_results a ON a.activity_id=lineage.origin_id JOIN automation_instances i ON i.id=a.instance_id
       JOIN automation_rule_versions v ON v.rule_id=i.rule_id AND v.version_no=i.version_no
-      LEFT JOIN financial_activities source ON source.id=i.effective_activity_id LEFT JOIN currencies source_currency ON source_currency.code=source.currency_code`,[ids]) : {rows:[]};
-  const generalNames = new Map(generalOrigins.rows.map((entry) => [entry.id,entry]));
-  const allocationOrigins = ready.allocation ? await database().query<{id:string;instance_id:string;storage:string;adjustment_id:string;assessment_id:string;
+      LEFT JOIN financial_activities source ON source.id=i.effective_activity_id LEFT JOIN currencies source_currency ON source_currency.code=source.currency_code`,[ids]) : Promise.resolve({rows:[]});
+  const allocationPending = ready.allocation ? database().query<{id:string;instance_id:string;storage:string;adjustment_id:string;assessment_id:string;
     title:string;root_activity_id:string;original_result_id:string;base_amount_minor:string;currency_code:string;occurred_at:Date;source_exponent:number}>(`${lineageCte}
     SELECT lineage.id,COALESCE(a.legacy_instance_id,a.general_instance_id) AS instance_id,
       CASE WHEN a.legacy_instance_id IS NOT NULL THEN 'income_event' ELSE 'general' END AS storage,
@@ -431,7 +428,11 @@ export async function listActivities(includeHistory = false, limit: number | nul
       source.base_amount_minor::text,source.currency_code,source.occurred_at,c.minor_unit_exponent AS source_exponent
     FROM lineage JOIN automation_allocation_adjustments p ON p.result_activity_id=lineage.origin_id
       JOIN automation_allocation_assessments a ON a.id=p.assessment_id JOIN financial_activities source ON source.id=a.effective_activity_id
-      JOIN currencies c ON c.code=source.currency_code`,[ids]) : {rows:[]};
+      JOIN currencies c ON c.code=source.currency_code`,[ids]) : Promise.resolve({rows:[]});
+  const [recurring, eventOrigins, generalOrigins, allocationOrigins] = await Promise.all([recurringPending, eventPending, generalPending, allocationPending]);
+  const recurringNames = new Map(recurring.rows.map((entry) => [entry.id,entry.title]));
+  const eventNames = new Map(eventOrigins.rows.map((entry) => [entry.id,entry]));
+  const generalNames = new Map(generalOrigins.rows.map((entry) => [entry.id,entry]));
   const allocationNames = new Map(allocationOrigins.rows.map(entry=>[entry.id,entry]));
   return result.rows.map((row) => ({
     cursorTime: row.cursor_time, id: row.id, kind: row.kind as ActivityKind, baseAmountMinor: row.base_amount_minor, currency: row.currency_code, exponent: row.minor_unit_exponent,

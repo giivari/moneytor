@@ -36,11 +36,11 @@ export function database(): Pool {
   return globalPool.__moneytorDbPool.pool;
 }
 
-export async function inDatabaseTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+async function runTransaction<T>(begin: string, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await database().connect();
   let broken = false;
   try {
-    await client.query("BEGIN");
+    await client.query(begin);
     try {
       const result = await work(client);
       await client.query("COMMIT");
@@ -52,4 +52,16 @@ export async function inDatabaseTransaction<T>(work: (client: PoolClient) => Pro
   } finally {
     client.release(broken);
   }
+}
+
+export function inDatabaseTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+  return runTransaction("BEGIN", work);
+}
+
+/**
+ * Snapshot baca-saja: isolasi dan mode ditetapkan di BEGIN yang sama, jadi tidak ada round-trip
+ * SET TRANSACTION tambahan (yang berurutan dan, lintas region, mahal).
+ */
+export function inReadOnlyTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+  return runTransaction("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY", work);
 }

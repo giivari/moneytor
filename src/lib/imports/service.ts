@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { requireOwnerSession } from "@/lib/auth/session";
 import { database, inDatabaseTransaction } from "@/lib/db/pool";
+import { tablesReady } from "@/lib/db/readiness";
 import { assertUuid, validateCatalogName } from "@/lib/domain/catalog";
 import { postActivityInTransaction } from "@/lib/finance/service";
 import type { ActivityDraft } from "@/lib/finance/types";
@@ -41,8 +42,7 @@ function deterministicUuid(seed: string): string {
 }
 
 async function hasImportsSchema(client: Pick<PoolClient, "query">): Promise<boolean> {
-  const row = (await client.query<{ ready: boolean }>("SELECT to_regclass('import_batches') IS NOT NULL AS ready")).rows[0];
-  return Boolean(row?.ready);
+  return tablesReady(client as PoolClient, "import_batches");
 }
 
 async function buildStagedPreview(

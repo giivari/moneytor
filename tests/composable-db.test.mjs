@@ -247,6 +247,15 @@ test("Composable Automation V1 on disposable PostgreSQL",{skip:!/^moneytor_compo
       await assert.rejects(Promise.resolve().then(()=>legacyRulePayload("income_event",{...incomeView.input,automationCategoryId:randomUUID()})),/kategori/);
       await recurring.setRuleStatus(schedule,"archived");await events.setIncomeEventRuleStatus(event,"archived");
     });
+    await t.test("pre-check reconcile: false saat idle, true saat ada sumber baru, false lagi setelah dikuras",async()=>{
+      assert.equal(await engine.hasGeneralAutomationWork(),false);
+      const ruleId=await engine.saveGeneralRule(rule());const root=await post();
+      assert.equal(await engine.hasGeneralAutomationWork(),true);
+      await drain();
+      assert.equal(await count("automation_instances","WHERE rule_id=$1 AND root_activity_id=$2",[ruleId,root]),1);
+      assert.equal(await engine.hasGeneralAutomationWork(),false);
+      assert.deepEqual(await engine.reconcileGeneralAutomation(),{ready:true,created:0,refreshed:0,posted:0});
+    });
   }finally{
     if(pool)await pool.end();hooks?.deregister();await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);await admin.end();delete globalThis.__composableAuthorized;
   }
