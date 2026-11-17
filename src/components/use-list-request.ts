@@ -13,8 +13,10 @@ type Options<T> = {
 export function useListRequest<T>({enabled=true,scope,requestKey,revision,load,merge,initial}:Options<T>) {
   const [snapshot,setSnapshot]=useState<Snapshot<T>>(()=>({scope:initial?.scope??'',requestKey:initial?.requestKey??'',
     revision,value:initial?.value,status:initial?'ready':'idle',error:''}));
+  // Server-rendered rows for the active key are already current (also after router.refresh()); fetching them again only duplicates SSR.
+  const seeded=!!initial&&initial.scope===scope&&initial.requestKey===requestKey;
   useEffect(()=>{
-    if(!enabled)return;
+    if(!enabled||seeded)return;
     let active=true;const controller=new AbortController();
     const previous=(current:Snapshot<T>)=>current.scope===scope&&current.revision===revision?current.value:undefined;
     setSnapshot(current=>({scope,requestKey,revision,value:previous(current),status:'loading',error:''}));
@@ -24,7 +26,8 @@ export function useListRequest<T>({enabled=true,scope,requestKey,revision,load,m
       if(active)setSnapshot(current=>({scope,requestKey,revision,value:previous(current),status:'error',error:cause instanceof Error?cause.message:'Daftar belum dapat dimuat.'}));
     });
     return()=>{active=false;controller.abort();};
-  },[enabled,scope,requestKey,revision,load,merge]);
+  },[enabled,seeded,scope,requestKey,revision,load,merge]);
+  if(seeded&&initial)return {data:initial.value,loading:false,error:''};
   const compatible=snapshot.scope===scope&&snapshot.revision===revision;
   const current=compatible&&snapshot.requestKey===requestKey;
   return {data:compatible?snapshot.value:undefined,loading:enabled&&(!current||snapshot.status==='idle'||snapshot.status==='loading'),error:current?snapshot.error:''};

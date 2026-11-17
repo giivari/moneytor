@@ -127,8 +127,16 @@ test('server revision changes discard stale data before effects run and obsolete
 
 test('transaction filter and pagination have the same atomic loading/empty contract while default server rows remain visible',async()=>{
  const initial=[{id:'current',occurredAt:'2026-10-09T00:00:00Z'}];const h=harness(useActivityPage,[initial,'all',false,'desc']);let state=h.render();assert.equal(state.items[0].id,'current');h.commit();state=h.render();assert.doesNotMatch(content(state),/Memuat/);
- state=h.render([initial,'expense',false,'asc']);assert.equal(state.loading,true);assert.equal(state.items.length,0);h.commit();h.requests[1].resolve({items:[{id:'expense'}],next:{at:'2026-10-09T00:00:00Z',id:'expense'}});await tick();state=h.render();assert.equal(state.loading,false);state.next();state=h.render();assert.equal(state.pageNumber,2);assert.equal(state.loading,true);assert.equal(state.items.length,0);h.commit();
- h.requests[2].resolve({items:[],next:null});await tick();state=h.render();assert.equal(state.loading,false);assert.match(content(state),/Tidak ada hasil/);assert.equal(state.hasNext,false);h.cleanup();
+ // Server rows already answer the default key: mount must not repeat the SSR request.
+ assert.equal(h.requests.length,0);assert.equal(state.loading,false);
+ state=h.render([initial,'expense',false,'asc']);assert.equal(state.loading,true);assert.equal(state.items.length,0);h.commit();h.requests[0].resolve({items:[{id:'expense'}],next:{at:'2026-10-09T00:00:00Z',id:'expense'}});await tick();state=h.render();assert.equal(state.loading,false);state.next();state=h.render();assert.equal(state.pageNumber,2);assert.equal(state.loading,true);assert.equal(state.items.length,0);h.commit();
+ h.requests[1].resolve({items:[],next:null});await tick();state=h.render();assert.equal(state.loading,false);assert.match(content(state),/Tidak ada hasil/);assert.equal(state.hasNext,false);h.cleanup();
+});
+
+test('router.refresh() with new server rows on the default key shows them immediately without a client request',async()=>{
+ const first=[{id:'old',occurredAt:'2026-10-09T00:00:00Z'}],fresh=[{id:'fresh',occurredAt:'2026-10-10T00:00:00Z'}];
+ const h=harness(useActivityPage,[first,'all',false,'desc']);h.render();h.commit();
+ const state=h.render([fresh,'all',false,'desc']);h.commit();assert.equal(state.loading,false);assert.deepEqual(state.items.map(i=>i.id),['fresh']);assert.equal(h.requests.length,0);h.cleanup();
 });
 
 test('hiding the history tab aborts its request; returning resumes loading rather than fabricating an empty state',async()=>{

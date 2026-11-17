@@ -2,7 +2,12 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   devIndicators: false,
-  experimental: { optimizePackageImports: ["@phosphor-icons/react", "@phosphor-icons/react/dist/ssr"] },
+  experimental: {
+    optimizePackageImports: ["@phosphor-icons/react", "@phosphor-icons/react/dist/ssr"],
+    // Router cache client: halaman yang dikunjungi dipakai ulang 30 dtk, prefetch penuh (hover/sentuh) 60 dtk.
+    // Mutasi tetap segar karena refresh() memanggil router.refresh(), yang mengosongkan cache ini.
+    staleTimes: { dynamic: 30, static: 60 },
+  },
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: [
