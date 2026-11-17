@@ -601,3 +601,21 @@ Frontend tidak perlu berubah. Tidak ada perubahan bentuk `financeSnapshot`/`Inve
 }
 ```
 `skipped` = kuotasi identik sudah tersimpan (mis. akhir pekan atau cron dikirim ulang).
+
+## Perubahan kontrak: `InvestmentSnapshot.prices` dibatasi (audit performa Batch 4)
+`investmentSnapshot(existing?, { priceHistory = false })`. Cron harga harian menambah satu `PricePoint` per instrumen per hari, jadi riwayat penuh tumbuh tanpa batas.
+- **Default (`priceHistory: false`)**: `prices` hanya berisi harga terkini tiap instrumen (`asOf <= now`, urutan `asOf` desc, `insertedAt` desc, `id` desc), maksimal satu baris per instrumen. Ini sama dengan `holdings[].price`. Titik harga bertanggal masa depan tidak ikut.
+  Dipakai `/assets/investments` (props `InvestmentManager`), `/settings/data`, dan laporan ekspor `investments`.
+- **`priceHistory: true`**: riwayat penuh seperti sebelumnya (append-only, termasuk koreksi manual dan titik masa depan). Hanya backup JSON (`moneytor.export.v1`, `investments.prices`) yang memakainya, jadi isi backup tidak berubah.
+- `trades` tidak berubah (termasuk `voided`/`superseded`, dipakai toggle riwayat `InvestmentManager`); tumbuhnya hanya dari input manual.
+
+Frontend tidak perlu berubah: tidak ada komponen yang membaca `snapshot.prices`; harga yang ditampilkan berasal dari `holdings[].price`.
+
+```json
+{
+  "prices": [
+    { "id": "00000000-0000-4000-8000-0000000000a1", "instrumentId": "00000000-0000-4000-8000-0000000000b1", "price": "125000",
+      "currency": "IDR", "asOf": "2026-11-16T09:00:00.000Z", "sourceType": "provider", "sourceId": "yahoo", "insertedAt": "2026-11-17T00:00:04.000Z" }
+  ]
+}
+```

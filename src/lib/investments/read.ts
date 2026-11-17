@@ -21,11 +21,19 @@ function accumulate(current: InvestmentTotal | undefined, holding: Pick<Holding,
   return total;
 }
 
-export async function investmentSnapshot(existing?: PoolClient): Promise<InvestmentSnapshot> {
+export type InvestmentReadOptions = {
+  /**
+   * false (default): `prices` holds only each instrument's current quote (latest as_of <= now), the only price the UI shows.
+   * true: the full append-only price history, which the daily price cron grows without bound; only the JSON backup export needs it.
+   */
+  priceHistory?: boolean;
+};
+
+export async function investmentSnapshot(existing?: PoolClient, options: InvestmentReadOptions = {}): Promise<InvestmentSnapshot> {
   const readSnapshot = await prepareOwnerInvestmentRead();
-  if (existing) return readSnapshot(existing);
+  if (existing) return readSnapshot(existing, options);
   return inReadOnlyTransaction(async (client) => {
-    return readSnapshot(client);
+    return readSnapshot(client, options);
   });
 }
 
@@ -77,7 +85,7 @@ async function readSummary(client: PoolClient) {
   }
   return { totals: [...totals.values()], hasHoldings: true };
 }
-async function read(client: PoolClient): Promise<InvestmentSnapshot> {
+async function read(client: PoolClient, { priceHistory = false }: InvestmentReadOptions = {}): Promise<InvestmentSnapshot> {
   const ready = await hasOpeningCorrections(client);
   const portfolioRows = await client.query(`SELECT p.*,(NOT p.is_active AND ${unreferencedSql("investment_portfolios", "p.id")}) AS can_delete,c.minor_unit_exponent AS exponent,f.display_name AS provider_name
     FROM investment_portfolios p JOIN currencies c ON c.code=p.currency_code LEFT JOIN financial_providers f ON f.id=p.provider_id ORDER BY p.created_at,p.id`);
@@ -107,7 +115,11 @@ async function read(client: PoolClient): Promise<InvestmentSnapshot> {
     cashAssetId: r.cash_asset_id, currency: r.currency_code, kind: r.kind, quantity: decimalString(decimal(r.quantity)), unitPrice: decimalString(decimal(r.unit_price)),
     grossMinor: r.gross_minor, feeMinor: r.fee_minor, occurredAt: r.occurred_at.toISOString(), createdAt: r.created_at.toISOString(),
     order: r.replay_order, status: r.status, replacesId: r.replaces_id, note: r.note ?? undefined, removedMinor: null, realizedMinor: null }));
-  const priceRows = await client.query("SELECT *,price::text FROM investment_price_points ORDER BY as_of DESC,inserted_at DESC,id DESC");
+  // Same ordering either way, so the current quote picked below is identical; DISTINCT ON uses the (instrument_id, as_of DESC, inserted_at DESC, id) index.
+  const priceRows = await client.query(priceHistory
+    ? "SELECT *,price::text FROM investment_price_points ORDER BY as_of DESC,inserted_at DESC,id DESC"
+    : `SELECT *,price::text FROM (SELECT DISTINCT ON (instrument_id) * FROM investment_price_points WHERE as_of<=now()
+        ORDER BY instrument_id,as_of DESC,inserted_at DESC,id DESC) current ORDER BY as_of DESC,inserted_at DESC,id DESC`);
   const prices: PricePoint[] = priceRows.rows.map((r) => ({ id: r.id, instrumentId: r.instrument_id, price: decimalString(decimal(r.price)), currency: r.currency_code,
     asOf: r.as_of.toISOString(), sourceType: r.source_type, sourceId: r.source_id, insertedAt: r.inserted_at.toISOString() }));
   const pairs = new Map<string, { portfolioId: string; instrumentId: string }>();

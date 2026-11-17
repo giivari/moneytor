@@ -129,7 +129,8 @@ export async function lifecycleCases(t, { admin, pool, service: s, snapshot, sou
     assert.equal(await s.correctManualPrice(original, "100", key), corrected);
     await assert.rejects(s.correctManualPrice(original, "101", randomUUID()), /digantikan/);
     await assert.rejects(s.correctManualPrice(original, "0", randomUUID()), /nol/);
-    const prices = (await snapshot()).prices.filter((r) => r.instrumentId === i);
+    // Correction audit needs the full append-only history; default snapshots carry only the current quote.
+    const prices = (await snapshot(undefined, { priceHistory: true })).prices.filter((r) => r.instrumentId === i);
     assert.equal(prices.length, 2); assert.equal(prices[0].id, corrected); assert.equal(prices[0].asOf, prices[1].asOf);
     assert.equal(prices[1].price, "999999"); assert.equal(prices[0].price, "100");
     const provider = await s.saveMarketPrice({ instrumentId: i, price: "120", asOf: "2025-01-03T08:00:00.000Z" }, randomUUID(), { id: "synthetic-provider", currency: "IDR" });

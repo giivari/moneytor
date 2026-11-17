@@ -582,7 +582,8 @@ export async function exportFullSnapshotJson(): Promise<{ fileName: string; payl
     listCatalog("instrumentTypes", true),
     listAssets(true),
     listActivities(true),
-    investmentSnapshot(),
+    // Backup keeps the complete append-only price history; screens only need current quotes.
+    investmentSnapshot(undefined, { priceHistory: true }),
     listPlanning(),
     listImportBatches().catch(() => []),
   ]);

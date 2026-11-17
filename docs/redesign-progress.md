@@ -177,3 +177,8 @@ Perubahan: (1) next.config.ts `experimental.staleTimes {dynamic:30, static:60}`;
 File: next.config.ts, vercel.json, src/components/{app-link.tsx,use-list-request.ts}, tests/list-loading.test.mjs (indeks request disesuaikan, +1 tes refresh tanpa request).
 Hasil: tsc/lint bersih; test:unit 176 lulus (4 skip); test:ui 158; next build sukses. Uji manual hover-prefetch belum dilakukan (nonaktif di dev; cek di produksi).
 Langkah berikutnya: verifikasi di DevTools produksi (hover memicu ?_rsc penuh, klik tanpa request/skeleton, tidak ada GET activities saat buka /transactions, logo dari disk cache). Batch 4 (bentuk data investasi) masih ditunda.
+## Audit performa, Batch 4: riwayat harga investasi dibatasi (2026-11-17)
+Keputusan: `investmentSnapshot` default hanya mengirim harga terkini per instrumen (DISTINCT ON berindeks, `as_of <= now()`), karena cron harga harian membuat riwayat penuh tumbuh tanpa batas dan tidak ada komponen yang membacanya (UI memakai `holdings[].price`). Riwayat penuh lewat `{ priceHistory: true }`, hanya untuk backup JSON, jadi isi backup tidak berubah. `trades` tidak dibatasi: void/superseded dipakai toggle riwayat `InvestmentManager`, dan tumbuhnya hanya dari input manual.
+File: lib/investments/read.ts, lib/exports/service.ts (backup memakai priceHistory), docs/CONTRACT.md, tests/{investment-db.test.mjs (+asersi harga terkini), lifecycle-cases.mjs (audit koreksi memakai riwayat penuh)}.
+Hasil: tsc/lint bersih; test:unit 176 lulus (4 skip); test:ui 158; semua 18 tes DB lulus (investment 51); next build sukses.
+Langkah berikutnya: commit/push atas permintaan pemilik; cek ukuran `?_rsc` /assets/investments di produksi.

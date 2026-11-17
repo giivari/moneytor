@@ -104,7 +104,10 @@ test("P4 isolated disposable PostgreSQL investment engine", { skip: !enabled }, 
     await t.test("price history is append-only, backdated insertion cannot replace newer quote", async () => {
       const key = randomUUID(), point = { instrumentId, price: "110000", asOf: time2 };
       const id = await s.saveMarketPrice(point, key); assert.equal(await s.saveMarketPrice(point, key), id);
-      assert.equal((await holding()).price.price, "125000"); assert.equal((await investmentSnapshot()).prices.filter((p) => p.instrumentId === instrumentId).length, 3);
+      assert.equal((await holding()).price.price, "125000"); assert.equal((await investmentSnapshot(undefined, { priceHistory: true })).prices.filter((p) => p.instrumentId === instrumentId).length, 3);
+      // Screens get only the current quote per instrument (bounded payload); it is the same quote the holding uses.
+      const current = (await investmentSnapshot()).prices.filter((p) => p.instrumentId === instrumentId);
+      assert.equal(current.length, 1); assert.equal(current[0].price, "125000");
       await assert.rejects(admin.query("DELETE FROM investment_price_points WHERE id=$1", [id]), /append-only/);
     });
     await t.test("full Sell resolves remaining quantity and basis exactly", async () => {
