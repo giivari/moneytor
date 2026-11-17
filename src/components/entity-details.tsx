@@ -76,7 +76,7 @@ export function ActivityDetail({ item }: { item: FinanceActivity }) {
             <Amount value={`${sign}${money(total)}`} level="summary" tone={amountTone} />
           </div>
         </div>
-        {item.note && <p className="inspector-hero-title">{item.note}</p>}
+        {(item.note?.trim() || item.recurringRuleName?.trim()) && <p className="inspector-hero-title">{item.note?.trim() || item.recurringRuleName?.trim()}</p>}
         <div className="inspector-meta-grid">
           <div>
             <span className="inspector-meta-label">Tanggal &amp; Waktu</span>

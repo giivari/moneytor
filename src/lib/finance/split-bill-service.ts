@@ -30,7 +30,7 @@ export type SplitBillResult = Readonly<{
 }>;
 
 /** Deterministic UUID per sub-operation so each posting has its own idempotency record under one master key. */
-function derivedKey(key: string, part: string): string {
+export function derivedKey(key: string, part: string): string {
   const h = createHash("sha256").update(`${key}:${part}`).digest("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }

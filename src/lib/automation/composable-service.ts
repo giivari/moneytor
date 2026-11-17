@@ -12,7 +12,7 @@ import { database, inDatabaseTransaction } from "@/lib/db/pool";
 import { postActivityInTransaction } from "@/lib/finance/service";
 import type { ActivityDraft, ActivityKind } from "@/lib/finance/types";
 import { addDays, jakartaToday, maximumCatchUpDays } from "./schedule";
-import { actionDraft, calculateAmount, ComposableError, evaluateConditions, normalizeGeneralRule, resolveAsset, timeOccurrences,
+import { actionDraft, automationNote, calculateAmount, ComposableError, evaluateConditions, normalizeGeneralRule, resolveAsset, timeOccurrences,
   triggerRegistry, validId, type AssetReference, type Condition, type FinancialAction, type GeneralRuleInput, type TriggerContext } from "./composable-domain";
 
 const orderLock = "moneytor_general_automation_order";
@@ -332,7 +332,8 @@ export async function confirmGeneralInstance(id: string, runtimeAmount?: string,
       }
       const value = await evaluated(client, rule, context);
       if (!value.conditions.matched || ["superseded", "failed", "not_matched", "upcoming"].includes(value.status)) throw new ComposableError(value.failure ?? "Pemicu tidak lagi memenuhi aturan.");
-      const draft = actionDraft(rule.actions[0], { ...context, occurredAt: item.trigger_namespace === "time" ? context.occurredAt : new Date().toISOString() }, runtimeAmount);
+      const built = actionDraft(rule.actions[0], { ...context, occurredAt: item.trigger_namespace === "time" ? context.occurredAt : new Date().toISOString() }, runtimeAmount);
+      const draft = { ...built, note: automationNote(built.note, rule.title) };
       const activityId = await financialActionAdapters[draft.kind as ActivityKind].execute(client, draft, item.id);
       await client.query(`INSERT INTO automation_action_results(id,instance_id,action_position,activity_id,origin,causal_root_activity_id) VALUES($1,$2,0,$3,$4,$5)`,
         [randomUUID(), id, activityId, item.trigger_namespace === "time" ? "time_automation" : "transaction_automation", item.root_activity_id]);

@@ -132,7 +132,7 @@ test('Fase 4: ringkasan piutang & utang menampilkan alur pelunasan (repay & teri
  assert.match(output,/aria-label="Terima pelunasan Talangan Budi"/);
  const buttons=fs.readFileSync(new URL('src/components/pay-bill-button.tsx',root),'utf8');
  assert.match(buttons,/kind: "repay", destinationId: assetId/);
- assert.match(buttons,/kind: "transfer", accountId: assetId/);
+ assert.match(buttons,/<SettleReceivableDialog receivableAssetId={assetId}/);
  assert.match(buttons,/kind: "refund", refundOfActivityId: activityId/);
  const txView=fs.readFileSync(new URL('src/components/transactions-view.tsx',root),'utf8');
  assert.match(txView,/Catat refund/);

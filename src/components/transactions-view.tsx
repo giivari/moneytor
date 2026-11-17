@@ -24,6 +24,9 @@ import { PageTabs } from "./page-tabs";
 import { AutomationWorkspace } from "./automation-workspace";
 import { ImportWorkspace } from "./import-workspace";
 import { TransactionEditor } from "./transaction-editor";
+import { SettleReceivableDialog } from "./settle-receivable-dialog";
+import { useFinanceOptions } from "./finance-form-hooks";
+import { isReceivableAsset } from "@/lib/domain/credit";
 import { useInspector, useInspectorSync, type InspectorEntry } from "./inspector";
 import type { ActivityTotals } from "@/lib/domain/activity-totals";
 import { InspectorFacts } from "./inspector-facts";
@@ -80,12 +83,15 @@ function ActivityInspector({
   item,
   onEdit,
   onRefund,
+  onSettle,
 }: {
   item: FinanceActivity;
   onEdit: (item: FinanceActivity) => void;
   onRefund: (item: FinanceActivity) => void;
+  onSettle: (receivableAssetId: string) => void;
 }) {
   const { refresh, notify } = useFinanceFeedback();
+  const { options } = useFinanceOptions();
   const { close } = useInspector();
   const { pending, begin, finish } = useMutationPending();
   const [confirmVoid, setConfirmVoid] = useState(false);
@@ -112,6 +118,9 @@ function ActivityInspector({
   const refundableMinor = item.netMinor ?? item.baseAmountMinor;
   const canRefund =
     item.kind === "expense" && item.status === "posted" && BigInt(refundableMinor) > 0n;
+  const settleTarget = item.kind === "transfer" && item.status === "posted" && item.destinationAssetId
+    ? options?.assets.find((asset) => asset.id === item.destinationAssetId && asset.isActive && isReceivableAsset(asset) && BigInt(asset.balanceMinor) > 0n)
+    : undefined;
   const sign = item.kind === "expense" ? "−" : item.kind === "income" ? "+" : "";
   const amountTone = item.kind === "expense" ? "negative" : item.kind === "income" ? "positive" : "";
   const routeText =
@@ -146,7 +155,7 @@ function ActivityInspector({
             <Amount value={`${sign}${money(totalMinor(item))}`} level="summary" tone={amountTone} />
           </div>
         </div>
-        {item.note && <p className="inspector-hero-title">{item.note}</p>}
+        {(item.note?.trim() || item.recurringRuleName?.trim()) && <p className="inspector-hero-title">{item.note?.trim() || item.recurringRuleName?.trim()}</p>}
         <div className="inspector-meta-grid">
           <div>
             <span className="inspector-meta-label">Tanggal &amp; Waktu</span>
@@ -272,6 +281,20 @@ function ActivityInspector({
                 Catat refund
               </button>
             )}
+            {settleTarget && (
+              <button
+                type="button"
+                className="finance-secondary"
+                disabled={pending}
+                aria-label={`Terima pelunasan ${settleTarget.displayName}`}
+                onClick={() => {
+                  close();
+                  onSettle(settleTarget.id);
+                }}
+              >
+                Terima Pelunasan
+              </button>
+            )}
             <button
               type="button"
               className="finance-danger"
@@ -351,6 +374,7 @@ export function TransactionsView(props: {
 
   const [editing, setEditing] = useState<FinanceActivity | null>(null);
   const [refundPreset, setRefundPreset] = useState<TransactionPreset | null>(null);
+  const [settlingReceivableId, setSettlingReceivableId] = useState<string | null>(null);
   const sort = useListSort("transactions");
 
   const activityPage = useActivityPage(activities, kindFilter, showVoided, sort.direction);
@@ -448,6 +472,7 @@ export function TransactionsView(props: {
             item={item}
             onEdit={setEditing}
             onRefund={openRefund}
+            onSettle={setSettlingReceivableId}
           />
         ),
       },
@@ -661,7 +686,7 @@ export function TransactionsView(props: {
                         {item.categoryName && (
                           <span className="mutasi-inline-cat-pill">{item.categoryName}</span>
                         )}
-                        <span className="mutasi-note-text">{item.note || labels[item.kind]}</span>
+                        <span className="mutasi-note-text">{item.note?.trim() || item.recurringRuleName?.trim() || labels[item.kind]}</span>
                         {item.status === "superseded" && (
                           <span className="mutasi-badge-corrected">Dikoreksi</span>
                         )}
@@ -737,7 +762,7 @@ export function TransactionsView(props: {
                 onClick={(e) => openDetails(item, e.currentTarget)}
               >
                 <div className="mutasi-mobile-left">
-                  <div className="mutasi-mobile-title">{item.note || labels[item.kind]}</div>
+                  <div className="mutasi-mobile-title">{item.note?.trim() || item.recurringRuleName?.trim() || labels[item.kind]}</div>
                   <div className="mutasi-mobile-route">
                     {shortDate} · {routeText}
                     {item.categoryName ? ` · ${item.categoryName}` : ""}
@@ -890,6 +915,14 @@ export function TransactionsView(props: {
           key={`refund:${refundPreset.refundOfActivityId}`}
           preset={refundPreset}
           onClose={() => setRefundPreset(null)}
+        />
+      )}
+
+      {settlingReceivableId && (
+        <SettleReceivableDialog
+          key={`settle:${settlingReceivableId}`}
+          receivableAssetId={settlingReceivableId}
+          onClose={() => setSettlingReceivableId(null)}
         />
       )}
     </div>

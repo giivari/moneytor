@@ -299,3 +299,13 @@ test('trend card header shows Belanja bulan ini and its difference with income f
  assert.doesNotMatch(withoutReport,/Selisih dengan pemasukan/);
  assert.doesNotMatch(html(fixture()),/ui-kpi" data-tone="[a-z]+"><header><h2>Belanja/); // not a fifth KPI
 });
+
+test('recent activity title falls back to the automation rule name when the note is empty or blank', () => {
+ const snapshot=fixture();
+ snapshot.recent=[activity('r1','expense',{note:null,recurringRuleName:'KRL Sore · Transportasi Umum'}),activity('r2','expense',{note:'   ',recurringRuleName:'Langganan Musik'}),activity('r3','expense',{note:'Makan',recurringRuleName:'Makan Harian'}),activity('r4','expense',{note:null,recurringRuleName:null})];
+ const output=section(html(snapshot),'home-recent');
+ assert.match(output,/<strong>KRL Sore · Transportasi Umum<\/strong>/);
+ assert.match(output,/<strong>Langganan Musik<\/strong>/);
+ assert.match(output,/<strong>Makan<\/strong>/);
+ assert.doesNotMatch(output,/<strong>Makan Harian<\/strong>/);
+});

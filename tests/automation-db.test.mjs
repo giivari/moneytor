@@ -116,6 +116,7 @@ test("P5.1A recurring transactions on isolated PostgreSQL schema",{skip:!enabled
       const incomeActivity=(await admin.query("SELECT activity_id FROM recurring_transaction_occurrences WHERE rule_id=$1 AND local_date=$2",[income,yesterday])).rows[0].activity_id;
       const transferActivity=(await admin.query("SELECT activity_id FROM recurring_transaction_occurrences WHERE rule_id=$1 AND local_date=$2",[transfer,yesterday])).rows[0].activity_id;
       assert.equal((await admin.query("SELECT kind FROM financial_activities WHERE id=$1",[incomeActivity])).rows[0].kind,"income");
+      assert.equal((await admin.query("SELECT note FROM financial_activities WHERE id=$1",[incomeActivity])).rows[0].note,"Disposable income"); // catatan kosong -> nama aturan
       const movements=(await admin.query("SELECT component,amount_minor::text FROM ledger_movements WHERE activity_id=$1",[transferActivity])).rows;
       assert.equal(movements.filter((row)=>row.component==="principal").reduce((sum,row)=>sum+BigInt(row.amount_minor),0n),0n);
       assert.equal(movements.filter((row)=>row.component==="charge").reduce((sum,row)=>sum+BigInt(row.amount_minor),0n),-20n);

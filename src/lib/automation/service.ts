@@ -8,6 +8,7 @@ import { assertUuid } from "@/lib/domain/catalog";
 import { assertStoredMinor, parseMinor } from "@/lib/domain/money";
 import { postActivityInTransaction, voidActivityInTransaction } from "@/lib/finance/service";
 import type { ActivityDraft, ActivityKind } from "@/lib/finance/types";
+import { automationNote } from "./composable-domain";
 import { addDays, catchUpWindow, dateOnly, jakartaToday, occursOn, scheduledAt, type Frequency, type Schedule } from "./schedule";
 
 export type RuleInput = Schedule & {
@@ -191,7 +192,7 @@ function draftFrom(row: Row, charges: { type_id: string; amount_minor: string }[
   return { kind: row.kind as ActivityKind, amountMinor: amount ?? String(row.amount_minor),
     sourceAssetId: row.source_asset_id as string | undefined, destinationAssetId: row.destination_asset_id as string | undefined,
     categoryId: row.category_id as string | undefined, charges: row.kind === "expense" ? charges.map((c) => ({ typeId:c.type_id,amountMinor:c.amount_minor })) : undefined,
-    transferFeeMinor: row.transfer_fee_minor as string | undefined, note: row.note as string | undefined,
+    transferFeeMinor: row.transfer_fee_minor as string | undefined, note: automationNote(row.note as string | undefined, row.rule_title as string | undefined),
     occurredAt: (row.scheduled_at as Date).toISOString() };
 }
 export async function processOccurrence(id: string, rawAmount?: string, automatic = false): Promise<string> {
@@ -200,7 +201,7 @@ export async function processOccurrence(id: string, rawAmount?: string, automati
     const identity = await client.query<{ rule_id: string }>("SELECT rule_id FROM recurring_transaction_occurrences WHERE id=$1", [id]);
     if (!identity.rows[0]) throw new AutomationError("Jadwal tidak ditemukan.");
     await client.query("SELECT status FROM recurring_transaction_rules WHERE id=$1 FOR SHARE", [identity.rows[0].rule_id]);
-    const found = await client.query<Row>(`SELECT o.*,r.status AS rule_status FROM recurring_transaction_occurrences o
+    const found = await client.query<Row>(`SELECT o.*,r.status AS rule_status,r.title AS rule_title FROM recurring_transaction_occurrences o
       JOIN recurring_transaction_rules r ON r.id=o.rule_id WHERE o.id=$1 FOR UPDATE OF o`, [id]);
     const row = found.rows[0];
     if (!row) throw new AutomationError("Jadwal tidak ditemukan.");

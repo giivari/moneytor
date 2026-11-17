@@ -203,6 +203,10 @@ export const amountAdapters: Record<AmountStrategy["strategy"],AmountAdapter> = 
 export function calculateAmount(amount: AmountStrategy, context: TriggerContext, runtime?: string): string | undefined {
   return amountAdapters[amount.strategy].resolve(amount,context,runtime);
 }
+/** Transaksi dari aturan otomatisasi tanpa catatan memakai nama aturan sebagai keterangan. */
+export function automationNote(note: string | null | undefined, title: string | null | undefined): string | undefined {
+  return (note ?? "").trim() || (title ?? "").trim().slice(0, 1000) || undefined;
+}
 export function actionDraft(action: FinancialAction, context: TriggerContext, runtime?: string): ActivityDraft {
   const amountMinor = calculateAmount(action.amount, context, runtime);
   if (!amountMinor) throw new ComposableError("Isi nominal saat konfirmasi.");

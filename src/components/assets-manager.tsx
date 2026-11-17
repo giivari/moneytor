@@ -6,6 +6,7 @@ import { useListSort } from "./use-list-sort";
 import { ListSortControl } from "./list-sort-control";
 import { PageTabs } from "./page-tabs";
 import { TransactionEditor } from "./transaction-editor";
+import { SettleReceivableDialog } from "./settle-receivable-dialog";
 import { ExcelStatusBar } from "./excel-status-bar";
 import { useInspector, useInspectorSync, type InspectorEntry } from "./inspector";
 import { InspectorFacts } from "./inspector-facts";
@@ -1432,178 +1433,6 @@ export function PayCreditBillDialog({
   );
 }
 
-export function SettleReceivableDialog({
-  receivableAsset,
-  regularAssets,
-  onClose,
-}: {
-  receivableAsset: FinanceAsset;
-  regularAssets: FinanceAsset[];
-  onClose: () => void;
-}) {
-  const dialog = useFinanceDialog(onClose);
-  const { refresh, notify } = useFinanceFeedback();
-  const { pending, begin, finish } = useMutationPending();
-  const replay = useRef<{ payload: string; key: string } | null>(null);
-  const eligibleDestinations = regularAssets.filter(
-    (item) =>
-      item.isActive &&
-      item.id !== receivableAsset.id &&
-      item.currency === receivableAsset.currency &&
-      !isCreditAsset(item) &&
-      !isReceivableAsset(item),
-  );
-  const currentBalanceMinor = BigInt(receivableAsset.balanceMinor);
-  const defaultAmountMinor = currentBalanceMinor > 0n ? currentBalanceMinor : 0n;
-  const [destinationId, setDestinationId] = useState(eligibleDestinations[0]?.id ?? "");
-  const [amount, setAmount] = useState(
-    defaultAmountMinor > 0n ? minorToInput(defaultAmountMinor.toString(), receivableAsset.exponent) : "",
-  );
-  const [fee, setFee] = useState("");
-  const [note, setNote] = useState(
-    `Pengembalian talangan · ${receivableAsset.displayName}`,
-  );
-  const [error, setError] = useState("");
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!begin()) return;
-    setError("");
-    try {
-      if (!destinationId) throw new Error("Pilih rekening penerima dana ganti.");
-      const draft: ActivityDraft = {
-        kind: "transfer",
-        amountMinor: inputToMinor(amount, receivableAsset.exponent),
-        sourceAssetId: receivableAsset.id,
-        destinationAssetId: destinationId,
-        transferFeeMinor: fee.trim() ? inputToMinor(fee, receivableAsset.exponent) : undefined,
-        occurredAt: new Date().toISOString(),
-        note: note.trim() || `Pengembalian talangan · ${receivableAsset.displayName}`,
-      };
-      const payload = JSON.stringify({ draft });
-      if (replay.current?.payload !== payload) {
-        replay.current = { payload, key: crypto.randomUUID() };
-      }
-      await financeRequest("post", { draft, idempotencyKey: replay.current.key });
-      refresh();
-      notify(`Pengembalian talangan ${receivableAsset.displayName} berhasil dicatat.`);
-      onClose();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Pengembalian talangan gagal disimpan.");
-    } finally {
-      finish();
-    }
-  }
-
-  return (
-    <dialog
-      ref={dialog}
-      className="finance-dialog"
-      aria-labelledby="settle-receivable-title"
-      onCancel={(event) => {
-        if (pending) event.preventDefault();
-      }}
-    >
-      <div className="dialog-heading">
-        <div>
-          <span className="eyebrow">PELUNASAN PIUTANG &amp; TALANGAN</span>
-          <h2 id="settle-receivable-title">Terima ganti {receivableAsset.displayName}</h2>
-        </div>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Tutup"
-          disabled={pending}
-          onClick={() => dialog.current?.close()}
-        >
-          <X size={20} />
-        </button>
-      </div>
-      <p className="finance-hint">
-        Pencatatan dilakukan sebagai transfer dari <strong>{receivableAsset.displayName}</strong> ke rekening penerima agar saldo piutang berkurang dan kas bertambah tanpa tercatat sebagai pemasukan ganda di Insights.
-      </p>
-      {!eligibleDestinations.length ? (
-        <p className="finance-error" role="alert">
-          Belum ada rekening/aset aktif dalam mata uang {receivableAsset.currency} untuk menerima dana ganti ini.
-        </p>
-      ) : (
-        <form onSubmit={submit} aria-busy={pending}>
-          <fieldset className="finance-fieldset" disabled={pending}>
-            <dl className="investment-preview">
-              <div>
-                <dt>Sisa piutang berjalan</dt>
-                <dd className={currentBalanceMinor > 0n ? "pnl-positive" : "asset-muted-val"}>
-                  {formatMinor(receivableAsset.balanceMinor, receivableAsset.currency, receivableAsset.exponent)}
-                </dd>
-              </div>
-            </dl>
-            <label className="field">
-              <span>Rekening penerima dana ganti ({receivableAsset.currency})</span>
-              <select
-                required
-                value={destinationId}
-                onChange={(event) => setDestinationId(event.target.value)}
-              >
-                {eligibleDestinations.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.displayName} · {formatMinor(item.balanceMinor, item.currency, item.exponent)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="field-grid">
-              <label className="field">
-                <span>Jumlah diganti ({receivableAsset.currency})</span>
-                <input
-                  required
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                  placeholder="0"
-                />
-              </label>
-              <label className="field">
-                <span>Biaya admin / potongan (opsional)</span>
-                <input
-                  inputMode="decimal"
-                  value={fee}
-                  onChange={(event) => setFee(event.target.value)}
-                  placeholder="0"
-                />
-              </label>
-            </div>
-            <label className="field">
-              <span>Catatan</span>
-              <input
-                maxLength={240}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-              />
-            </label>
-            {error && (
-              <p role="alert" className="finance-error">
-                {error}
-              </p>
-            )}
-            <div className="finance-actions">
-              <button
-                type="button"
-                className="finance-secondary"
-                onClick={() => dialog.current?.close()}
-              >
-                Batal
-              </button>
-              <button type="submit" className="button-primary" disabled={pending} aria-busy={pending}>
-                {pending ? <LoadingIndicator>Memproses pelunasan…</LoadingIndicator> : "Terima ganti"}
-              </button>
-            </div>
-          </fieldset>
-        </form>
-      )}
-    </dialog>
-  );
-}
-
 function AssetOpeningCorrection({ asset, onClose }: { asset: FinanceAsset; onClose: () => void }) {
   const dialog = useFinanceDialog(onClose);
   const { refresh, notify } = useFinanceFeedback();
@@ -2440,8 +2269,8 @@ export function AssetsManager({
       {settlingReceivable && (
         <SettleReceivableDialog
           key={settlingReceivable.id}
-          receivableAsset={settlingReceivable}
-          regularAssets={regularActive}
+          receivableAssetId={settlingReceivable.id}
+          assets={regularActive}
           onClose={() => setSettlingReceivable(null)}
         />
       )}

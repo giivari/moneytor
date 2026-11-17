@@ -7,6 +7,8 @@ import { insertAssetWithOpening, updateAsset, archiveAsset, restoreAsset, listAs
 import { setCategoryNature, CATEGORY_NATURES, deleteCustomCatalogItem, restoreCustomCatalogItem, archiveCustomCatalogItem, insertCustomCatalogItem, insertCustomCategory, listCatalog, renameCustomCatalogItem, type Catalog } from "@/lib/repositories/catalogs";
 import { postActivity, replaceActivity, voidActivity } from "@/lib/finance/service";
 import { postSplitBill } from "@/lib/finance/split-bill-service";
+import { postReceivableSettlement } from "@/lib/finance/receivable-settlement-service";
+import type { SettlementMode } from "@/lib/domain/receivable-settlement";
 import { LifecycleError } from "@/lib/repositories/lifecycle";
 import type { ActivityDraft, AssetClass } from "@/lib/finance/types";
 
@@ -61,6 +63,11 @@ function splitBillRequest(body: Record<string, unknown>) {
     occurredAt: str(body.occurredAt, 40), categoryId: optional(body.categoryId, 36), charges, person: optional(body.person, 120),
     note: optional(body.note, 1000), receivableAssetId: optional(body.receivableAssetId, 36) };
 }
+function settleReceivableRequest(body: Record<string, unknown>) {
+  return { receivableAssetId: str(body.receivableAssetId, 36), destinationAssetId: str(body.destinationAssetId, 36),
+    receivedAmountMinor: str(body.receivedAmountMinor, 24), settlementMode: str(body.settlementMode, 24) as SettlementMode,
+    occurredAt: str(body.occurredAt, 40), note: optional(body.note, 1000) };
+}
 export async function GET(request: NextRequest, { params }: { params: Promise<{ operation: string }> }) {
   const operation = (await params).operation;
   if (operation !== "options" && operation !== "asset-opening" && operation !== "asset-detail") {
@@ -110,6 +117,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (operation === "asset-class-change") return json(await changeAssetClass(str(body.id, 36), body.assetClass, str(body.idempotencyKey, 36)));
     if (operation === "split-bill") return json(await postSplitBill(splitBillRequest(body), str(body.idempotencyKey, 36)));
+    if (operation === "settle-receivable") return json(await postReceivableSettlement(settleReceivableRequest(body), str(body.idempotencyKey, 36)));
     if (operation === "asset-restore") {
       await restoreAsset(str(body.id, 36)); return json({ ok: true });
     }

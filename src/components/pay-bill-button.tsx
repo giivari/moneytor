@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { TransactionEditor } from "./transaction-editor";
+import { SettleReceivableDialog } from "./settle-receivable-dialog";
 import { minorToInput } from "@/lib/finance/format";
 import { shortDate } from "./ui";
 
@@ -29,15 +30,14 @@ export function RepayDebtButton({ assetId, name, exponent, amountMinor }: {
   </>;
 }
 
-/** Opens the Transfer editor with the receivable account as source to record receivable settlement. */
-export function SettleReceivableButton({ assetId, name, exponent, amountMinor }: {
-  assetId: string; name: string; exponent: number; amountMinor: string;
+/** Opens SettleReceivableDialog: pick destination account, received amount and how to handle a rounding difference. */
+export function SettleReceivableButton({ assetId, name }: {
+  assetId: string; name: string; exponent?: number; amountMinor?: string;
 }) {
   const [open, setOpen] = useState(false);
   return <>
     <button type="button" className="finance-secondary" onClick={() => setOpen(true)} aria-label={`Terima pelunasan ${name}`}>Terima pelunasan</button>
-    {open && <TransactionEditor onClose={() => setOpen(false)}
-      preset={{ kind: "transfer", accountId: assetId, amount: minorToInput(amountMinor, exponent), note: `Pelunasan piutang ${name}` }} />}
+    {open && <SettleReceivableDialog receivableAssetId={assetId} onClose={() => setOpen(false)} />}
   </>;
 }
 

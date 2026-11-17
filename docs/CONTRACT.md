@@ -116,6 +116,31 @@ Request:
 Respons: `{ "personalActivityId": "<uuid>|null", "transferActivityId": "<uuid>", "receivableAssetId": "<uuid>", "receivableCreated": true }`.
 Ulangan dengan kunci dan isi sama mengembalikan respons yang sama tanpa posting ganda. Gagal di tengah = tidak ada yang tersimpan. Jalur lama (`asset-create` + dua `post`) tetap tersedia.
 
+### POST `/api/finance/settle-receivable` (migrasi 024)
+
+Satu transaksi DB, satu `idempotencyKey`: pelunasan piutang/talangan ke rekening pilihan, dengan penanganan selisih pembulatan.
+Request:
+```json
+{ "idempotencyKey": "<uuid>", "receivableAssetId": "<uuid>", "destinationAssetId": "<uuid>", "receivedAmountMinor": "20000",
+  "settlementMode": "partial", "occurredAt": "2026-03-01T05:00:00.000Z", "note": "opsional" }
+```
+- `receivableAssetId`: akun `receivable` aktif dengan saldo > 0. `destinationAssetId`: akun `asset` aktif (bukan kredit/piutang), mata uang sama.
+- `settlementMode`: `"partial"` | `"close_with_adjustment"` (hanya berpengaruh bila diterima < sisa).
+- Sisa piutang dibaca di server di dalam transaksi (akun dikunci). Catatan penyesuaian: `Selisih pembulatan pelunasan · <nama piutang>`.
+
+| Kasus | Posting | Saldo piutang |
+|---|---|---|
+| diterima = sisa | transfer piutang -> tujuan sebesar diterima | 0 |
+| diterima > sisa (mis. 20.000 untuk 19.900) | transfer sebesar sisa + income selisih (100) ke tujuan | 0 |
+| diterima < sisa, `partial` (16.500 dari 17.000) | transfer sebesar diterima | 500 |
+| diterima < sisa, `close_with_adjustment` | transfer sebesar diterima + expense selisih (500) dari piutang | 0 |
+
+Respons: `{ "transferActivityId": "<uuid>", "adjustmentActivityId": "<uuid>|null", "adjustmentKind": "income|expense|null", "settlementMode": "partial" }`.
+Ulangan dengan kunci dan isi sama mengembalikan respons yang sama tanpa posting ganda; kunci sama dengan isi berbeda -> `400 "Kunci permintaan sudah digunakan untuk perubahan lain"`. Gagal di tengah = tidak ada yang tersimpan. Tabel: `receivable_settlement_operations` (append-only).
+Penyesuaian memakai kategori bawaan `other_income` / `other_expense` bila aktif.
+
+Catatan otomatisasi: transaksi dari aturan otomatisasi yang catatannya kosong kini diberi catatan = nama aturan (`title`) saat diposting.
+
 ## Tambahan: jenis aktivitas utang dan koreksi (migrasi 017)
 
 `ActivityDraft.kind` (POST `/api/finance/post`, `replace`) kini menerima `borrow | repay | refund | adjustment` selain `income | expense | transfer`.

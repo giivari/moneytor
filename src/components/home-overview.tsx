@@ -30,10 +30,10 @@ function RecentActivity({ recent }: { recent: FinanceActivity[] }) {
         const toneKind = item.kind === "income" || item.kind === "expense" ? item.kind : "transfer";
         const fee = (item.kind === "transfer" || item.kind === "borrow" || item.kind === "repay") && item.charges[0] ? `Biaya ${formatMinor(item.charges[0].amountMinor, item.currency, item.exponent)}` : null;
         const context = [accounts, item.recurringRuleName ? "Otomatisasi" : item.categoryName, fee].filter(Boolean).join(" · ");
-        return <InspectorRow key={item.id} id={`activity:${item.id}`} title={item.note || kind} subtitle={`${kind} · ${shortDate(item.occurredAt)}`} detail={<ActivityDetail item={item} />} className="home-recent-row">
+        return <InspectorRow key={item.id} id={`activity:${item.id}`} title={item.note?.trim() || item.recurringRuleName?.trim() || kind} subtitle={`${kind} · ${shortDate(item.occurredAt)}`} detail={<ActivityDetail item={item} />} className="home-recent-row">
           <span className="home-recent-date">{shortDate(item.occurredAt)}</span>
           <span className={`ui-kind ui-kind--${toneKind}`} data-kind={item.kind}><Icon size={ICON_SM} aria-hidden="true" /><span>{kind}</span></span>
-          <div className="home-recent-copy"><InspectorRowButton><strong>{item.note || kind}</strong></InspectorRowButton><small>{context}</small></div>
+          <div className="home-recent-copy"><InspectorRowButton><strong>{item.note?.trim() || item.recurringRuleName?.trim() || kind}</strong></InspectorRowButton><small>{context}</small></div>
           <Amount value={amount} tone={item.kind === "expense" ? "negative" : item.kind === "income" ? "positive" : ""} />
         </InspectorRow>;
       })}</ul>
